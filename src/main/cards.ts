@@ -160,7 +160,7 @@ async function sumDigitacoesByDay(
   const rows = await listPaged(async (from, to) => {
     let query = getCardplusClient()
       .from('digitacoes')
-      .select('quantity, created_at')
+      .select('quantity, created_at, store_id')
       .gte('created_at', range.start)
       .lte('created_at', range.end)
       .range(from, to)
@@ -170,10 +170,11 @@ async function sumDigitacoesByDay(
       if (error.code === '42P01' || error.code === 'PGRST205') return []
       throw new Error(`Erro ao carregar digitações: ${error.message}`)
     }
-    return (data ?? []) as Array<{ quantity: number | null; created_at: string }>
+    return (data ?? []) as Array<{ quantity: number | null; created_at: string; store_id: string | null }>
   })
   const map = new Map<string, number>()
   for (const row of rows) {
+    if (storeId && row.store_id && row.store_id !== storeId) continue
     const key = dateKeyFromIso(row.created_at)
     map.set(key, (map.get(key) ?? 0) + (Number(row.quantity) || 0))
   }
@@ -230,7 +231,9 @@ export async function getCardsBoard(monthKeyInput?: string | null, storeId?: str
   ])
 
   const storeMap = new Map(stores.map((store) => [store.id, store.name]))
-  const records = monthRows.map((row) => toRecord(row, storeMap))
+  const records = monthRows
+    .map((row) => toRecord(row, storeMap))
+    .filter((card) => !storeId || card.storeId === storeId)
   const dayMap = new Map<
     string,
     { cards: number; pending: number; activated: number; limitCents: number; usedCents: number }
@@ -289,7 +292,9 @@ export async function getCardsBoard(monthKeyInput?: string | null, storeId?: str
 
   return {
     monthKey,
-    cardsToday: todayCount,
+    storeId: storeId ?? null,
+    storeName: storeId ? stores[0]?.name ?? null : null,
+    cardsToday: monthKey === monthKeyFromDateKey(today) ? records.filter((card) => card.dateKey === today).length : todayCount,
     todayGoal: dayGoal,
     cardsThisMonth: records.length,
     monthGoal: monthGoalValue,

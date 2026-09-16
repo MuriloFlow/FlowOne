@@ -45,9 +45,11 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
       <header className="mb-6">
         <h1 className="text-[26px] leading-tight text-[#F0EFEC]/90">{greetingFor(user.displayName)}</h1>
         <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
-          {storeId
-            ? 'Recorte rápido da unidade: cartão, venda, fluxo e ritmo.'
-            : 'Recorte rápido da operação: cartão, venda, fluxo e ritmo.'}
+          {data?.storeName
+            ? `Recorte de ${data.storeName}: cartão, venda, fluxo e ritmo.`
+            : storeId
+              ? 'Recorte rápido da unidade: cartão, venda, fluxo e ritmo.'
+              : 'Recorte rápido da operação: cartão, venda, fluxo e ritmo.'}
         </p>
       </header>
 
@@ -129,7 +131,15 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
               value={data.pacePerDay ?? 0}
               empty={data.pacePerDay === null}
               suffix="/dia"
-              hint={`${formatCount(data.workingDaysMonth)} dias úteis, sem domingo`}
+              hint={
+                data.pacePerDay === null && data.monthGoal === null
+                  ? 'Sem meta mensal no Card+'
+                  : data.remainingToMonthGoal === 0
+                    ? 'Meta do mês atingida'
+                    : data.workingDaysRemaining === 0
+                      ? 'Sem dias úteis restantes neste mês'
+                      : `${formatCount(data.workingDaysRemaining)} ${data.workingDaysRemaining === 1 ? 'dia útil restante' : 'dias úteis restantes'}, sem domingo`
+              }
               icon={<Gauge className="size-4" strokeWidth={1.7} />}
             />
           </div>

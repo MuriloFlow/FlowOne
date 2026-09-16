@@ -5,6 +5,7 @@ import { CardDialog } from '@/components/card-dialog'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MetricCard } from '@/components/metric-card'
+import { MonthSwitcher } from '@/components/month-switcher'
 import {
   currentDateKey,
   currentMonthKey,
@@ -264,7 +265,9 @@ function MonthDesk({
       <header className="mb-5">
         <h1 className="text-[22px] text-[#F0EFEC]/88">Cartões</h1>
         <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
-          Clique no dia para ver, editar e registrar os cartões daquela data.
+          {board.storeName
+            ? `Métricas e registros de ${board.storeName}. Clique no dia para ver e registrar.`
+            : 'Clique no dia para ver, editar e registrar os cartões daquela data.'}
         </p>
       </header>
 
@@ -286,8 +289,23 @@ function MonthDesk({
         <MetricCard
           label="Total registrado"
           value={board.cardsTotal}
-          hint={`${formatCount(board.pendingCount)} pendentes · ${formatCount(board.activatedCount)} ativados`}
+          hint={board.storeName ? `Histórico de ${board.storeName}` : 'Histórico de todas as unidades'}
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+        />
+      </div>
+
+      <div className="mt-3 grid grid-cols-4 gap-3">
+        <MiniStat label="Pendentes" value={formatCount(board.pendingCount)} hint="Neste mês" />
+        <MiniStat label="Ativados" value={formatCount(board.activatedCount)} hint="Neste mês" />
+        <MiniStat
+          label="Limite parado"
+          value={formatCount(board.idleActivatedCount)}
+          hint="Ativado sem gasto neste mês"
+        />
+        <MiniStat
+          label="Limite disponível"
+          value={formatBRLFromCents(board.availableCents)}
+          hint={`${formatBRLFromCents(board.usedCents)} gastos de ${formatBRLFromCents(board.limitCents)}`}
         />
       </div>
 
@@ -297,12 +315,7 @@ function MonthDesk({
             <h2 className="text-[15px] text-[#F0EFEC]/82">Dias do mês</h2>
             <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Todos os dias, mesmo com zero cartão.</p>
           </div>
-          <Input
-            type="month"
-            value={monthKey}
-            onChange={(event) => onMonthKey(event.target.value)}
-            className="h-8 w-[160px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
-          />
+          <MonthSwitcher value={monthKey} onChange={onMonthKey} />
         </div>
         <table className="w-full text-left text-[13px]">
           <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">

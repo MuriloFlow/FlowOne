@@ -56,9 +56,8 @@ export function EmployeeDialog({
     const nextRole = employee?.flowRole
     setFlowRole(nextRole && isFlowRole(nextRole) ? nextRole : DEFAULT_EMPLOYEE_ROLE)
     setCardplusRole(
-      CARDPLUS_SUB_ROLES.includes(employee?.cardplusRole as (typeof CARDPLUS_SUB_ROLES)[number])
-        ? (employee?.cardplusRole as (typeof CARDPLUS_SUB_ROLES)[number])
-        : CARDPLUS_SUB_ROLES[0]
+      CARDPLUS_SUB_ROLES.find((role) => role.toLowerCase() === (employee?.cardplusRole ?? '').toLowerCase()) ??
+        CARDPLUS_SUB_ROLES[0]
     )
     setIsActive(employee?.isActive ?? true)
     setCpf('')

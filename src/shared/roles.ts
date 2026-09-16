@@ -67,7 +67,19 @@ export function canEditStoreDesk(role: string | null | undefined): boolean {
   )
 }
 
+export function isGerenteRegionalRole(cardplusRole: string | null | undefined): boolean {
+  return (cardplusRole ?? '').trim().toLowerCase() === 'gerente regional'
+}
+
+export function isSupervisorSeatCandidate(
+  flowRole: string | null | undefined,
+  cardplusRole: string | null | undefined
+): boolean {
+  return flowRole === 'SUPERVISOR' || isGerenteRegionalRole(cardplusRole)
+}
+
 export function employeeRoleLabel(flowRole: string | null | undefined, cardplusRole: string): string {
   if (flowRole && isFlowRole(flowRole)) return roleLabel(flowRole)
+  if (isGerenteRegionalRole(cardplusRole)) return 'Supervisor'
   return cardplusRole
 }

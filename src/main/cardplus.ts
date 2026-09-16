@@ -79,12 +79,9 @@ function normalizeName(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
 }
 
-function isCardPlusRole(value: string): value is CardPlusSubRole {
-  return (CARDPLUS_SUB_ROLES as readonly string[]).includes(value)
-}
-
 function normalizeCardPlusRole(value: string): CardPlusSubRole {
-  return isCardPlusRole(value) ? value : 'Funcionario Operacional'
+  const match = CARDPLUS_SUB_ROLES.find((role) => role.toLowerCase() === value.trim().toLowerCase())
+  return match ?? 'Funcionario Operacional'
 }
 
 async function throwIfError<T>(
@@ -382,7 +379,7 @@ async function sumDigitacoes(range: { start: string; end: string }, storeId?: st
   const rows = await listPaged(async (from, to) => {
     let query = getCardplusClient()
       .from('digitacoes')
-      .select('quantity')
+      .select('quantity, store_id')
       .gte('created_at', range.start)
       .lte('created_at', range.end)
       .range(from, to)
@@ -392,9 +389,11 @@ async function sumDigitacoes(range: { start: string; end: string }, storeId?: st
       if (error.code === '42P01' || error.code === 'PGRST205') return []
       throw new Error(`Erro ao carregar digitações: ${error.message}`)
     }
-    return (data ?? []) as Array<{ quantity: number | null }>
+    return (data ?? []) as Array<{ quantity: number | null; store_id: string | null }>
   })
-  return rows.reduce((total, row) => total + (Number(row.quantity) || 0), 0)
+  return rows
+    .filter((row) => !storeId || !row.store_id || row.store_id === storeId)
+    .reduce((total, row) => total + (Number(row.quantity) || 0), 0)
 }
 
 async function sumCustomerFlow(monthKey: string, storeId?: string | null): Promise<number | null> {
@@ -466,7 +465,13 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
   const monthGoal = goals.get(monthKey) ?? null
   const cardsThisMonth = countsByMonth.get(monthKey) ?? 0
   const clientesMonth = digitacoesMonth + cardsThisMonth
+  const remainingToMonthGoal = monthGoal === null ? null : Math.max(monthGoal - cardsThisMonth, 0)
   const workingDays = workingDaysInMonth(monthKey)
+  const remainingDays = workingDaysInMonth(monthKey, today)
+  const pacePerDay =
+    remainingToMonthGoal === null || remainingDays === 0
+      ? null
+      : Math.round(remainingToMonthGoal / remainingDays)
 
   return {
     cardsToday,
@@ -474,7 +479,7 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
     cardsLastMonth: countsByMonth.get(lastMonthKey) ?? 0,
     monthGoal,
     todayGoal,
-    remainingToMonthGoal: monthGoal === null ? null : Math.max(monthGoal - cardsThisMonth, 0),
+    remainingToMonthGoal,
     saleTodayCents: sumMatchingGoals(saleRows, (row) => row.date_key === todaySaleKey),
     digitacoesToday,
     digitacoesMonth,
@@ -482,11 +487,13 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
     aproveitamentoPct: clientesMonth > 0 ? Number(((cardsThisMonth / clientesMonth) * 100).toFixed(1)) : null,
     customerFlowMonth: customerFlow,
     approvalRatePct: digitacoesMonth > 0 ? Number(((cardsThisMonth / digitacoesMonth) * 100).toFixed(1)) : null,
-    pacePerDay: monthGoal === null || workingDays === 0 ? null : Math.round(monthGoal / workingDays),
+    pacePerDay,
     workingDaysMonth: workingDays,
+    workingDaysRemaining: remainingDays,
     pendingCardsThisMonth: pendingCards,
     storeCount: stores.length,
-    employeeCount: collaborators.filter((row) => row.is_active).length,
+    employeeCount: collaborators.filter((row) => row.is_active && row.name.trim().toUpperCase() !== 'CAIXA').length,
+    storeName: storeId ? stores[0]?.name ?? null : null,
     months,
     recentCards
   }

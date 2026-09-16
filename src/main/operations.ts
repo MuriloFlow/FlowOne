@@ -47,9 +47,10 @@ function parseWriteInput(payload: unknown): EmployeeWriteInput {
     throw new Error('Dados inválidos.')
   }
   const body = payload as Record<string, unknown>
-  const cardplusRole = asString(body.cardplusRole, 'Função operacional')
+  const cardplusRoleRaw = asString(body.cardplusRole, 'Função operacional')
+  const cardplusRole = CARDPLUS_SUB_ROLES.find((role) => role.toLowerCase() === cardplusRoleRaw.toLowerCase())
   const flowRole = asString(body.flowRole, 'Cargo')
-  if (!CARDPLUS_SUB_ROLES.includes(cardplusRole as (typeof CARDPLUS_SUB_ROLES)[number])) {
+  if (!cardplusRole) {
     throw new Error('Função operacional inválida.')
   }
   if (!isFlowRole(flowRole)) {
@@ -147,14 +148,14 @@ function assertCardAmounts(input: CardWriteInput): CardWriteInput {
 export function registerOperationsIpc(): void {
   handle('operations:overview', async (payload) => {
     const actor = await resolveActor()
-    const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
+    const storeId = resolveStoreFilter(actor, payload)
     log.info('[operations] overview', storeId ?? 'all')
     return memo(cacheKey('overview', storeId), 12_000, () => getOverview(storeId))
   })
 
   handle('operations:finance', async (payload) => {
     const actor = await resolveActor()
-    const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
+    const storeId = resolveStoreFilter(actor, payload)
     log.info('[operations] finance', storeId ?? 'all')
     return memo(cacheKey('finance', storeId), 12_000, () => getFinance(storeId))
   })
@@ -167,7 +168,7 @@ export function registerOperationsIpc(): void {
 
   handle('operations:employees', async (payload) => {
     const actor = await resolveActor()
-    const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
+    const storeId = resolveStoreFilter(actor, payload)
     log.info('[operations] employees', storeId ?? 'all')
     return memo(cacheKey('employees', storeId), 12_000, () => listEmployees(storeId))
   })
@@ -242,7 +243,7 @@ export function registerOperationsIpc(): void {
 
   handle('operations:store-board', async (payload) => {
     const actor = await resolveActor()
-    const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
+    const storeId = resolveStoreFilter(actor, payload)
     const board = await memo(cacheKey('store-board', storeId), 10_000, () => getStoreBoard(storeId))
     return {
       ...board,
@@ -312,8 +313,9 @@ export function registerOperationsIpc(): void {
   handle('operations:cards', async (payload) => {
     const actor = await resolveActor()
     const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
-    const storeId = resolveStoreFilter(actor, normalizeStoreId(body))
+    const storeId = resolveStoreFilter(actor, body)
     const monthKey = typeof body.monthKey === 'string' ? body.monthKey : null
+    log.info('[operations] cards', storeId ?? 'all', monthKey ?? 'now')
     return memo(cacheKey(`cards:${monthKey ?? 'now'}`, storeId), 8_000, () => getCardsBoard(monthKey, storeId))
   })
 
@@ -372,7 +374,7 @@ export function registerOperationsIpc(): void {
 
   handle('operations:vouchers', async (payload) => {
     const actor = await resolveActor()
-    const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
+    const storeId = resolveStoreFilter(actor, payload)
     return memo(cacheKey('vouchers', storeId), 8_000, () => listVoucherBoard(storeId))
   })
 

@@ -22,6 +22,7 @@ import type {
   StoreWriteInput
 } from '../shared/operations'
 import { STORE_SEATS } from '../shared/operations'
+import { isSupervisorSeatCandidate } from '../shared/roles'
 
 type ProfileRow = {
   cardplus_store_id: string
@@ -104,26 +105,58 @@ function salesForStore(
   return total
 }
 
+function asPerson(item: { id: string; name: string; storeName: string; flowRoleLabel: string }): StorePerson {
+  return {
+    id: item.id,
+    name: item.name,
+    storeName: item.storeName,
+    roleLabel: item.flowRoleLabel
+  }
+}
+
+function mergePeople(list: StorePerson[]): StorePerson[] {
+  const seen = new Set<string>()
+  const next: StorePerson[] = []
+  for (const person of list) {
+    if (seen.has(person.id)) continue
+    seen.add(person.id)
+    next.push(person)
+  }
+  return next.sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
+}
+
 export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard> {
   const today = dateKeyInSaoPaulo()
   const monthKey = monthKeyFromDateKey(today)
-  const [stores, employees, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores] = await Promise.all([
-    listStores(storeId),
-    listEmployees(storeId),
-    storeMonthCardsByStore(storeId),
-    listGoalsByPrefix(MONTH_CARDS_PREFIX, storeId),
-    listGoalsByPrefix(MONTH_SALES_PREFIX, storeId),
-    listGoalsByPrefix(DAILY_SALE_PREFIX, storeId),
-    listProfiles(),
-    listSeats(),
-    listOperationalStoreIds()
-  ])
+  const [stores, employees, leadershipPool, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores] =
+    await Promise.all([
+      listStores(storeId),
+      listEmployees(storeId),
+      storeId ? listEmployees() : Promise.resolve(null),
+      storeMonthCardsByStore(storeId),
+      listGoalsByPrefix(MONTH_CARDS_PREFIX, storeId),
+      listGoalsByPrefix(MONTH_SALES_PREFIX, storeId),
+      listGoalsByPrefix(DAILY_SALE_PREFIX, storeId),
+      listProfiles(),
+      listSeats(),
+      listOperationalStoreIds()
+    ])
 
-  const names = new Map(employees.map((item) => [item.id, item.name]))
-  const people: StorePerson[] = employees
+  const names = new Map((leadershipPool ?? employees).map((item) => [item.id, item.name]))
+  const localPeople = employees
     .filter((item) => item.isActive && item.name.trim().toUpperCase() !== 'CAIXA')
-    .map((item) => ({ id: item.id, name: item.name }))
-    .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
+    .map(asPerson)
+  const supervisorPeople = mergePeople(
+    (leadershipPool ?? employees)
+      .filter(
+        (item) =>
+          item.isActive &&
+          item.name.trim().toUpperCase() !== 'CAIXA' &&
+          isSupervisorSeatCandidate(item.flowRole, item.cardplusRole)
+      )
+      .map(asPerson)
+  )
+  const people = mergePeople(localPeople)
 
   const board = stores.map((store) => {
     const profile = profiles.get(store.id)
@@ -178,6 +211,7 @@ export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard
     employeeCount: board.reduce((total, item) => total + item.employeeCount, 0),
     cardsThisMonth: board.reduce((total, item) => total + item.cardsThisMonth, 0),
     people,
+    supervisorPeople,
     stores: board
   }
 }

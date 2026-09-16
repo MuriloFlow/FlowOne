@@ -271,6 +271,7 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
         mode={editing ? 'edit' : 'create'}
         store={editing}
         people={board?.people ?? []}
+        supervisorPeople={board?.supervisorPeople ?? []}
         onClose={() => setDialogOpen(false)}
         onSaved={onSaved}
       />

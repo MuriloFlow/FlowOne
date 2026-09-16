@@ -1,4 +1,5 @@
 import { canViewAllStores, normalizeRole, type FlowRoleId } from '../shared/roles'
+import { normalizeStoreId } from '../shared/store-scope'
 import { memo } from './memo'
 import { readAuthSession } from './session-store'
 import { getFlowAdminClient } from './supabase-clients'
@@ -60,7 +61,7 @@ export async function resolveActor(): Promise<ActorScope> {
 }
 
 export function resolveStoreFilter(actor: ActorScope, requested: unknown): string | null {
-  const requestedId = typeof requested === 'string' && requested.trim().length > 0 ? requested.trim() : null
+  const requestedId = normalizeStoreId(requested)
   if (actor.canViewAll) return requestedId
   if (!actor.boundStoreId) {
     throw new Error('Sua conta não está vinculada a uma unidade.')

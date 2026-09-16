@@ -4,7 +4,8 @@ export const CARDPLUS_SUB_ROLES = [
   'Lider de Caixa',
   'VM',
   'Vendedor',
-  'Gerente'
+  'Gerente',
+  'Gerente Regional'
 ] as const
 
 export type CardPlusSubRole = (typeof CARDPLUS_SUB_ROLES)[number]
@@ -22,6 +23,8 @@ export type StoreSeat = (typeof STORE_SEATS)[number]
 export type StorePerson = {
   id: string
   name: string
+  storeName?: string
+  roleLabel?: string
 }
 
 export type StoreBoardItem = {
@@ -53,6 +56,7 @@ export type StoreBoard = {
   employeeCount: number
   cardsThisMonth: number
   people: StorePerson[]
+  supervisorPeople: StorePerson[]
   stores: StoreBoardItem[]
 }
 
@@ -127,9 +131,11 @@ export type OverviewMetrics = {
   approvalRatePct: number | null
   pacePerDay: number | null
   workingDaysMonth: number
+  workingDaysRemaining: number
   pendingCardsThisMonth: number
   storeCount: number
   employeeCount: number
+  storeName: string | null
   months: MonthPoint[]
   recentCards: RecentCard[]
 }
@@ -163,6 +169,8 @@ export type CardRecord = {
 
 export type CardsBoard = {
   monthKey: string
+  storeId: string | null
+  storeName: string | null
   cardsToday: number
   todayGoal: number | null
   cardsThisMonth: number

@@ -18,6 +18,7 @@ type StoreDialogProps = {
   mode: 'create' | 'edit'
   store?: StoreBoardItem | null
   people: StorePerson[]
+  supervisorPeople?: StorePerson[]
   onClose: () => void
   onSaved: (store: StoreBoardItem) => void
 }
@@ -36,7 +37,15 @@ function suggestUsername(name: string): string {
   return slug ? `operacao.${slug}` : 'operacao'
 }
 
-export function StoreDialog({ open, mode, store, people, onClose, onSaved }: StoreDialogProps) {
+export function StoreDialog({
+  open,
+  mode,
+  store,
+  people,
+  supervisorPeople = [],
+  onClose,
+  onSaved
+}: StoreDialogProps) {
   const [step, setStep] = useState<1 | 2>(1)
   const [name, setName] = useState('')
   const [internalCode, setInternalCode] = useState('')
@@ -98,6 +107,21 @@ export function StoreDialog({ open, mode, store, people, onClose, onSaved }: Sto
     () => [{ value: '', label: 'Ninguém definido' }, ...people.map((item) => ({ value: item.id, label: item.name }))],
     [people]
   )
+  const supervisorOptions = useMemo(() => {
+    const list = [...supervisorPeople]
+    if (store?.supervisor && !list.some((item) => item.id === store.supervisor?.id)) {
+      list.unshift(store.supervisor)
+    }
+    return [
+      { value: '', label: 'Ninguém definido' },
+      ...list.map((item) => ({
+        value: item.id,
+        label: item.roleLabel
+          ? `${item.name} · ${item.roleLabel}${item.storeName ? ` · ${item.storeName}` : ''}`
+          : item.name
+      }))
+    ]
+  }, [supervisorPeople, store?.supervisor])
 
   function toggleManager(id: string): void {
     setManagerIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))
@@ -265,7 +289,15 @@ export function StoreDialog({ open, mode, store, people, onClose, onSaved }: Sto
               </label>
               <label className="grid gap-1.5">
                 <Label>Supervisor</Label>
-                <Select value={supervisorId} options={personOptions} onChange={setSupervisorId} />
+                <Select
+                  value={supervisorId}
+                  options={supervisorOptions}
+                  onChange={setSupervisorId}
+                  placeholder="Gerente regional"
+                />
+                <p className="text-[11px] text-[#F0EFEC]/32">
+                  No Card+ esse cargo é Gerente Regional. A lista puxa supervisores de todas as unidades.
+                </p>
               </label>
               <label className="grid gap-1.5">
                 <Label>Líder de operação</Label>

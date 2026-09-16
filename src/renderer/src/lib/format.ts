@@ -110,3 +110,19 @@ export function currentDateKey(): string {
     day: '2-digit'
   }).format(new Date())
 }
+
+export function shiftMonthKey(monthKey: string, offset: number): string {
+  const [year, month] = monthKey.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1 + offset, 1))
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+export function monthLongLabel(monthKey: string): string {
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) return monthKey
+  const [year, month] = monthKey.split('-').map(Number)
+  return new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(new Date(Date.UTC(year, month - 1, 1)))
+}

@@ -6,7 +6,6 @@ import { requiredEnv } from './env'
 import { readKobbiWidth, writeKobbiWidth } from './kobbi-preference'
 import { resolveActor, resolveStoreFilter } from './scope'
 import { listVoucherBoard } from './vouchers'
-import { normalizeStoreId } from '../shared/store-scope'
 import type { KobbiAttachment, KobbiHistoryMessage, KobbiSendInput } from '../shared/kobbi'
 
 type ChatContent =
@@ -72,7 +71,8 @@ async function buildOperationsContext(storeId: string | null, userName?: string,
       fluxoClientesMes: overview.customerFlowMonth,
       txAprovacaoMes: overview.approvalRatePct,
       ritmoPorDia: overview.pacePerDay,
-      diasUteisSemDomingo: overview.workingDaysMonth,
+      diasUteisNoMes: overview.workingDaysMonth,
+      diasUteisRestantes: overview.workingDaysRemaining,
       cartoesPendentesMes: overview.pendingCardsThisMonth,
       unidades: overview.storeCount,
       funcionarios: overview.employeeCount,
@@ -318,7 +318,7 @@ export async function sendKobbi(
   onDelta: (text: string) => void
 ): Promise<string> {
   const actor = await resolveActor()
-  const storeId = resolveStoreFilter(actor, normalizeStoreId(input.storeId))
+  const storeId = resolveStoreFilter(actor, input.storeId)
   let snapshot: string
   try {
     snapshot = await buildOperationsContext(storeId, input.userName, input.userRole)
