@@ -78,6 +78,35 @@ export function currentMonthKey(): string {
   }).format(new Date())
 }
 
-export function monthInputValue(monthKey: string): string {
-  return monthKey
+export function weekdayLabel(dateKey: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return ''
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'short',
+    timeZone: 'America/Sao_Paulo'
+  })
+    .format(new Date(`${dateKey}T12:00:00-03:00`))
+    .replace('.', '')
+}
+
+export function weekdayLong(dateKey: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return dateKey
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'America/Sao_Paulo'
+  }).format(new Date(`${dateKey}T12:00:00-03:00`))
+}
+
+export function isSunday(dateKey: string): boolean {
+  return new Date(`${dateKey}T12:00:00-03:00`).getDay() === 0
+}
+
+export function currentDateKey(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date())
 }

@@ -15,6 +15,7 @@ type CardDialogProps = {
   stores: StoreOption[]
   people: StorePerson[]
   defaultStoreId?: string | null
+  lockedDateKey?: string | null
   onClose: () => void
   onSaved: (card: CardRecord) => void
 }
@@ -26,6 +27,7 @@ export function CardDialog({
   stores,
   people,
   defaultStoreId = null,
+  lockedDateKey = null,
   onClose,
   onSaved
 }: CardDialogProps) {
@@ -49,8 +51,12 @@ export function CardDialog({
     setLimitText(card ? formatBRLInput(card.amountInCents) : '')
     setUsedText(card ? formatBRLInput(card.amountUsedInCents) : '0,00')
     setActivated(card?.activated ?? false)
-    setDateKey(card?.dateKey ?? new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))
-  }, [open, card, defaultStoreId, stores, people])
+    setDateKey(
+      card?.dateKey ??
+        lockedDateKey ??
+        new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    )
+  }, [open, card, defaultStoreId, stores, people, lockedDateKey])
 
   const storeOptions = useMemo(
     () => stores.map((item) => ({ value: item.id, label: item.name })),
@@ -66,7 +72,9 @@ export function CardDialog({
   const description =
     mode === 'transfer'
       ? 'O cartão continua no Card+, só muda o funcionário responsável.'
-      : 'O registro vai direto para o Card+, com limite, gasto e status.'
+      : lockedDateKey
+        ? 'Esse cartão entra no Card+ já nessa data.'
+        : 'O registro vai direto para o Card+, com limite, gasto e status.'
 
   async function submit(): Promise<void> {
     setSaving(true)
@@ -123,10 +131,12 @@ export function CardDialog({
                 <Input value={usedText} onChange={(event) => setUsedText(event.target.value)} placeholder="0,00" />
               </label>
             </div>
-            <label className="grid gap-1.5">
-              <Label>Data</Label>
-              <Input type="date" value={dateKey} onChange={(event) => setDateKey(event.target.value)} />
-            </label>
+            {lockedDateKey ? null : (
+              <label className="grid gap-1.5">
+                <Label>Data</Label>
+                <Input type="date" value={dateKey} onChange={(event) => setDateKey(event.target.value)} />
+              </label>
+            )}
             <label className="flex items-center gap-2 text-[13px] text-[#F0EFEC]/65">
               <input
                 type="checkbox"

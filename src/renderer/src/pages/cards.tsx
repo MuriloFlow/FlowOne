@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRightLeft, CreditCard, Pencil, Trash2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowLeft, ArrowRightLeft, ChevronRight, CreditCard, Pencil, Trash2 } from 'lucide-react'
 import { CardDialog } from '@/components/card-dialog'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MetricCard } from '@/components/metric-card'
-import { formatBRLFromCents, formatCount, formatDateKey, currentMonthKey } from '@/lib/format'
+import {
+  currentDateKey,
+  currentMonthKey,
+  formatBRLFromCents,
+  formatCount,
+  formatDateKey,
+  isSunday,
+  weekdayLabel,
+  weekdayLong
+} from '@/lib/format'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
-import type { CardRecord, CardsBoard, StoreOption } from '../../../shared/operations'
+import type { CardDayRow, CardRecord, CardsBoard, StoreOption } from '../../../shared/operations'
 
 type CardsPageProps = {
   storeId?: string | null
@@ -15,10 +25,14 @@ type CardsPageProps = {
 
 type StatusFilter = 'all' | 'pending' | 'activated' | 'idle'
 
+const ease = [0.22, 1, 0.36, 1] as const
+
 export function CardsPage({ storeId = null }: CardsPageProps) {
+  const today = currentDateKey()
   const [board, setBoard] = useState<CardsBoard | null>(null)
   const [stores, setStores] = useState<StoreOption[]>([])
   const [monthKey, setMonthKey] = useState(currentMonthKey)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [loading, setLoading] = useState(true)
@@ -27,6 +41,12 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
   const [selected, setSelected] = useState<CardRecord | null>(null)
   const [removing, setRemoving] = useState<CardRecord | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    setSelectedDate(null)
+    setQuery('')
+    setStatus('all')
+  }, [storeId, monthKey])
 
   useEffect(() => {
     let active = true
@@ -50,22 +70,21 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
     }
   }, [monthKey, storeId])
 
-  const records = useMemo(() => {
-    const list = board?.records ?? []
+  const dayRow = board?.days.find((item) => item.dateKey === selectedDate) ?? null
+  const dayRecords = useMemo(() => {
+    if (!selectedDate || !board) return []
     const term = query.trim().toLowerCase()
-    return list.filter((card) => {
+    return board.records.filter((card) => {
+      if (card.dateKey !== selectedDate) return false
       if (status === 'pending' && card.activated) return false
       if (status === 'activated' && !card.activated) return false
       if (status === 'idle' && !(card.activated && card.amountUsedInCents === 0 && card.amountInCents > 0)) {
         return false
       }
       if (!term) return true
-      return [card.clientName, card.operatorName, card.storeName]
-        .join(' ')
-        .toLowerCase()
-        .includes(term)
+      return [card.clientName, card.operatorName, card.storeName].join(' ').toLowerCase().includes(term)
     })
-  }, [board, query, status])
+  }, [board, selectedDate, query, status])
 
   async function reload(): Promise<void> {
     const payload = await operations().getCardsBoard(monthKey, storeId)
@@ -77,18 +96,8 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
     setDeleting(true)
     try {
       await operations().deleteCard(removing.id)
-      setBoard((current) =>
-        current
-          ? {
-              ...current,
-              records: current.records.filter((item) => item.id !== removing.id),
-              cardsThisMonth: Math.max(0, current.cardsThisMonth - 1),
-              cardsTotal: Math.max(0, current.cardsTotal - 1)
-            }
-          : current
-      )
       setRemoving(null)
-      void reload()
+      await reload()
     } catch (deleteError) {
       setError(operationError(deleteError))
     } finally {
@@ -111,226 +120,81 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
 
   return (
     <div className="flex flex-col">
-      <header className="mb-5 flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[22px] text-[#F0EFEC]/88">Cartões</h1>
-          <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
-            Registros, limite e status direto do Card+. O mês já abre no atual.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setSelected(null)
-            setDialogMode('create')
-          }}
-          className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
-        >
-          Novo cartão
-        </button>
-      </header>
-
       {error ? (
         <div className="mb-4 rounded-[12px] border border-red-500/15 bg-red-500/8 px-4 py-3 text-[13px] text-red-300/80">
           {error}
         </div>
       ) : null}
 
-      {board ? (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            <MetricCard
-              label="Cartões do dia"
-              value={board.cardsToday}
-              goal={board.todayGoal}
-              hint={board.todayGoal === null ? 'Sem meta do dia no Card+' : 'Progresso da meta diária'}
-              icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+      <AnimatePresence mode="wait">
+        {selectedDate && dayRow ? (
+          <motion.div
+            key={`day:${selectedDate}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.28, ease }}
+          >
+            <DayDesk
+              day={dayRow}
+              records={dayRecords}
+              query={query}
+              status={status}
+              onQuery={setQuery}
+              onStatus={setStatus}
+              onBack={() => {
+                setSelectedDate(null)
+                setQuery('')
+                setStatus('all')
+              }}
+              onCreate={() => {
+                setSelected(null)
+                setDialogMode('create')
+              }}
+              onEdit={(card) => {
+                setSelected(card)
+                setDialogMode('edit')
+              }}
+              onTransfer={(card) => {
+                setSelected(card)
+                setDialogMode('transfer')
+              }}
+              onToggle={(card) => {
+                void operations()
+                  .updateCard({
+                    id: card.id,
+                    storeId: card.storeId,
+                    collaboratorId: card.collaboratorId,
+                    clientName: card.clientName,
+                    amountInCents: card.amountInCents,
+                    amountUsedInCents: card.amountUsedInCents,
+                    activated: !card.activated,
+                    dateKey: card.dateKey
+                  })
+                  .then(() => reload())
+                  .catch((toggleError) => setError(operationError(toggleError)))
+              }}
+              onRemove={setRemoving}
             />
-            <MetricCard
-              label="Cartões do mês"
-              value={board.cardsThisMonth}
-              goal={board.monthGoal}
-              hint={board.monthGoal === null ? 'Sem meta mensal no Card+' : 'Progresso da meta mensal'}
-              icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+          </motion.div>
+        ) : board ? (
+          <motion.div
+            key={`month:${monthKey}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.28, ease }}
+          >
+            <MonthDesk
+              board={board}
+              monthKey={monthKey}
+              today={today}
+              onMonthKey={setMonthKey}
+              onOpenDay={setSelectedDate}
             />
-            <MetricCard
-              label="Total registrado"
-              value={board.cardsTotal}
-              hint={`${formatCount(board.pendingCount)} pendentes · ${formatCount(board.activatedCount)} ativados`}
-              icon={<CreditCard className="size-4" strokeWidth={1.7} />}
-            />
-          </div>
-
-          <div className="mt-3 grid grid-cols-4 gap-3">
-            <MiniStat label="Pendentes" value={formatCount(board.pendingCount)} />
-            <MiniStat label="Ativados" value={formatCount(board.activatedCount)} />
-            <MiniStat
-              label="Limite parado"
-              value={formatCount(board.idleActivatedCount)}
-              hint="Ativado sem gasto"
-            />
-            <MiniStat
-              label="Limite disponível"
-              value={formatBRLFromCents(board.availableCents)}
-              hint={`${formatBRLFromCents(board.usedCents)} de ${formatBRLFromCents(board.limitCents)}`}
-            />
-          </div>
-
-          <section className="mt-3 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-            <div className="flex items-center justify-between px-5 py-4">
-              <div>
-                <h2 className="text-[15px] text-[#F0EFEC]/82">Dias registrados</h2>
-                <p className="mt-1 text-[12px] text-[#F0EFEC]/35">
-                  Só os dias do mês que já têm cartão no Card+.
-                </p>
-              </div>
-              <Input
-                type="month"
-                value={monthKey}
-                onChange={(event) => setMonthKey(event.target.value)}
-                className="h-8 w-[160px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
-              />
-            </div>
-            {board.days.length === 0 ? (
-              <p className="px-5 pb-5 text-[13px] text-[#F0EFEC]/35">Nenhum cartão neste mês.</p>
-            ) : (
-              <table className="w-full text-left text-[13px]">
-                <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
-                  <tr className="border-t border-white/[0.04]">
-                    <th className="px-5 py-2.5 font-medium">Dia</th>
-                    <th className="px-3 py-2.5 font-medium">Cartões</th>
-                    <th className="px-3 py-2.5 font-medium">Pendentes</th>
-                    <th className="px-3 py-2.5 font-medium">Ativados</th>
-                    <th className="px-5 py-2.5 font-medium">Digitações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {board.days.map((day) => (
-                    <tr key={day.dateKey} className="border-t border-white/[0.035] text-[#F0EFEC]/68">
-                      <td className="px-5 py-3">{formatDateKey(day.dateKey)}</td>
-                      <td className="px-3 py-3">{formatCount(day.cards)}</td>
-                      <td className="px-3 py-3">{formatCount(day.pending)}</td>
-                      <td className="px-3 py-3">{formatCount(day.activated)}</td>
-                      <td className="px-5 py-3">{formatCount(day.digitacoes)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-
-          <section className="mt-3 mb-8 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar cliente, funcionário ou unidade"
-                  className="h-8 w-[260px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
-                />
-                <Chip active={status === 'all'} onClick={() => setStatus('all')}>
-                  Todos
-                </Chip>
-                <Chip active={status === 'pending'} onClick={() => setStatus('pending')}>
-                  Pendentes
-                </Chip>
-                <Chip active={status === 'activated'} onClick={() => setStatus('activated')}>
-                  Ativados
-                </Chip>
-                <Chip active={status === 'idle'} onClick={() => setStatus('idle')}>
-                  Limite parado
-                </Chip>
-              </div>
-              <span className="text-[12px] text-[#F0EFEC]/32">
-                {formatCount(records.length)} {records.length === 1 ? 'cartão' : 'cartões'}
-              </span>
-            </div>
-            {records.length === 0 ? (
-              <p className="px-5 pb-5 text-[13px] text-[#F0EFEC]/35">Nenhum cartão neste filtro.</p>
-            ) : (
-              <div className="overflow-auto">
-                <table className="w-full text-left text-[13px]">
-                  <thead className="sticky top-0 bg-[#1A1A1A] text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
-                    <tr className="border-y border-white/[0.04]">
-                      <th className="px-5 py-2.5 font-medium">Cliente</th>
-                      <th className="px-3 py-2.5 font-medium">Funcionário</th>
-                      <th className="px-3 py-2.5 font-medium">Status</th>
-                      <th className="px-3 py-2.5 font-medium">Limite</th>
-                      <th className="px-3 py-2.5 font-medium">Gasto</th>
-                      <th className="px-3 py-2.5 font-medium">Disponível</th>
-                      <th className="px-3 py-2.5 font-medium">Dia</th>
-                      <th className="w-[120px] px-4 py-2.5 font-medium" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {records.map((card) => (
-                      <tr key={card.id} className="border-t border-white/[0.03] text-[#F0EFEC]/68 hover:bg-white/[0.02]">
-                        <td className="px-5 py-3">
-                          <p>{card.clientName}</p>
-                          <p className="text-[11px] text-[#F0EFEC]/32">{card.storeName}</p>
-                        </td>
-                        <td className="px-3 py-3">{card.operatorName}</td>
-                        <td className="px-3 py-3">
-                          <StatusBadge card={card} />
-                        </td>
-                        <td className="px-3 py-3">{formatBRLFromCents(card.amountInCents)}</td>
-                        <td className="px-3 py-3">{formatBRLFromCents(card.amountUsedInCents)}</td>
-                        <td className="px-3 py-3">{formatBRLFromCents(card.availableInCents)}</td>
-                        <td className="px-3 py-3 text-[#F0EFEC]/45">{formatDateKey(card.dateKey)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end gap-1">
-                            <IconButton
-                              label={card.activated ? 'Marcar pendente' : 'Ativar'}
-                              onClick={() => {
-                                void operations()
-                                  .updateCard({
-                                    id: card.id,
-                                    storeId: card.storeId,
-                                    collaboratorId: card.collaboratorId,
-                                    clientName: card.clientName,
-                                    amountInCents: card.amountInCents,
-                                    amountUsedInCents: card.amountUsedInCents,
-                                    activated: !card.activated,
-                                    dateKey: card.dateKey
-                                  })
-                                  .then(() => reload())
-                                  .catch((toggleError) => setError(operationError(toggleError)))
-                              }}
-                            >
-                              {card.activated ? 'Pend.' : 'Ativar'}
-                            </IconButton>
-                            <IconButton
-                              label="Editar"
-                              onClick={() => {
-                                setSelected(card)
-                                setDialogMode('edit')
-                              }}
-                            >
-                              <Pencil className="size-3.5" strokeWidth={1.7} />
-                            </IconButton>
-                            <IconButton
-                              label="Transferir"
-                              onClick={() => {
-                                setSelected(card)
-                                setDialogMode('transfer')
-                              }}
-                            >
-                              <ArrowRightLeft className="size-3.5" strokeWidth={1.7} />
-                            </IconButton>
-                            <IconButton label="Excluir" onClick={() => setRemoving(card)}>
-                              <Trash2 className="size-3.5" strokeWidth={1.7} />
-                            </IconButton>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </>
-      ) : null}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <CardDialog
         open={dialogMode !== null}
@@ -339,6 +203,7 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
         stores={stores}
         people={board?.people ?? []}
         defaultStoreId={storeId ?? selected?.storeId}
+        lockedDateKey={dialogMode === 'create' ? selectedDate : selected?.dateKey ?? selectedDate}
         onClose={() => {
           setDialogMode(null)
           setSelected(null)
@@ -378,6 +243,304 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
         </div>
       </Dialog>
     </div>
+  )
+}
+
+function MonthDesk({
+  board,
+  monthKey,
+  today,
+  onMonthKey,
+  onOpenDay
+}: {
+  board: CardsBoard
+  monthKey: string
+  today: string
+  onMonthKey: (value: string) => void
+  onOpenDay: (dateKey: string) => void
+}) {
+  return (
+    <>
+      <header className="mb-5">
+        <h1 className="text-[22px] text-[#F0EFEC]/88">Cartões</h1>
+        <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
+          Clique no dia para ver, editar e registrar os cartões daquela data.
+        </p>
+      </header>
+
+      <div className="grid grid-cols-3 gap-3">
+        <MetricCard
+          label="Cartões do dia"
+          value={board.cardsToday}
+          goal={board.todayGoal}
+          hint={board.todayGoal === null ? 'Sem meta do dia no Card+' : 'Progresso da meta diária'}
+          icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+        />
+        <MetricCard
+          label="Cartões do mês"
+          value={board.cardsThisMonth}
+          goal={board.monthGoal}
+          hint={board.monthGoal === null ? 'Sem meta mensal no Card+' : 'Progresso da meta mensal'}
+          icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+        />
+        <MetricCard
+          label="Total registrado"
+          value={board.cardsTotal}
+          hint={`${formatCount(board.pendingCount)} pendentes · ${formatCount(board.activatedCount)} ativados`}
+          icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+        />
+      </div>
+
+      <section className="mt-3 mb-8 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
+        <div className="flex items-center justify-between px-5 py-4">
+          <div>
+            <h2 className="text-[15px] text-[#F0EFEC]/82">Dias do mês</h2>
+            <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Todos os dias, mesmo com zero cartão.</p>
+          </div>
+          <Input
+            type="month"
+            value={monthKey}
+            onChange={(event) => onMonthKey(event.target.value)}
+            className="h-8 w-[160px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
+          />
+        </div>
+        <table className="w-full text-left text-[13px]">
+          <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
+            <tr className="border-t border-white/[0.04]">
+              <th className="px-5 py-2.5 font-medium">Dia</th>
+              <th className="px-3 py-2.5 font-medium">Cartões</th>
+              <th className="px-3 py-2.5 font-medium">Meta</th>
+              <th className="px-3 py-2.5 font-medium">Pendentes</th>
+              <th className="px-3 py-2.5 font-medium">Ativados</th>
+              <th className="px-3 py-2.5 font-medium">Digitações</th>
+              <th className="px-5 py-2.5 font-medium" />
+            </tr>
+          </thead>
+          <tbody>
+            {board.days.map((day) => {
+              const sunday = isSunday(day.dateKey)
+              const todayRow = day.dateKey === today
+              return (
+                <tr
+                  key={day.dateKey}
+                  onClick={() => onOpenDay(day.dateKey)}
+                  className={cn(
+                    'cursor-pointer border-t border-white/[0.035] transition-colors hover:bg-white/[0.035]',
+                    todayRow ? 'bg-white/[0.03]' : null,
+                    sunday ? 'text-[#F0EFEC]/36' : 'text-[#F0EFEC]/72'
+                  )}
+                >
+                  <td className="px-5 py-3">
+                    <p className="flex items-center gap-2">
+                      <span className="capitalize">{weekdayLabel(day.dateKey)}</span>
+                      <span>{formatDateKey(day.dateKey)}</span>
+                      {todayRow ? (
+                        <span className="rounded-full bg-[#F0EFEC]/10 px-1.5 py-0.5 text-[10px] tracking-wide text-[#F0EFEC]/55 uppercase">
+                          Hoje
+                        </span>
+                      ) : null}
+                    </p>
+                  </td>
+                  <td className="px-3 py-3">{formatCount(day.cards)}</td>
+                  <td className="px-3 py-3 text-[#F0EFEC]/45">
+                    {day.goal === null ? '—' : formatCount(day.goal)}
+                  </td>
+                  <td className="px-3 py-3">{formatCount(day.pending)}</td>
+                  <td className="px-3 py-3">{formatCount(day.activated)}</td>
+                  <td className="px-3 py-3">{formatCount(day.digitacoes)}</td>
+                  <td className="px-5 py-3 text-right">
+                    <ChevronRight className="ml-auto size-3.5 text-[#F0EFEC]/22" />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </section>
+    </>
+  )
+}
+
+function DayDesk({
+  day,
+  records,
+  query,
+  status,
+  onQuery,
+  onStatus,
+  onBack,
+  onCreate,
+  onEdit,
+  onTransfer,
+  onToggle,
+  onRemove
+}: {
+  day: CardDayRow
+  records: CardRecord[]
+  query: string
+  status: StatusFilter
+  onQuery: (value: string) => void
+  onStatus: (value: StatusFilter) => void
+  onBack: () => void
+  onCreate: () => void
+  onEdit: (card: CardRecord) => void
+  onTransfer: (card: CardRecord) => void
+  onToggle: (card: CardRecord) => void
+  onRemove: (card: CardRecord) => void
+}) {
+  const idle = records.filter((card) => card.activated && card.amountUsedInCents === 0 && card.amountInCents > 0).length
+  const available = Math.max(0, day.limitCents - day.usedCents)
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-4 flex items-center gap-2 text-[13px] text-[#F0EFEC]/40 hover:text-[#F0EFEC]/70"
+      >
+        <ArrowLeft className="size-3.5" />
+        Dias do mês
+      </button>
+
+      <header className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-[12px] text-[#F0EFEC]/35">Cartões · {formatDateKey(day.dateKey)}</p>
+          <h1 className="mt-1 text-[22px] capitalize text-[#F0EFEC]/88">{weekdayLong(day.dateKey)}</h1>
+        </div>
+        <button
+          type="button"
+          onClick={onCreate}
+          className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+        >
+          Registrar neste dia
+        </button>
+      </header>
+
+      <div className="grid grid-cols-3 gap-3">
+        <MetricCard
+          label="Cartões do dia"
+          value={day.cards}
+          goal={day.goal}
+          hint={day.goal === null ? 'Sem meta deste dia no Card+' : 'Progresso da meta diária'}
+          icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+        />
+        <MetricCard
+          label="Pendentes"
+          value={day.pending}
+          hint={`${formatCount(day.activated)} ativados · ${formatCount(idle)} parados`}
+          icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+        />
+        <MetricCard
+          label="Limite disponível"
+          value={available}
+          money
+          hint={`${formatBRLFromCents(day.usedCents)} gastos de ${formatBRLFromCents(day.limitCents)}`}
+          icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+        />
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <MiniStat label="Digitações" value={formatCount(day.digitacoes)} />
+        <MiniStat label="Ativados" value={formatCount(day.activated)} />
+        <MiniStat
+          label="Limite parado"
+          value={formatCount(idle)}
+          hint="Ativado sem gasto neste dia"
+        />
+      </div>
+
+      <section className="mt-3 mb-8 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              value={query}
+              onChange={(event) => onQuery(event.target.value)}
+              placeholder="Buscar cliente ou funcionário"
+              className="h-8 w-[240px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
+            />
+            <Chip active={status === 'all'} onClick={() => onStatus('all')}>
+              Todos
+            </Chip>
+            <Chip active={status === 'pending'} onClick={() => onStatus('pending')}>
+              Pendentes
+            </Chip>
+            <Chip active={status === 'activated'} onClick={() => onStatus('activated')}>
+              Ativados
+            </Chip>
+            <Chip active={status === 'idle'} onClick={() => onStatus('idle')}>
+              Limite parado
+            </Chip>
+          </div>
+          <span className="text-[12px] text-[#F0EFEC]/32">
+            {formatCount(records.length)} {records.length === 1 ? 'cartão' : 'cartões'}
+          </span>
+        </div>
+        {records.length === 0 ? (
+          <div className="px-5 pb-6">
+            <p className="text-[13px] text-[#F0EFEC]/38">Nenhum cartão neste dia.</p>
+            <button
+              type="button"
+              onClick={onCreate}
+              className="mt-3 h-8 rounded-[8px] bg-white/[0.08] px-3 text-[13px] text-[#F0EFEC]/75"
+            >
+              Registrar o primeiro
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full text-left text-[13px]">
+              <thead className="sticky top-0 bg-[#1A1A1A] text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
+                <tr className="border-y border-white/[0.04]">
+                  <th className="px-5 py-2.5 font-medium">Cliente</th>
+                  <th className="px-3 py-2.5 font-medium">Funcionário</th>
+                  <th className="px-3 py-2.5 font-medium">Status</th>
+                  <th className="px-3 py-2.5 font-medium">Limite</th>
+                  <th className="px-3 py-2.5 font-medium">Gasto</th>
+                  <th className="px-3 py-2.5 font-medium">Disponível</th>
+                  <th className="w-[132px] px-4 py-2.5 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((card) => (
+                  <tr key={card.id} className="border-t border-white/[0.03] text-[#F0EFEC]/68 hover:bg-white/[0.02]">
+                    <td className="px-5 py-3">
+                      <p>{card.clientName}</p>
+                      <p className="text-[11px] text-[#F0EFEC]/32">{card.storeName}</p>
+                    </td>
+                    <td className="px-3 py-3">{card.operatorName}</td>
+                    <td className="px-3 py-3">
+                      <StatusBadge card={card} />
+                    </td>
+                    <td className="px-3 py-3">{formatBRLFromCents(card.amountInCents)}</td>
+                    <td className="px-3 py-3">{formatBRLFromCents(card.amountUsedInCents)}</td>
+                    <td className="px-3 py-3">{formatBRLFromCents(card.availableInCents)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <IconButton
+                          label={card.activated ? 'Marcar pendente' : 'Ativar'}
+                          onClick={() => onToggle(card)}
+                        >
+                          {card.activated ? 'Pend.' : 'Ativar'}
+                        </IconButton>
+                        <IconButton label="Editar" onClick={() => onEdit(card)}>
+                          <Pencil className="size-3.5" strokeWidth={1.7} />
+                        </IconButton>
+                        <IconButton label="Transferir" onClick={() => onTransfer(card)}>
+                          <ArrowRightLeft className="size-3.5" strokeWidth={1.7} />
+                        </IconButton>
+                        <IconButton label="Excluir" onClick={() => onRemove(card)}>
+                          <Trash2 className="size-3.5" strokeWidth={1.7} />
+                        </IconButton>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
   )
 }
 

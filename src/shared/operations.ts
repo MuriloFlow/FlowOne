@@ -140,6 +140,9 @@ export type CardDayRow = {
   pending: number
   activated: number
   digitacoes: number
+  goal: number | null
+  limitCents: number
+  usedCents: number
 }
 
 export type CardRecord = {

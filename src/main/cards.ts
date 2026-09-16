@@ -3,6 +3,7 @@ import {
   dateKeyInSaoPaulo,
   dayBounds,
   isoFromDateKey,
+  lastDayOfMonth,
   monthBounds,
   monthKeyFromDateKey
 } from './dates'
@@ -134,6 +135,24 @@ async function monthGoal(monthKey: string, storeId?: string | null): Promise<num
   return rows.reduce((total, row) => total + row.goal, 0)
 }
 
+async function dayGoalsMap(monthKey: string, storeId?: string | null): Promise<Map<string, number>> {
+  const last = String(lastDayOfMonth(monthKey)).padStart(2, '0')
+  let query = getCardplusClient()
+    .from('daily_goals')
+    .select('date_key, goal')
+    .gte('date_key', `${monthKey}-01`)
+    .lte('date_key', `${monthKey}-${last}`)
+  if (storeId) query = query.eq('store_id', storeId)
+  const { data, error } = await query
+  if (error) throw new Error(`Erro ao carregar metas do dia: ${error.message}`)
+  const map = new Map<string, number>()
+  for (const row of (data ?? []) as Array<{ date_key: string; goal: number }>) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date_key)) continue
+    map.set(row.date_key, (map.get(row.date_key) ?? 0) + row.goal)
+  }
+  return map
+}
+
 async function sumDigitacoesByDay(
   range: { start: string; end: string },
   storeId?: string | null
@@ -167,7 +186,8 @@ export async function getCardsBoard(monthKeyInput?: string | null, storeId?: str
   const range = monthBounds(monthKey)
   const todayRange = dayBounds(today)
 
-  const [stores, people, monthRows, digitacoes, todayCount, totalCount, dayGoal, monthGoalValue] = await Promise.all([
+  const [stores, people, monthRows, digitacoes, todayCount, totalCount, dayGoal, monthGoalValue, dayGoals] =
+    await Promise.all([
     listStores(storeId),
     listPeople(storeId),
     listPaged(async (from, to) => {
@@ -205,12 +225,16 @@ export async function getCardsBoard(monthKeyInput?: string | null, storeId?: str
       return count ?? 0
     })(),
     todayGoal(today, storeId),
-    monthGoal(monthKey, storeId)
+    monthGoal(monthKey, storeId),
+    dayGoalsMap(monthKey, storeId)
   ])
 
   const storeMap = new Map(stores.map((store) => [store.id, store.name]))
   const records = monthRows.map((row) => toRecord(row, storeMap))
-  const dayMap = new Map<string, { cards: number; pending: number; activated: number }>()
+  const dayMap = new Map<
+    string,
+    { cards: number; pending: number; activated: number; limitCents: number; usedCents: number }
+  >()
   let pendingCount = 0
   let activatedCount = 0
   let idleActivatedCount = 0
@@ -218,8 +242,16 @@ export async function getCardsBoard(monthKeyInput?: string | null, storeId?: str
   let usedCents = 0
 
   for (const card of records) {
-    const current = dayMap.get(card.dateKey) ?? { cards: 0, pending: 0, activated: 0 }
+    const current = dayMap.get(card.dateKey) ?? {
+      cards: 0,
+      pending: 0,
+      activated: 0,
+      limitCents: 0,
+      usedCents: 0
+    }
     current.cards += 1
+    current.limitCents += card.amountInCents
+    current.usedCents += card.amountUsedInCents
     if (card.activated) {
       current.activated += 1
       activatedCount += 1
@@ -233,15 +265,27 @@ export async function getCardsBoard(monthKeyInput?: string | null, storeId?: str
     usedCents += card.amountUsedInCents
   }
 
-  const days = [...dayMap.entries()]
-    .map(([dateKey, counts]) => ({
+  const last = lastDayOfMonth(monthKey)
+  const days = Array.from({ length: last }, (_, index) => {
+    const dateKey = `${monthKey}-${String(last - index).padStart(2, '0')}`
+    const counts = dayMap.get(dateKey) ?? {
+      cards: 0,
+      pending: 0,
+      activated: 0,
+      limitCents: 0,
+      usedCents: 0
+    }
+    return {
       dateKey,
       cards: counts.cards,
       pending: counts.pending,
       activated: counts.activated,
-      digitacoes: digitacoes.get(dateKey) ?? 0
-    }))
-    .sort((left, right) => right.dateKey.localeCompare(left.dateKey))
+      digitacoes: digitacoes.get(dateKey) ?? 0,
+      goal: dayGoals.get(dateKey) ?? null,
+      limitCents: counts.limitCents,
+      usedCents: counts.usedCents
+    }
+  })
 
   return {
     monthKey,
