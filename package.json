@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "pack": "npm run build && electron-builder --dir",
     "dist": "node scripts/make-installer.mjs",
-    "dist:publish": "npm run build && electron-builder --win nsis --publish always",
+    "dist:publish": "node scripts/make-installer.mjs --publish",
     "bootstrap:auth": "node scripts/bootstrap-first-user.mjs",
     "icons": "node scripts/build-icon.mjs"
   },

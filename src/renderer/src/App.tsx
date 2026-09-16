@@ -25,7 +25,10 @@ function BootSkeleton() {
 export function App() {
   const { user, booting, logout } = useAuth()
   const updateStatus = useUpdater()
-  const locked = updateStatus.state === 'ready'
+  const locked =
+    updateStatus.state === 'ready' ||
+    updateStatus.state === 'downloading' ||
+    updateStatus.state === 'available'
 
   return (
     <div className="relative flex h-screen flex-col overflow-hidden bg-[#111111] text-foreground">

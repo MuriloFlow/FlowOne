@@ -1,25 +1,13 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { preparePackagedEnv } from './prepare-packaged-env.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const envLocal = resolve(root, '.env.local')
 const icon = resolve(root, 'build', 'icon.ico')
-const packagedEnv = resolve(root, 'build', 'env.local')
 const downloadDir = resolve(root, 'download')
 const releaseDir = resolve(root, 'release')
-
-const required = [
-  'VITE_SUPABASE_URL',
-  'VITE_SUPABASE_ANON_KEY',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'CARDPLUS_SUPABASE_URL',
-  'CARDPLUS_SUPABASE_SERVICE_ROLE_KEY',
-  'OPENAI_API_KEY'
-]
-
-const skipPack = new Set(['FLOW_BOOTSTRAP_EMAIL', 'FLOW_BOOTSTRAP_PASSWORD'])
 
 function fail(message) {
   console.error(message)
@@ -41,49 +29,20 @@ function run(command, args) {
   }
 }
 
-if (!existsSync(envLocal)) {
-  fail('Falta .env.local — o instalador precisa das chaves da empresa.')
+try {
+  preparePackagedEnv()
+  console.log('Empacotando env de runtime em build/env.local')
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error))
 }
-
-const envText = readFileSync(envLocal, 'utf8')
-const values = new Map()
-for (const raw of envText.split(/\r?\n/)) {
-  const line = raw.trim()
-  if (!line || line.startsWith('#')) continue
-  const eq = line.indexOf('=')
-  if (eq <= 0) continue
-  const key = line.slice(0, eq).trim()
-  let value = line.slice(eq + 1).trim()
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    value = value.slice(1, -1)
-  }
-  values.set(key, value)
-}
-
-const missing = required.filter((key) => !values.get(key)?.trim())
-if (missing.length) {
-  fail(`Variáveis ausentes no .env.local: ${missing.join(', ')}`)
-}
-
-mkdirSync(resolve(root, 'build'), { recursive: true })
 
 if (!existsSync(icon)) {
   run('npm', ['run', 'icons'])
 }
 
-const packed = [...values.entries()]
-  .filter(([key, value]) => value && !skipPack.has(key))
-  .map(([key, value]) => `${key}=${value}`)
-  .join('\n')
-
-writeFileSync(packagedEnv, `${packed}\n`, 'utf8')
-console.log('Empacotando env de runtime em build/env.local')
-
+const publish = process.argv.includes('--publish')
 run('npm', ['run', 'build'])
-run('npx', ['electron-builder', '--win', 'nsis', '--publish', 'never'])
+run('npx', ['electron-builder', '--win', 'nsis', '--publish', publish ? 'always' : 'never'])
 
 mkdirSync(downloadDir, { recursive: true })
 
@@ -96,12 +55,8 @@ if (!setups.length) {
 
 setups.sort((a, b) => statSync(resolve(releaseDir, b)).mtimeMs - statSync(resolve(releaseDir, a)).mtimeMs)
 const source = resolve(releaseDir, setups[0])
-const versioned = resolve(downloadDir, setups[0])
-const stable = resolve(downloadDir, 'FLOW-Setup.exe')
+copyFileSync(source, resolve(downloadDir, setups[0]))
+copyFileSync(source, resolve(downloadDir, 'FLOW-Setup.exe'))
 
-copyFileSync(source, versioned)
-copyFileSync(source, stable)
-
-const sizeMb = (statSync(stable).size / (1024 * 1024)).toFixed(1)
+const sizeMb = (statSync(resolve(downloadDir, 'FLOW-Setup.exe')).size / (1024 * 1024)).toFixed(1)
 console.log(`Instalador pronto: download\\${setups[0]} (${sizeMb} MB)`)
-console.log('Cópia estável: download\\FLOW-Setup.exe')

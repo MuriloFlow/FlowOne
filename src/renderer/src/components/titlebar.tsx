@@ -22,7 +22,7 @@ export function Titlebar({ branded = true }: { branded?: boolean }) {
   }, [])
 
   return (
-    <header className="relative z-50 flex h-8 shrink-0 items-stretch bg-[#111111] select-none">
+    <header className="relative z-20 flex h-8 shrink-0 items-stretch bg-[#111111] select-none">
       <div className="titlebar-drag flex min-w-0 flex-1 items-center px-3">
         {branded ? (
           <img src={logo} alt="FLOW" className="h-3.5 w-auto object-contain opacity-90" />
