@@ -154,4 +154,12 @@ if (existsSync(blockmapPath)) {
   await upsertAsset(release, blockmapName, await readFile(blockmapPath), 'application/octet-stream')
 }
 
+const published = await github(`${api}/repos/${owner}/${repo}/releases?per_page=8`)
+const previous = (published ?? []).find((item) => item.tag_name !== tag && !item.draft)
+if (previous?.id) {
+  console.log(`Espelhando latest.yml + ${fileName} em ${previous.tag_name}`)
+  await upsertAsset(previous, fileName, exeBytes, 'application/octet-stream')
+  await upsertAsset(previous, 'latest.yml', Buffer.from(yml, 'utf8'), 'application/octet-stream')
+}
+
 console.log(`Release ${tag} pronto: ${fileName} + latest.yml`)

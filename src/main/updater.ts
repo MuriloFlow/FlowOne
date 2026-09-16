@@ -3,9 +3,11 @@ import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import type { UpdateStatus } from '../shared/ipc'
 
-const CHECK_EVERY_MS = 5_000
-const FOCUS_DEBOUNCE_MS = 800
-const RETRY_DELAYS_MS = [2_000, 5_000, 12_000]
+const CHECK_EVERY_MS = 4_000
+const FOCUS_DEBOUNCE_MS = 600
+const RETRY_DELAYS_MS = [1_500, 3_000, 8_000]
+const OWNER = 'MuriloFlow'
+const REPO = 'FlowOne'
 
 autoUpdater.autoDownload = true
 autoUpdater.autoInstallOnAppQuit = true
@@ -31,6 +33,7 @@ let lastCheckAt = 0
 let closeBound = false
 let retryAttempt = 0
 let retryTimer: ReturnType<typeof setTimeout> | null = null
+let pointedVersion: string | null = null
 
 function isBusy(status: UpdateStatus = currentStatus): boolean {
   return status.state === 'available' || status.state === 'downloading' || status.state === 'ready'
@@ -88,14 +91,67 @@ function clearRetry(): void {
 }
 
 function scheduleRetry(): void {
-  if (retryTimer || isBusy() || retryAttempt >= RETRY_DELAYS_MS.length) return
-  const delay = RETRY_DELAYS_MS[retryAttempt]
+  if (retryTimer || isBusy()) return
+  const delay = RETRY_DELAYS_MS[Math.min(retryAttempt, RETRY_DELAYS_MS.length - 1)]
   retryAttempt += 1
   log.info(`[updater] nova tentativa em ${delay}ms`)
   retryTimer = setTimeout(() => {
     retryTimer = null
     void checkForUpdates({ force: true })
   }, delay)
+}
+
+function versionParts(value: string): number[] {
+  return value.replace(/^v/i, '').split('.').map((part) => Number(part) || 0)
+}
+
+function isNewer(latest: string, current: string): boolean {
+  const left = versionParts(latest)
+  const right = versionParts(current)
+  const size = Math.max(left.length, right.length)
+  for (let index = 0; index < size; index += 1) {
+    if ((left[index] ?? 0) > (right[index] ?? 0)) return true
+    if ((left[index] ?? 0) < (right[index] ?? 0)) return false
+  }
+  return false
+}
+
+async function latestPublishedVersion(): Promise<string | null> {
+  const response = await net.fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=10`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'FLOW',
+      'Cache-Control': 'no-cache'
+    }
+  })
+  if (!response.ok) return null
+  const releases = (await response.json()) as Array<{
+    draft?: boolean
+    prerelease?: boolean
+    tag_name?: string
+    assets?: Array<{ name?: string }>
+  }>
+  for (const release of releases) {
+    if (release.draft || release.prerelease) continue
+    const assets = release.assets ?? []
+    const hasYml = assets.some((asset) => asset.name === 'latest.yml')
+    const hasExe = assets.some(
+      (asset) => typeof asset.name === 'string' && /^FLOW-Setup-.*\.exe$/i.test(asset.name) && !asset.name.endsWith('.blockmap')
+    )
+    if (!hasYml || !hasExe || !release.tag_name) continue
+    return release.tag_name.replace(/^v/i, '')
+  }
+  return null
+}
+
+async function pointFeedAt(version: string): Promise<void> {
+  if (pointedVersion === version) return
+  pointedVersion = version
+  autoUpdater.setFeedURL({
+    provider: 'generic',
+    url: `https://github.com/${OWNER}/${REPO}/releases/download/v${version}`
+  })
+  log.info(`[updater] feed v${version}`)
 }
 
 function registerListeners(): void {
@@ -159,8 +215,8 @@ export function registerUpdater(window: BrowserWindow): void {
   registerListeners()
   autoUpdater.setFeedURL({
     provider: 'github',
-    owner: 'MuriloFlow',
-    repo: 'FlowOne'
+    owner: OWNER,
+    repo: REPO
   })
 
   void checkForUpdates({ force: true })
@@ -192,6 +248,11 @@ export async function checkForUpdates(options?: { force?: boolean }): Promise<vo
   lastCheckAt = now
   checking = true
   try {
+    const latest = await latestPublishedVersion().catch(() => null)
+    const current = app.getVersion()
+    if (latest && isNewer(latest, current)) {
+      await pointFeedAt(latest)
+    }
     await autoUpdater.checkForUpdates()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

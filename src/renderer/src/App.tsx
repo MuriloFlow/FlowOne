@@ -25,7 +25,7 @@ function BootSkeleton() {
 export function App() {
   const { user, booting, logout } = useAuth()
   const updateStatus = useUpdater()
-  const locked =
+  const updateVisible =
     updateStatus.state === 'ready' ||
     updateStatus.state === 'downloading' ||
     updateStatus.state === 'available'
@@ -33,7 +33,7 @@ export function App() {
   return (
     <div className="relative flex h-screen flex-col overflow-hidden bg-[#111111] text-foreground">
       <Titlebar branded={!user} />
-      <main className={locked ? 'pointer-events-none flex min-h-0 flex-1' : 'flex min-h-0 flex-1'}>
+      <main className={updateVisible ? 'flex min-h-0 flex-1 pb-14' : 'flex min-h-0 flex-1'}>
         {booting ? <BootSkeleton /> : user ? <ShellPage user={user} onSignOut={() => void logout()} /> : <LoginPage />}
       </main>
       <UpdateLock status={updateStatus} />
