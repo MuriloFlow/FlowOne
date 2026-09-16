@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, CreditCard, Target, TrendingUp } from 'lucide-react'
 import { CardsChart } from '@/components/cards-chart'
 import { MetricCard } from '@/components/metric-card'
+import { ValuePending } from '@/components/value-pending'
 import { formatBRLFromCents, formatCount, formatDateTime, greetingFor, percentDelta } from '@/lib/format'
 import { operationError, operations } from '@/lib/operations'
 import type { AuthUser } from '@/lib/auth'
@@ -136,7 +137,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
                 <AsideRow label="Funcionários ativos" value={formatCount(data.employeeCount)} />
                 <AsideRow
                   label="Meta restante"
-                  value={data.remainingToMonthGoal === null ? '—' : formatCount(data.remainingToMonthGoal)}
+                  value={data.remainingToMonthGoal === null ? null : formatCount(data.remainingToMonthGoal)}
                 />
               </div>
             </aside>
@@ -180,11 +181,15 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
   )
 }
 
-function AsideRow({ label, value }: { label: string; value: string }) {
+function AsideRow({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex items-center justify-between border-b border-white/[0.04] pb-3 last:border-0">
       <span className="text-[13px] text-[#F0EFEC]/40">{label}</span>
-      <span className="text-[13px] text-[#F0EFEC]/78">{value}</span>
+      {value === null ? (
+        <ValuePending size="sm" />
+      ) : (
+        <span className="text-[13px] text-[#F0EFEC]/78">{value}</span>
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Banknote, Target, TrendingUp } from 'lucide-react'
 import { MetricCard } from '@/components/metric-card'
+import { ValuePending } from '@/components/value-pending'
 import { SalesChart } from '@/components/sales-chart'
 import { formatBRLFromCents, formatCount, formatDateKey, percentDelta } from '@/lib/format'
 import { operationError, operations } from '@/lib/operations'
@@ -143,7 +144,7 @@ export function FinancePage({ storeId = null }: FinancePageProps) {
                   label="Meta restante"
                   value={
                     data.remainingToMonthSalesGoalCents === null
-                      ? '—'
+                      ? null
                       : formatBRLFromCents(data.remainingToMonthSalesGoalCents)
                   }
                 />
@@ -190,11 +191,15 @@ export function FinancePage({ storeId = null }: FinancePageProps) {
   )
 }
 
-function AsideRow({ label, value }: { label: string; value: string }) {
+function AsideRow({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex items-center justify-between border-b border-white/[0.04] pb-3 last:border-0">
       <span className="text-[13px] text-[#F0EFEC]/40">{label}</span>
-      <span className="text-[13px] text-[#F0EFEC]/78">{value}</span>
+      {value === null ? (
+        <ValuePending size="sm" />
+      ) : (
+        <span className="text-[13px] text-[#F0EFEC]/78">{value}</span>
+      )}
     </div>
   )
 }

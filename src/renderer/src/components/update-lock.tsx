@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { UpdateStatus } from '../../../shared/ipc'
 
@@ -6,10 +8,17 @@ type UpdateLockProps = {
 }
 
 export function UpdateLock({ status }: UpdateLockProps) {
+  const [installing, setInstalling] = useState(false)
   const locked =
     status.state === 'ready' || status.state === 'downloading' || status.state === 'available'
   const percent = status.state === 'downloading' ? status.percent : status.state === 'ready' ? 100 : 0
   const ready = status.state === 'ready'
+
+  function restart() {
+    if (installing) return
+    setInstalling(true)
+    void window.flow.updater.install()
+  }
 
   return (
     <AnimatePresence>
@@ -29,12 +38,14 @@ export function UpdateLock({ status }: UpdateLockProps) {
           >
             <p className="text-[11px] tracking-[0.18em] text-[#F0EFEC]/32 uppercase">FLOW</p>
             <h2 className="mt-3 text-[22px] leading-tight text-[#F0EFEC]/92">
-              {ready ? 'Atualização pronta' : 'Atualizando o FLOW'}
+              {installing ? 'Aplicando atualização' : ready ? 'Atualização pronta' : 'Atualizando o FLOW'}
             </h2>
             <p className="mt-2 max-w-[280px] text-[13px] leading-relaxed text-[#F0EFEC]/42">
-              {ready
-                ? 'Reinicie para aplicar a versão nova. O aplicativo fica bloqueado até isso.'
-                : 'Uma versão nova foi encontrada e já está sendo baixada.'}
+              {installing
+                ? 'O FLOW está fechando para instalar a versão nova. Aguarde.'
+                : ready
+                  ? 'Reinicie para aplicar a versão nova. O aplicativo fica bloqueado até isso.'
+                  : 'Uma versão nova foi encontrada e já está sendo baixada.'}
             </p>
 
             {!ready ? (
@@ -54,10 +65,17 @@ export function UpdateLock({ status }: UpdateLockProps) {
             ) : (
               <button
                 type="button"
-                onClick={() => void window.flow.updater.install()}
-                className="mt-8 h-11 w-full rounded-[12px] bg-[#F0EFEC] text-[14px] font-medium text-[#111111] transition-opacity hover:opacity-90"
+                disabled={installing}
+                onClick={restart}
+                className="relative mt-8 h-11 w-full rounded-[12px] bg-[#F0EFEC] text-[14px] font-medium text-[#111111] transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-80"
               >
-                Reiniciar
+                <span className={installing ? 'invisible' : undefined}>Reiniciar</span>
+                {installing ? (
+                  <span className="absolute inset-0 flex items-center justify-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    Atualizando…
+                  </span>
+                ) : null}
               </button>
             )}
           </motion.div>

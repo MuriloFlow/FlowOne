@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { AnimatedMoney, AnimatedNumber } from '@/components/animated-number'
+import { ValuePending } from '@/components/value-pending'
 
 type MetricCardProps = {
   label: string
@@ -28,8 +29,14 @@ export function MetricCard({
           {icon}
         </span>
       </div>
-      <p className="text-[28px] leading-none tracking-tight text-[#F0EFEC]/92">
-        {empty ? '—' : money ? <AnimatedMoney cents={value} /> : <AnimatedNumber value={value} />}
+      <p className="flex min-h-7 items-center text-[28px] leading-none tracking-tight text-[#F0EFEC]/92">
+        {empty ? (
+          <ValuePending />
+        ) : money ? (
+          <AnimatedMoney cents={value} />
+        ) : (
+          <AnimatedNumber value={value} />
+        )}
         {empty || !suffix ? null : (
           <span className="ml-1 text-[16px] text-[#F0EFEC]/40">{suffix}</span>
         )}
