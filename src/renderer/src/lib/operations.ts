@@ -1,0 +1,31 @@
+import type { OperationsApi } from '../../../shared/operations'
+import { getCurrentStoreId } from '@/lib/store-scope'
+
+export function operations(): OperationsApi {
+  if (!window.flow?.operations) {
+    throw new Error('Operações do launcher indisponíveis.')
+  }
+  const api = window.flow.operations
+  return {
+    getOverview: (storeId) => api.getOverview(storeId === undefined ? getCurrentStoreId() : storeId),
+    getFinance: (storeId) => api.getFinance(storeId === undefined ? getCurrentStoreId() : storeId),
+    listStores: () => api.listStores(),
+    listEmployees: (storeId) => api.listEmployees(storeId === undefined ? getCurrentStoreId() : storeId),
+    getEmployee: (id, storeId) =>
+      api.getEmployee(id, storeId === undefined ? getCurrentStoreId() : storeId),
+    getEmployeeIdentity: (id) => api.getEmployeeIdentity(id),
+    createEmployee: (input) => api.createEmployee(input),
+    updateEmployee: (input) => api.updateEmployee(input),
+    deleteEmployee: (id, storeId) =>
+      api.deleteEmployee(id, storeId === undefined ? getCurrentStoreId() : storeId),
+    getStorePreference: () => api.getStorePreference(),
+    setStorePreference: (storeId) => api.setStorePreference(storeId),
+    listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
+    updateVoucher: (input) => api.updateVoucher(input)
+  }
+}
+
+export function operationError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message
+  return 'Não foi possível carregar os dados agora.'
+}

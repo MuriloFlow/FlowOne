@@ -1,0 +1,44 @@
+appId: com.flow.launcher
+productName: FLOW
+copyright: Copyright © FLOW
+asar: true
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**/*
+  - resources/**/*
+extraResources:
+  - from: build/env.local
+    to: env.local
+  - from: build/icon.ico
+    to: icon.ico
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+  artifactName: FLOW-Setup-${version}.${ext}
+  signExecutable: false
+  verifyUpdateCodeSignature: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: FLOW
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  unicode: true
+publish:
+  provider: github
+  owner: MuriloFlow
+  repo: FlowOne
+  releaseType: release
+electronLanguages:
+  - pt-BR
+  - en-US

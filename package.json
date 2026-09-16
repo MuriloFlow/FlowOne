@@ -1,0 +1,56 @@
+{
+  "name": "flow-launcher",
+  "version": "1.0.1",
+  "description": "FLOW — Central de Gestão e Operações",
+  "main": "./out/main/index.js",
+  "author": "FLOW",
+  "license": "UNLICENSED",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MuriloFlow/FlowOne.git"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "node scripts/make-installer.mjs",
+    "dist:publish": "npm run build && electron-builder --win nsis --publish always",
+    "bootstrap:auth": "node scripts/bootstrap-first-user.mjs",
+    "icons": "node scripts/build-icon.mjs"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@supabase/supabase-js": "^2.57.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2",
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.542.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.3.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/node": "^24.3.1",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "electron": "^37.4.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.0",
+    "png-to-ico": "^3.0.2",
+    "tailwindcss": "^4.1.13",
+    "tw-animate-css": "^1.3.8",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  }
+}
