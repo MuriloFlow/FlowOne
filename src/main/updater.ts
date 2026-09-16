@@ -49,9 +49,14 @@ function registerIpc(): void {
     return currentStatus
   })
   ipcMain.handle('updater:install', () => {
-    if (currentStatus.state !== 'ready') return
-    autoUpdater.quitAndInstall(false, true)
+    installReadyUpdate()
   })
+}
+
+function installReadyUpdate(): void {
+  if (currentStatus.state !== 'ready') return
+  // Silent + force-run: NSIS /S --updated --force-run, sem o assistente de instalação.
+  autoUpdater.quitAndInstall(true, true)
 }
 
 function bindCloseToInstall(window: BrowserWindow): void {
@@ -60,7 +65,7 @@ function bindCloseToInstall(window: BrowserWindow): void {
   window.on('close', (event) => {
     if (currentStatus.state !== 'ready') return
     event.preventDefault()
-    autoUpdater.quitAndInstall(false, true)
+    installReadyUpdate()
   })
 }
 

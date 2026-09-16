@@ -21,6 +21,7 @@ win:
   signExecutable: false
   verifyUpdateCodeSignature: false
 nsis:
+  include: build/installer.nsh
   oneClick: false
   perMachine: false
   allowElevation: true
