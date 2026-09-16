@@ -10,7 +10,15 @@ export function useUpdater() {
     if (!window.flow) return
 
     void window.flow.updater.getStatus().then(setStatus)
-    return window.flow.updater.onStatus(setStatus)
+    void window.flow.updater.check().then(setStatus)
+    const unsubscribe = window.flow.updater.onStatus(setStatus)
+    const timer = window.setInterval(() => {
+      void window.flow.updater.check().then(setStatus)
+    }, 4_000)
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe()
+    }
   }, [])
 
   return status

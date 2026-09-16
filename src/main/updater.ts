@@ -3,8 +3,8 @@ import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import type { UpdateStatus } from '../shared/ipc'
 
-const CHECK_EVERY_MS = 8_000
-const FOCUS_DEBOUNCE_MS = 1_500
+const CHECK_EVERY_MS = 5_000
+const FOCUS_DEBOUNCE_MS = 800
 const RETRY_DELAYS_MS = [2_000, 5_000, 12_000]
 const FEED_URL = 'https://github.com/MuriloFlow/FlowOne/releases/latest/download'
 

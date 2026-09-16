@@ -42,7 +42,11 @@ if (!existsSync(icon)) {
 
 const publish = process.argv.includes('--publish')
 run('npm', ['run', 'build'])
-run('npx', ['electron-builder', '--win', 'nsis', '--publish', publish ? 'always' : 'never'])
+run('npx', ['electron-builder', '--win', 'nsis', '--publish', 'never'])
+
+if (publish) {
+  run('node', ['scripts/publish-github-release.mjs'])
+}
 
 mkdirSync(downloadDir, { recursive: true })
 
