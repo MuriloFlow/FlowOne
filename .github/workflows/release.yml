@@ -25,7 +25,11 @@ jobs:
       - name: Bump installer version
         shell: pwsh
         run: |
-          npm version "1.1.$env:GITHUB_RUN_NUMBER" --no-git-tag-version --allow-same-version
+          $version = "1.1.$env:GITHUB_RUN_NUMBER"
+          npm version $version --no-git-tag-version --allow-same-version
+          git tag "v$version"
+          git push origin "v$version"
+          Write-Output "VERSION=$version"
       - run: npm run dist:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
