@@ -880,6 +880,10 @@ Exclusão de funcionário: cartões do Card+ vão para o colaborador `CAIXA` da 
 
 Tabela `flow_employee_vouchers`: vale-almoço e vale-transporte em centavos, status `PENDENTE`/`PAGO`. Todo domingo 00:00 (America/Sao_Paulo) o status PAGO volta para PENDENTE. Os valores permanecem.
 
+Tabela `flow_store_profiles`: código interno, observação e flag de atenção da unidade. O Card+ `stores` só tem `id`, `name`, `created_at`, `updated_at` — FLOW não inventa coluna lá.
+
+Tabela `flow_store_leadership`: assentos `GERENTE` (vários), `GERENTE_GERAL`, `SUPERVISOR` e `LIDER_OPERACAO` (um de cada) por `cardplus_store_id`. Vínculo com `collaborators.id`. Cadastro/renomeio da loja escreve só `name` no Card+. Auditoria `store.create` / `store.update`.
+
 Kobbi: assistente no launcher. A chave OpenAI (`OPENAI_*`) fica só no processo principal. O modelo usa o recorte já existente do painel (visão geral, financeiro, funcionários, vales, unidades) — sem inventar tabela do Card+.
 
 ---

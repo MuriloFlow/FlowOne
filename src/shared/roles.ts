@@ -53,6 +53,20 @@ export function canViewAllStores(role: string | null | undefined): boolean {
   return normalized === 'SUPERVISOR' || normalized === 'DIRETOR'
 }
 
+export function canCreateStores(role: string | null | undefined): boolean {
+  return canViewAllStores(role)
+}
+
+export function canEditStoreDesk(role: string | null | undefined): boolean {
+  const normalized = normalizeRole(role)
+  return (
+    normalized === 'SUPERVISOR' ||
+    normalized === 'DIRETOR' ||
+    normalized === 'GERENTE_GERAL' ||
+    normalized === 'GERENTE'
+  )
+}
+
 export function employeeRoleLabel(flowRole: string | null | undefined, cardplusRole: string): string {
   if (flowRole && isFlowRole(flowRole)) return roleLabel(flowRole)
   return cardplusRole

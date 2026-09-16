@@ -6,7 +6,6 @@ import type { UpdateStatus } from '../shared/ipc'
 const CHECK_EVERY_MS = 5_000
 const FOCUS_DEBOUNCE_MS = 800
 const RETRY_DELAYS_MS = [2_000, 5_000, 12_000]
-const FEED_URL = 'https://github.com/MuriloFlow/FlowOne/releases/latest/download'
 
 autoUpdater.autoDownload = true
 autoUpdater.autoInstallOnAppQuit = true
@@ -159,8 +158,9 @@ export function registerUpdater(window: BrowserWindow): void {
 
   registerListeners()
   autoUpdater.setFeedURL({
-    provider: 'generic',
-    url: FEED_URL
+    provider: 'github',
+    owner: 'MuriloFlow',
+    repo: 'FlowOne'
   })
 
   void checkForUpdates({ force: true })

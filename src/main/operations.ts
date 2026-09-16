@@ -11,6 +11,7 @@ import {
   listStores,
   updateEmployee
 } from './cardplus'
+import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
 import { deleteIdentity, getIdentity } from './identities'
 import { invalidateMemo, memo } from './memo'
 import { resolveActor, resolveStoreFilter } from './scope'
@@ -19,10 +20,11 @@ import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
 import type {
   CreateEmployeeInput,
   EmployeeWriteInput,
+  StoreWriteInput,
   UpdateEmployeeInput
 } from '../shared/operations'
 import { CARDPLUS_SUB_ROLES } from '../shared/operations'
-import { isFlowRole } from '../shared/roles'
+import { canCreateStores, canEditStoreDesk, isFlowRole } from '../shared/roles'
 import { normalizeStoreId } from '../shared/store-scope'
 
 function asString(value: unknown, field: string): string {
@@ -84,8 +86,28 @@ function bustOperationsCache(): void {
   invalidateMemo('finance')
   invalidateMemo('employees')
   invalidateMemo('stores')
+  invalidateMemo('store-board')
   invalidateMemo('vouchers')
   invalidateMemo('employee')
+}
+
+function parseStoreWrite(payload: unknown, requireId: boolean): StoreWriteInput {
+  if (!payload || typeof payload !== 'object') throw new Error('Dados da unidade inválidos.')
+  const body = payload as Record<string, unknown>
+  const managerIds = Array.isArray(body.managerIds)
+    ? body.managerIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  return {
+    id: requireId ? asString(body.id, 'Unidade') : typeof body.id === 'string' ? body.id : undefined,
+    name: asString(body.name, 'Nome da unidade'),
+    internalCode: asOptionalString(body.internalCode),
+    notes: asOptionalString(body.notes),
+    flagged: Boolean(body.flagged),
+    managerIds,
+    generalManagerId: typeof body.generalManagerId === 'string' ? body.generalManagerId : null,
+    supervisorId: typeof body.supervisorId === 'string' ? body.supervisorId : null,
+    operationLeadId: typeof body.operationLeadId === 'string' ? body.operationLeadId : null
+  }
 }
 
 export function registerOperationsIpc(): void {
@@ -182,6 +204,42 @@ export function registerOperationsIpc(): void {
     await deleteIdentity(id)
     await deleteVoucher(id)
     bustOperationsCache()
+  })
+
+  handle('operations:store-board', async (payload) => {
+    const actor = await resolveActor()
+    const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
+    const board = await memo(cacheKey('store-board', storeId), 10_000, () => getStoreBoard(storeId))
+    return {
+      ...board,
+      canCreate: canCreateStores(actor.role),
+      canEdit: canEditStoreDesk(actor.role)
+    }
+  })
+
+  handle('operations:store-create', async (payload) => {
+    const actor = await resolveActor()
+    if (!canCreateStores(actor.role)) {
+      throw new Error('Apenas Supervisor e Diretor podem cadastrar unidades.')
+    }
+    const created = await createStoreDesk(parseStoreWrite(payload, false))
+    bustOperationsCache()
+    return created
+  })
+
+  handle('operations:store-update', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) {
+      throw new Error('Você não pode editar esta unidade.')
+    }
+    const input = parseStoreWrite(payload, true)
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.id : null)
+    if (scoped && input.id !== scoped) {
+      throw new Error('Você só pode editar a sua unidade.')
+    }
+    const updated = await updateStoreDesk(input)
+    bustOperationsCache()
+    return updated
   })
 
   handle('operations:store-preference', async (payload) => {

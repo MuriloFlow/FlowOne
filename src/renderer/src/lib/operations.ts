@@ -20,6 +20,9 @@ export function operations(): OperationsApi {
       api.deleteEmployee(id, storeId === undefined ? getCurrentStoreId() : storeId),
     getStorePreference: () => api.getStorePreference(),
     setStorePreference: (storeId) => api.setStorePreference(storeId),
+    listStoreBoard: (storeId) => api.listStoreBoard(storeId === undefined ? getCurrentStoreId() : storeId),
+    createStore: (input) => api.createStore(input),
+    updateStore: (input) => api.updateStore(input),
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
     updateVoucher: (input) => api.updateVoucher(input)
   }

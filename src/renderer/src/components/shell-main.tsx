@@ -5,6 +5,7 @@ import { EmployeesPage } from '@/pages/employees'
 import { FinancePage } from '@/pages/finance'
 import { OverviewPage } from '@/pages/overview'
 import { PlaceholderPage } from '@/pages/placeholder'
+import { StoresPage } from '@/pages/stores'
 import { VouchersPage } from '@/pages/vouchers'
 import type { AuthUser } from '@/lib/auth'
 import { DEFAULT_NAV_ID, getNavItem, type NavId } from '@/lib/navigation'
@@ -18,6 +19,9 @@ type ShellMainProps = {
   fab?: ReactNode
   onOpenEmployee: (id: string) => void
   onCloseEmployee: () => void
+  onOpenStoreOperation?: (storeId: string) => void
+  onOpenStoreTeam?: (storeId: string) => void
+  onStoresChanged?: () => void
 }
 
 const ease = [0.22, 1, 0.36, 1] as const
@@ -48,13 +52,17 @@ export function ShellMain({
   loading = false,
   fab = null,
   onOpenEmployee,
-  onCloseEmployee
+  onCloseEmployee,
+  onOpenStoreOperation,
+  onOpenStoreTeam,
+  onStoresChanged
 }: ShellMainProps) {
   const current = getNavItem(activeId)
   const showChrome =
     activeId !== 'overview' &&
     activeId !== 'vouchers' &&
     activeId !== 'finance' &&
+    activeId !== 'stores' &&
     !(activeId === 'employees' && !employeeId)
 
   return (
@@ -108,7 +116,14 @@ export function ShellMain({
               ) : null}
               {activeId === 'cards' ? <PlaceholderPage title="Cartões" /> : null}
               {activeId === 'vouchers' ? <VouchersPage storeId={storeId} /> : null}
-              {activeId === 'stores' ? <PlaceholderPage title="Unidades" /> : null}
+              {activeId === 'stores' ? (
+                <StoresPage
+                  storeId={storeId}
+                  onOpenOperation={onOpenStoreOperation}
+                  onOpenTeam={onOpenStoreTeam}
+                  onDeskChanged={onStoresChanged}
+                />
+              ) : null}
               {activeId === 'schedules' ? <PlaceholderPage title="Escalas e horários" /> : null}
               {activeId === 'reports' ? <PlaceholderPage title="Relatório e projeções" /> : null}
             </motion.div>

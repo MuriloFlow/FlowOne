@@ -99,6 +99,10 @@ async function buildOperationsContext(storeId: string | null, userName?: string,
       }))
     },
     unidades: stores.map((store) => store.name),
+    mesaUnidades: {
+      quantidade: stores.length,
+      nomes: stores.map((store) => store.name)
+    },
     equipe: active.slice(0, 80).map((item) => ({
       nome: item.name,
       cargoFlow: item.flowRoleLabel,

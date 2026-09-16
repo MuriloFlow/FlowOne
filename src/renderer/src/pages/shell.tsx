@@ -127,6 +127,26 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
           onCloseEmployee={() => {
             setEmployeeId(null)
           }}
+          onOpenStoreOperation={(id) => {
+            setCurrentStoreId(id)
+            setStoreId(id)
+            setEmployeeId(null)
+            void operations().setStorePreference(id)
+            navigate('overview')
+          }}
+          onStoresChanged={() => {
+            void operations()
+              .listStores()
+              .then(setStores)
+              .catch(() => undefined)
+          }}
+          onOpenStoreTeam={(id) => {
+            setCurrentStoreId(id)
+            setStoreId(id)
+            setEmployeeId(null)
+            void operations().setStorePreference(id)
+            navigate('employees')
+          }}
         />
         <KobbiDock
           open={kobbiOpen}

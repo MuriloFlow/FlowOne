@@ -8,6 +8,8 @@ export {
   roleLabel,
   canLoginWithRole,
   canViewAllStores,
+  canCreateStores,
+  canEditStoreDesk,
   employeeRoleLabel,
   type FlowRoleId
 } from '../../../shared/roles'

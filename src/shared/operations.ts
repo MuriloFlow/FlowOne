@@ -12,6 +12,59 @@ export type CardPlusSubRole = (typeof CARDPLUS_SUB_ROLES)[number]
 export type StoreOption = {
   id: string
   name: string
+  createdAt?: string
+}
+
+export const STORE_SEATS = ['GERENTE', 'GERENTE_GERAL', 'SUPERVISOR', 'LIDER_OPERACAO'] as const
+
+export type StoreSeat = (typeof STORE_SEATS)[number]
+
+export type StorePerson = {
+  id: string
+  name: string
+}
+
+export type StoreBoardItem = {
+  id: string
+  name: string
+  createdAt: string | null
+  internalCode: string | null
+  notes: string | null
+  flagged: boolean
+  employeeCount: number
+  cardsThisMonth: number
+  monthGoal: number | null
+  salesThisMonthCents: number
+  monthSalesGoalCents: number | null
+  managers: StorePerson[]
+  generalManager: StorePerson | null
+  supervisor: StorePerson | null
+  operationLead: StorePerson | null
+  missingLeadership: boolean
+}
+
+export type StoreBoard = {
+  canCreate: boolean
+  canEdit: boolean
+  storeCount: number
+  flaggedCount: number
+  missingLeadershipCount: number
+  employeeCount: number
+  cardsThisMonth: number
+  people: StorePerson[]
+  stores: StoreBoardItem[]
+}
+
+export type StoreWriteInput = {
+  id?: string
+  name: string
+  internalCode?: string
+  notes?: string
+  flagged?: boolean
+  managerIds?: string[]
+  generalManagerId?: string | null
+  supervisorId?: string | null
+  operationLeadId?: string | null
 }
 
 export type MonthPoint = {
@@ -134,6 +187,9 @@ export type OperationsApi = {
   deleteEmployee: (id: string, storeId?: string | null) => Promise<void>
   getStorePreference: () => Promise<string | null>
   setStorePreference: (storeId: string | null) => Promise<void>
+  listStoreBoard: (storeId?: string | null) => Promise<StoreBoard>
+  createStore: (input: StoreWriteInput) => Promise<StoreBoardItem>
+  updateStore: (input: StoreWriteInput) => Promise<StoreBoardItem>
   listVouchers: (storeId?: string | null) => Promise<import('./vouchers').VoucherBoard>
   updateVoucher: (input: {
     collaboratorId: string

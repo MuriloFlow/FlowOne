@@ -52,6 +52,10 @@ const flow: FlowApi = {
     getStorePreference: () => ipcRenderer.invoke('operations:store-preference', { action: 'read' }),
     setStorePreference: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:store-preference', { action: 'write', storeId: storeId ?? null }),
+    listStoreBoard: (storeId?: string | null) =>
+      ipcRenderer.invoke('operations:store-board', { storeId: storeId ?? null }),
+    createStore: (input) => ipcRenderer.invoke('operations:store-create', input),
+    updateStore: (input) => ipcRenderer.invoke('operations:store-update', input),
     listVouchers: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:vouchers', { storeId: storeId ?? null }),
     updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input)

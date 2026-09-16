@@ -45,6 +45,7 @@ type CollaboratorRow = {
 type StoreRow = {
   id: string
   name: string
+  created_at?: string
 }
 
 type GoalRow = {
@@ -65,9 +66,9 @@ type RecordRow = {
   stores?: { name?: string | null } | null
 }
 
-const MONTH_CARDS_PREFIX = 'month-cards:'
-const MONTH_SALES_PREFIX = 'month-sales:'
-const DAILY_SALE_PREFIX = 'daily-sale:'
+export const MONTH_CARDS_PREFIX = 'month-cards:'
+export const MONTH_SALES_PREFIX = 'month-sales:'
+export const DAILY_SALE_PREFIX = 'daily-sale:'
 const PAGE_SIZE = 1000
 const MAX_PAGES = 80
 
@@ -124,10 +125,67 @@ async function listPaged<T>(loadPage: (from: number, to: number) => Promise<T[]>
 }
 
 export async function listStores(storeId?: string | null): Promise<StoreOption[]> {
-  let query = getCardplusClient().from('stores').select('id, name').order('name')
+  let query = getCardplusClient().from('stores').select('id, name, created_at').order('name')
   if (storeId) query = query.eq('id', storeId)
   const data = await throwIfError(await query, 'Erro ao carregar unidades')
-  return ((data ?? []) as StoreRow[]).map((store) => ({ id: store.id, name: store.name }))
+  return ((data ?? []) as StoreRow[]).map((store) => ({
+    id: store.id,
+    name: store.name,
+    createdAt: store.created_at
+  }))
+}
+
+export async function createStore(name: string): Promise<StoreOption> {
+  const normalized = normalizeName(name)
+  if (!normalized) throw new Error('Nome da unidade é obrigatório.')
+  const { data, error } = await getCardplusClient()
+    .from('stores')
+    .insert({ name: normalized })
+    .select('id, name, created_at')
+    .single()
+  if (error || !data) {
+    throw new Error(`Erro ao cadastrar unidade: ${error?.message ?? 'resposta vazia'}`)
+  }
+  const row = data as StoreRow
+  return { id: row.id, name: row.name, createdAt: row.created_at }
+}
+
+export async function renameStore(id: string, name: string): Promise<StoreOption> {
+  const normalized = normalizeName(name)
+  if (!normalized) throw new Error('Nome da unidade é obrigatório.')
+  const { data, error } = await getCardplusClient()
+    .from('stores')
+    .update({ name: normalized })
+    .eq('id', id)
+    .select('id, name, created_at')
+    .single()
+  if (error || !data) {
+    throw new Error(`Erro ao renomear unidade: ${error?.message ?? 'resposta vazia'}`)
+  }
+  const row = data as StoreRow
+  return { id: row.id, name: row.name, createdAt: row.created_at }
+}
+
+export async function storeMonthCardsByStore(storeId?: string | null): Promise<Map<string, number>> {
+  const bounds = monthBounds(monthKeyFromDateKey(dateKeyInSaoPaulo()))
+  const rows = await listPaged(async (from, to) => {
+    let query = getCardplusClient()
+      .from('records')
+      .select('store_id')
+      .gte('created_at', bounds.start)
+      .lte('created_at', bounds.end)
+      .range(from, to)
+    if (storeId) query = query.eq('store_id', storeId)
+    const { data, error } = await query
+    if (error) throw new Error(`Erro ao carregar cartões das unidades: ${error.message}`)
+    return (data ?? []) as Array<{ store_id: string | null }>
+  })
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    if (!row.store_id) continue
+    counts.set(row.store_id, (counts.get(row.store_id) ?? 0) + 1)
+  }
+  return counts
 }
 
 async function listCollaborators(storeId?: string | null): Promise<CollaboratorRow[]> {
@@ -246,7 +304,7 @@ async function todayGoalTotal(dateKey: string, storeId?: string | null): Promise
   return rows.reduce((total, row) => total + row.goal, 0)
 }
 
-async function listGoalsByPrefix(prefix: string, storeId?: string | null): Promise<GoalRow[]> {
+export async function listGoalsByPrefix(prefix: string, storeId?: string | null): Promise<GoalRow[]> {
   let query = getCardplusClient()
     .from('daily_goals')
     .select('store_id, date_key, goal')
