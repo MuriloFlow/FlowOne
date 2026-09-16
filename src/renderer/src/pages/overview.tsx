@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CreditCard, Target, TrendingUp } from 'lucide-react'
+import { Activity, Banknote, CreditCard, Gauge, Percent, Users } from 'lucide-react'
 import { CardsChart } from '@/components/cards-chart'
 import { MetricCard } from '@/components/metric-card'
 import { ValuePending } from '@/components/value-pending'
-import { formatBRLFromCents, formatCount, formatDateTime, greetingFor, percentDelta } from '@/lib/format'
+import { formatBRLFromCents, formatCount, formatDateTime, formatPercent, greetingFor } from '@/lib/format'
 import { operationError, operations } from '@/lib/operations'
 import type { AuthUser } from '@/lib/auth'
 import type { OverviewMetrics } from '../../../shared/operations'
@@ -40,23 +40,14 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
     }
   }, [storeId])
 
-  const delta = data ? percentDelta(data.cardsThisMonth, data.cardsLastMonth) : null
-  const monthHint = !data
-    ? 'Carregando'
-    : data.monthGoal === null
-      ? 'Sem meta mensal no Card+'
-      : data.remainingToMonthGoal === 0
-        ? 'Meta do mês atingida'
-        : `Faltam ${formatCount(data.remainingToMonthGoal ?? 0)} para a meta`
-
   return (
     <div className="flex flex-col">
       <header className="mb-6">
         <h1 className="text-[26px] leading-tight text-[#F0EFEC]/90">{greetingFor(user.displayName)}</h1>
         <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
           {storeId
-            ? 'Panorama operacional somente da unidade selecionada.'
-            : 'Panorama operacional dos cartões registrados no Card+.'}
+            ? 'Recorte rápido da unidade: cartão, venda, fluxo e ritmo.'
+            : 'Recorte rápido da operação: cartão, venda, fluxo e ritmo.'}
         </p>
       </header>
 
@@ -72,39 +63,89 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
         <>
           <div className="grid grid-cols-3 gap-3">
             <MetricCard
-              label="Cartões hoje"
+              label="Cartões do dia"
               value={data.cardsToday}
+              goal={data.todayGoal}
+              hint={data.todayGoal === null ? 'Sem meta do dia no Card+' : 'Meta do dia'}
+              icon={<CreditCard className="size-4" strokeWidth={1.7} />}
+            />
+            <MetricCard
+              label="Cartões do mês"
+              value={data.cardsThisMonth}
+              goal={data.monthGoal}
               hint={
-                data.todayGoal === null
-                  ? `${formatCount(data.storeCount)} unidades integradas`
-                  : `Meta do dia: ${formatCount(data.todayGoal)}`
+                data.monthGoal === null
+                  ? 'Sem meta mensal no Card+'
+                  : data.remainingToMonthGoal === 0
+                    ? 'Meta do mês atingida'
+                    : `Faltam ${formatCount(data.remainingToMonthGoal ?? 0)}`
               }
               icon={<CreditCard className="size-4" strokeWidth={1.7} />}
             />
             <MetricCard
-              label="Cartões no mês"
-              value={data.cardsThisMonth}
+              label="Valor de venda do dia"
+              value={data.saleTodayCents ?? 0}
+              money
+              empty={data.saleTodayCents === null}
               hint={
-                delta === null
-                  ? `${formatCount(data.cardsLastMonth)} no mês anterior`
-                  : `${delta > 0 ? '+' : ''}${delta}% vs mês anterior`
+                data.saleTodayCents === null
+                  ? 'Nenhuma venda do dia no Card+'
+                  : `${formatCount(data.storeCount)} ${data.storeCount === 1 ? 'unidade' : 'unidades'}`
               }
-              icon={<TrendingUp className="size-4" strokeWidth={1.7} />}
-            />
-            <MetricCard
-              label="Meta do mês"
-              value={data.monthGoal ?? 0}
-              empty={data.monthGoal === null}
-              hint={monthHint}
-              icon={
-                data.monthGoal === null ? (
-                  <AlertTriangle className="size-4" strokeWidth={1.7} />
-                ) : (
-                  <Target className="size-4" strokeWidth={1.7} />
-                )
-              }
+              icon={<Banknote className="size-4" strokeWidth={1.7} />}
             />
           </div>
+
+          <div className="mt-3 grid grid-cols-4 gap-3">
+            <MetricCard
+              compact
+              percent
+              label="Aproveitamento"
+              value={data.aproveitamentoPct ?? 0}
+              empty={data.aproveitamentoPct === null}
+              hint={`${formatCount(data.digitacoesMonth)} digitações · ${formatCount(data.clientesMonth)} clientes`}
+              icon={<Percent className="size-4" strokeWidth={1.7} />}
+            />
+            <MetricCard
+              compact
+              label="Fluxo de clientes"
+              value={data.customerFlowMonth ?? 0}
+              empty={data.customerFlowMonth === null}
+              hint="Soma do mês no Card+"
+              icon={<Users className="size-4" strokeWidth={1.7} />}
+            />
+            <MetricCard
+              compact
+              percent
+              label="Tx. aprovação mês"
+              value={data.approvalRatePct ?? 0}
+              empty={data.approvalRatePct === null}
+              hint={`${formatCount(data.cardsThisMonth)} cartões / ${formatCount(data.digitacoesMonth)} digitações`}
+              icon={<Activity className="size-4" strokeWidth={1.7} />}
+            />
+            <MetricCard
+              compact
+              label="Ritmo"
+              value={data.pacePerDay ?? 0}
+              empty={data.pacePerDay === null}
+              suffix="/dia"
+              hint={`${formatCount(data.workingDaysMonth)} dias úteis, sem domingo`}
+              icon={<Gauge className="size-4" strokeWidth={1.7} />}
+            />
+          </div>
+
+          {data.remainingToMonthGoal !== null || data.pendingCardsThisMonth > 0 ? (
+            <p className="mt-3 text-[12px] text-[#F0EFEC]/36">
+              {data.remainingToMonthGoal === null
+                ? ''
+                : data.remainingToMonthGoal === 0
+                  ? 'Meta mensal batida. '
+                  : `Faltam ${formatCount(data.remainingToMonthGoal)} cartões para a meta. `}
+              {data.pendingCardsThisMonth > 0
+                ? `${formatCount(data.pendingCardsThisMonth)} ainda pendentes de ativar.`
+                : 'Nenhum cartão pendente neste mês.'}
+            </p>
+          ) : null}
 
           <div className="mt-3 grid shrink-0 grid-cols-[minmax(0,1fr)_280px] items-stretch gap-3">
             <section className="overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
@@ -112,7 +153,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
                 <div>
                   <h2 className="text-[15px] text-[#F0EFEC]/82">Cartões dos últimos 12 meses</h2>
                   <p className="mt-1 text-[12px] text-[#F0EFEC]/35">
-                    Realizado comparado à meta mensal cadastrada no Card+.
+                    Ritmo mensal comparado à meta cadastrada no Card+.
                   </p>
                 </div>
                 <div className="flex items-center gap-4 pt-1 text-[11px] text-[#F0EFEC]/40">
@@ -131,22 +172,20 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
 
             <aside className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
               <h2 className="text-[15px] text-[#F0EFEC]/82">Operação</h2>
-              <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Resumo das unidades e equipe ativa.</p>
+              <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Equipe, unidades e conversão do mês.</p>
               <div className="mt-5 space-y-4">
                 <AsideRow label="Unidades" value={formatCount(data.storeCount)} />
                 <AsideRow label="Funcionários ativos" value={formatCount(data.employeeCount)} />
-                <AsideRow
-                  label="Meta restante"
-                  value={data.remainingToMonthGoal === null ? null : formatCount(data.remainingToMonthGoal)}
-                />
+                <AsideRow label="Digitações hoje" value={formatCount(data.digitacoesToday)} />
+                <AsideRow label="Aproveitamento" value={formatPercent(data.aproveitamentoPct)} />
               </div>
             </aside>
           </div>
 
           <section className="mt-3 shrink-0 rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
             <div className="flex items-center justify-between px-5 py-4">
-              <h2 className="text-[15px] text-[#F0EFEC]/82">Cartões recentes</h2>
-              <span className="text-[12px] text-[#F0EFEC]/32">{data.recentCards.length} registros</span>
+              <h2 className="text-[15px] text-[#F0EFEC]/82">Movimento recente</h2>
+              <span className="text-[12px] text-[#F0EFEC]/32">{data.recentCards.length} cartões</span>
             </div>
             {data.recentCards.length === 0 ? (
               <p className="px-5 pb-5 text-[13px] text-[#F0EFEC]/35">Nenhum cartão registrado ainda.</p>
@@ -158,7 +197,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
                     <th className="px-3 py-2.5 font-medium">Cliente</th>
                     <th className="px-3 py-2.5 font-medium">Unidade</th>
                     <th className="px-3 py-2.5 font-medium">Valor</th>
-                    <th className="px-5 py-2.5 font-medium">Data</th>
+                    <th className="px-5 py-2.5 font-medium">Quando</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -201,6 +240,12 @@ function OverviewSkeleton() {
         <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        <div className="h-[96px] animate-pulse rounded-[16px] bg-white/4" />
+        <div className="h-[96px] animate-pulse rounded-[16px] bg-white/4" />
+        <div className="h-[96px] animate-pulse rounded-[16px] bg-white/4" />
+        <div className="h-[96px] animate-pulse rounded-[16px] bg-white/4" />
       </div>
       <div className="min-h-[280px] animate-pulse rounded-[16px] bg-white/4" />
     </div>

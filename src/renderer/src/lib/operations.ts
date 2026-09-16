@@ -23,6 +23,14 @@ export function operations(): OperationsApi {
     listStoreBoard: (storeId) => api.listStoreBoard(storeId === undefined ? getCurrentStoreId() : storeId),
     createStore: (input) => api.createStore(input),
     updateStore: (input) => api.updateStore(input),
+    listStoreAccess: (storeId) => api.listStoreAccess(storeId),
+    upsertStoreAccess: (input) => api.upsertStoreAccess(input),
+    getCardsBoard: (monthKey, storeId) =>
+      api.getCardsBoard(monthKey, storeId === undefined ? getCurrentStoreId() : storeId),
+    createCard: (input) => api.createCard(input),
+    updateCard: (input) => api.updateCard(input),
+    transferCard: (id, collaboratorId) => api.transferCard(id, collaboratorId),
+    deleteCard: (id) => api.deleteCard(id),
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
     updateVoucher: (input) => api.updateVoucher(input)
   }

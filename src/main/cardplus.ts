@@ -9,7 +9,8 @@ import {
   monthBounds,
   monthKeyFromDateKey,
   monthLabel,
-  shiftMonth
+  shiftMonth,
+  workingDaysInMonth
 } from './dates'
 import {
   getIdentity,
@@ -62,6 +63,8 @@ type RecordRow = {
   amount_in_cents: number
   created_at: string
   activated: boolean
+  activated_later?: boolean
+  amount_used_in_cents?: number | null
   store_id: string | null
   stores?: { name?: string | null } | null
 }
@@ -242,7 +245,7 @@ async function listRecentCards(
 ): Promise<RecentCard[]> {
   let query = getCardplusClient()
     .from('records')
-    .select('id, collaborator_id, operator_name, client_name, amount_in_cents, created_at, activated, store_id, stores(name)')
+    .select('id, collaborator_id, operator_name, client_name, amount_in_cents, amount_used_in_cents, created_at, activated, activated_later, store_id, stores(name)')
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -255,9 +258,11 @@ async function listRecentCards(
     operatorName: row.operator_name,
     clientName: row.client_name,
     amountInCents: row.amount_in_cents,
+    amountUsedInCents: row.amount_used_in_cents ?? 0,
     createdAt: row.created_at,
     storeName: row.stores?.name ?? 'Unidade',
-    activated: row.activated
+    activated: row.activated,
+    activatedLater: Boolean(row.activated_later)
   }))
 }
 
@@ -373,14 +378,64 @@ function toEmployeeItem(
   }
 }
 
+async function sumDigitacoes(range: { start: string; end: string }, storeId?: string | null): Promise<number> {
+  const rows = await listPaged(async (from, to) => {
+    let query = getCardplusClient()
+      .from('digitacoes')
+      .select('quantity')
+      .gte('created_at', range.start)
+      .lte('created_at', range.end)
+      .range(from, to)
+    if (storeId) query = query.eq('store_id', storeId)
+    const { data, error } = await query
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') return []
+      throw new Error(`Erro ao carregar digitações: ${error.message}`)
+    }
+    return (data ?? []) as Array<{ quantity: number | null }>
+  })
+  return rows.reduce((total, row) => total + (Number(row.quantity) || 0), 0)
+}
+
+async function sumCustomerFlow(monthKey: string, storeId?: string | null): Promise<number | null> {
+  let query = getCardplusClient()
+    .from('daily_metrics')
+    .select('total_customers, date_key')
+    .like('date_key', `${monthKey}%`)
+  if (storeId) query = query.eq('store_id', storeId)
+  const { data, error } = await query
+  if (error) {
+    if (error.code === '42P01' || error.code === 'PGRST205') return null
+    throw new Error(`Erro ao carregar fluxo de clientes: ${error.message}`)
+  }
+  const rows = (data ?? []) as Array<{ total_customers: number | null }>
+  if (rows.length === 0) return null
+  return rows.reduce((total, row) => total + (Number(row.total_customers) || 0), 0)
+}
+
+async function countPendingCards(range: { start: string; end: string }, storeId?: string | null): Promise<number> {
+  let query = getCardplusClient()
+    .from('records')
+    .select('id', { count: 'exact', head: true })
+    .eq('activated', false)
+    .gte('created_at', range.start)
+    .lte('created_at', range.end)
+  if (storeId) query = query.eq('store_id', storeId)
+  const { count, error } = await query
+  if (error) throw new Error(`Erro ao contar cartões pendentes: ${error.message}`)
+  return count ?? 0
+}
+
 export async function getOverview(storeId?: string | null): Promise<OverviewMetrics> {
   const today = dateKeyInSaoPaulo()
   const monthKey = monthKeyFromDateKey(today)
   const lastMonthKey = shiftMonth(monthKey, -1)
   const monthKeys = lastTwelveMonthKeys(monthKey)
   const todayRange = dayBounds(today)
+  const monthRange = monthBounds(monthKey)
+  const todaySaleKey = `${DAILY_SALE_PREFIX}${today}`
 
-  const [stores, collaborators, cardsToday, monthCounts, goals, todayGoal, recentCards] = await Promise.all([
+  const [stores, collaborators, cardsToday, monthCounts, goals, todayGoal, recentCards, digitacoesToday, digitacoesMonth, customerFlow, pendingCards, saleRows] = await Promise.all([
     listStores(storeId),
     listCollaborators(storeId),
     countRecords({ ...todayRange, storeId: storeId ?? undefined }),
@@ -392,7 +447,12 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
     ),
     monthGoalMap(monthKeys, storeId),
     todayGoalTotal(today, storeId),
-    listRecentCards(8, undefined, storeId)
+    listRecentCards(8, undefined, storeId),
+    sumDigitacoes(todayRange, storeId),
+    sumDigitacoes(monthRange, storeId),
+    sumCustomerFlow(monthKey, storeId),
+    countPendingCards(monthRange, storeId),
+    listGoalsByPrefix(DAILY_SALE_PREFIX, storeId)
   ])
 
   const countsByMonth = new Map(monthCounts.map((row) => [row.key, row.cards]))
@@ -405,6 +465,8 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
 
   const monthGoal = goals.get(monthKey) ?? null
   const cardsThisMonth = countsByMonth.get(monthKey) ?? 0
+  const clientesMonth = digitacoesMonth + cardsThisMonth
+  const workingDays = workingDaysInMonth(monthKey)
 
   return {
     cardsToday,
@@ -413,6 +475,16 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
     monthGoal,
     todayGoal,
     remainingToMonthGoal: monthGoal === null ? null : Math.max(monthGoal - cardsThisMonth, 0),
+    saleTodayCents: sumMatchingGoals(saleRows, (row) => row.date_key === todaySaleKey),
+    digitacoesToday,
+    digitacoesMonth,
+    clientesMonth,
+    aproveitamentoPct: clientesMonth > 0 ? Number(((cardsThisMonth / clientesMonth) * 100).toFixed(1)) : null,
+    customerFlowMonth: customerFlow,
+    approvalRatePct: digitacoesMonth > 0 ? Number(((cardsThisMonth / digitacoesMonth) * 100).toFixed(1)) : null,
+    pacePerDay: monthGoal === null || workingDays === 0 ? null : Math.round(monthGoal / workingDays),
+    workingDaysMonth: workingDays,
+    pendingCardsThisMonth: pendingCards,
     storeCount: stores.length,
     employeeCount: collaborators.filter((row) => row.is_active).length,
     months,
@@ -659,7 +731,7 @@ export async function updateEmployee(input: UpdateEmployeeInput): Promise<Employ
   return toEmployeeItem(updated, storeMap, identity, monthCounts.get(input.id) ?? 0)
 }
 
-async function ensureCaixaCollaborator(storeId: string): Promise<string> {
+export async function ensureCaixaCollaborator(storeId: string): Promise<string> {
   const { data: existing, error: findError } = await getCardplusClient()
     .from('collaborators')
     .select('id, is_active')

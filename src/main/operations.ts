@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import log from 'electron-log'
+import { listStoreAccess, upsertStoreAccess } from './access'
 import {
   assertEmployeeInStore,
   createEmployee,
@@ -11,6 +12,7 @@ import {
   listStores,
   updateEmployee
 } from './cardplus'
+import { assertCardInStore, createCard, deleteCard, getCardsBoard, transferCard, updateCard } from './cards'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
 import { deleteIdentity, getIdentity } from './identities'
 import { invalidateMemo, memo } from './memo'
@@ -18,8 +20,10 @@ import { resolveActor, resolveStoreFilter } from './scope'
 import { readStorePreference, writeStorePreference } from './store-preference'
 import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
 import type {
+  CardWriteInput,
   CreateEmployeeInput,
   EmployeeWriteInput,
+  StoreAccessWriteInput,
   StoreWriteInput,
   UpdateEmployeeInput
 } from '../shared/operations'
@@ -89,6 +93,8 @@ function bustOperationsCache(): void {
   invalidateMemo('store-board')
   invalidateMemo('vouchers')
   invalidateMemo('employee')
+  invalidateMemo('cards')
+  invalidateMemo('access')
 }
 
 function parseStoreWrite(payload: unknown, requireId: boolean): StoreWriteInput {
@@ -106,8 +112,36 @@ function parseStoreWrite(payload: unknown, requireId: boolean): StoreWriteInput 
     managerIds,
     generalManagerId: typeof body.generalManagerId === 'string' ? body.generalManagerId : null,
     supervisorId: typeof body.supervisorId === 'string' ? body.supervisorId : null,
-    operationLeadId: typeof body.operationLeadId === 'string' ? body.operationLeadId : null
+    operationLeadId: typeof body.operationLeadId === 'string' ? body.operationLeadId : null,
+    accessUsername: asOptionalString(body.accessUsername),
+    accessPassword: asOptionalString(body.accessPassword),
+    accessDisplayName: asOptionalString(body.accessDisplayName)
   }
+}
+
+function parseCardWrite(payload: unknown, requireId: boolean): CardWriteInput {
+  if (!payload || typeof payload !== 'object') throw new Error('Dados do cartão inválidos.')
+  const body = payload as Record<string, unknown>
+  return {
+    id: requireId ? asString(body.id, 'Cartão') : typeof body.id === 'string' ? body.id : undefined,
+    storeId: asString(body.storeId, 'Unidade'),
+    collaboratorId: asString(body.collaboratorId, 'Funcionário'),
+    clientName: asString(body.clientName, 'Cliente'),
+    amountInCents: Number(body.amountInCents),
+    amountUsedInCents: Number(body.amountUsedInCents ?? 0),
+    activated: Boolean(body.activated),
+    dateKey: typeof body.dateKey === 'string' ? body.dateKey : undefined
+  }
+}
+
+function assertCardAmounts(input: CardWriteInput): CardWriteInput {
+  if (!Number.isFinite(input.amountInCents) || input.amountInCents < 0) {
+    throw new Error('Limite do cartão inválido.')
+  }
+  if (!Number.isFinite(input.amountUsedInCents) || input.amountUsedInCents < 0) {
+    throw new Error('Valor gasto inválido.')
+  }
+  return input
 }
 
 export function registerOperationsIpc(): void {
@@ -240,6 +274,90 @@ export function registerOperationsIpc(): void {
     const updated = await updateStoreDesk(input)
     bustOperationsCache()
     return updated
+  })
+
+  handle('operations:store-access', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) {
+      throw new Error('Você não pode gerenciar o login desta unidade.')
+    }
+    const storeId = asString((payload as { storeId?: unknown })?.storeId, 'Unidade')
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? storeId : null)
+    if (scoped && storeId !== scoped) throw new Error('Você só pode gerenciar a sua unidade.')
+    return memo(cacheKey(`access:${storeId}`, storeId), 8_000, () => listStoreAccess(storeId))
+  })
+
+  handle('operations:store-access-upsert', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) {
+      throw new Error('Você não pode gerenciar o login desta unidade.')
+    }
+    if (!payload || typeof payload !== 'object') throw new Error('Dados do acesso inválidos.')
+    const body = payload as Record<string, unknown>
+    const input: StoreAccessWriteInput = {
+      storeId: asString(body.storeId, 'Unidade'),
+      id: typeof body.id === 'string' ? body.id : undefined,
+      username: asString(body.username, 'Login'),
+      displayName: asOptionalString(body.displayName),
+      password: asOptionalString(body.password),
+      isActive: typeof body.isActive === 'boolean' ? body.isActive : undefined
+    }
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
+    if (scoped && input.storeId !== scoped) throw new Error('Você só pode gerenciar a sua unidade.')
+    const saved = await upsertStoreAccess(input)
+    bustOperationsCache()
+    return saved
+  })
+
+  handle('operations:cards', async (payload) => {
+    const actor = await resolveActor()
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const storeId = resolveStoreFilter(actor, normalizeStoreId(body))
+    const monthKey = typeof body.monthKey === 'string' ? body.monthKey : null
+    return memo(cacheKey(`cards:${monthKey ?? 'now'}`, storeId), 8_000, () => getCardsBoard(monthKey, storeId))
+  })
+
+  handle('operations:card-create', async (payload) => {
+    const actor = await resolveActor()
+    const input = assertCardAmounts(parseCardWrite(payload, false))
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
+    if (scoped && input.storeId !== scoped) throw new Error('Você só pode registrar cartões da sua unidade.')
+    const created = await createCard(input)
+    bustOperationsCache()
+    return created
+  })
+
+  handle('operations:card-update', async (payload) => {
+    const actor = await resolveActor()
+    const input = assertCardAmounts(parseCardWrite(payload, true))
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
+    if (scoped) await assertCardInStore(input.id ?? '', scoped)
+    const updated = await updateCard(input)
+    bustOperationsCache()
+    return updated
+  })
+
+  handle('operations:card-transfer', async (payload) => {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Dados da transferência inválidos.')
+    const body = payload as Record<string, unknown>
+    const id = asString(body.id, 'Cartão')
+    const collaboratorId = asString(body.collaboratorId, 'Funcionário')
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? null : actor.boundStoreId)
+    if (scoped) await assertCardInStore(id, scoped)
+    const updated = await transferCard(id, collaboratorId, scoped)
+    bustOperationsCache()
+    return updated
+  })
+
+  handle('operations:card-delete', async (payload) => {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Cartão é obrigatório.')
+    const body = payload as Record<string, unknown>
+    const id = asString(body.id, 'Cartão')
+    const scoped = resolveStoreFilter(actor, normalizeStoreId(body))
+    await deleteCard(id, scoped)
+    bustOperationsCache()
   })
 
   handle('operations:store-preference', async (payload) => {

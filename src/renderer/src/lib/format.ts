@@ -64,3 +64,20 @@ export function percentDelta(current: number, previous: number): number | null {
   if (previous <= 0) return current > 0 ? 100 : null
   return Number((((current - previous) / previous) * 100).toFixed(1))
 }
+
+export function formatPercent(value: number | null | undefined): string | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null
+  return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
+}
+
+export function currentMonthKey(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit'
+  }).format(new Date())
+}
+
+export function monthInputValue(monthKey: string): string {
+  return monthKey
+}

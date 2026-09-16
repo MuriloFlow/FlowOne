@@ -41,6 +41,7 @@ export type StoreBoardItem = {
   supervisor: StorePerson | null
   operationLead: StorePerson | null
   missingLeadership: boolean
+  hasOperationalAccess: boolean
 }
 
 export type StoreBoard = {
@@ -65,6 +66,30 @@ export type StoreWriteInput = {
   generalManagerId?: string | null
   supervisorId?: string | null
   operationLeadId?: string | null
+  accessUsername?: string
+  accessPassword?: string
+  accessDisplayName?: string
+}
+
+export type StoreAccessAccount = {
+  id: string
+  storeId: string
+  username: string
+  displayName: string
+  role: string
+  roleLabel: string
+  isActive: boolean
+  isPrimary: boolean
+  updatedAt: string | null
+}
+
+export type StoreAccessWriteInput = {
+  storeId: string
+  id?: string
+  username: string
+  displayName?: string
+  password?: string
+  isActive?: boolean
 }
 
 export type MonthPoint = {
@@ -79,9 +104,11 @@ export type RecentCard = {
   operatorName: string
   clientName: string
   amountInCents: number
+  amountUsedInCents: number
   createdAt: string
   storeName: string
   activated: boolean
+  activatedLater: boolean
 }
 
 export type OverviewMetrics = {
@@ -91,10 +118,73 @@ export type OverviewMetrics = {
   monthGoal: number | null
   todayGoal: number | null
   remainingToMonthGoal: number | null
+  saleTodayCents: number | null
+  digitacoesToday: number
+  digitacoesMonth: number
+  clientesMonth: number
+  aproveitamentoPct: number | null
+  customerFlowMonth: number | null
+  approvalRatePct: number | null
+  pacePerDay: number | null
+  workingDaysMonth: number
+  pendingCardsThisMonth: number
   storeCount: number
   employeeCount: number
   months: MonthPoint[]
   recentCards: RecentCard[]
+}
+
+export type CardDayRow = {
+  dateKey: string
+  cards: number
+  pending: number
+  activated: number
+  digitacoes: number
+}
+
+export type CardRecord = {
+  id: string
+  collaboratorId: string
+  operatorName: string
+  clientName: string
+  amountInCents: number
+  amountUsedInCents: number
+  availableInCents: number
+  createdAt: string
+  dateKey: string
+  storeId: string
+  storeName: string
+  activated: boolean
+  activatedLater: boolean
+}
+
+export type CardsBoard = {
+  monthKey: string
+  cardsToday: number
+  todayGoal: number | null
+  cardsThisMonth: number
+  monthGoal: number | null
+  cardsTotal: number
+  pendingCount: number
+  activatedCount: number
+  idleActivatedCount: number
+  limitCents: number
+  usedCents: number
+  availableCents: number
+  days: CardDayRow[]
+  records: CardRecord[]
+  people: StorePerson[]
+}
+
+export type CardWriteInput = {
+  id?: string
+  storeId: string
+  collaboratorId: string
+  clientName: string
+  amountInCents: number
+  amountUsedInCents: number
+  activated: boolean
+  dateKey?: string
 }
 
 export type FinanceMonthPoint = {
@@ -190,6 +280,13 @@ export type OperationsApi = {
   listStoreBoard: (storeId?: string | null) => Promise<StoreBoard>
   createStore: (input: StoreWriteInput) => Promise<StoreBoardItem>
   updateStore: (input: StoreWriteInput) => Promise<StoreBoardItem>
+  listStoreAccess: (storeId: string) => Promise<StoreAccessAccount[]>
+  upsertStoreAccess: (input: StoreAccessWriteInput) => Promise<StoreAccessAccount>
+  getCardsBoard: (monthKey?: string | null, storeId?: string | null) => Promise<CardsBoard>
+  createCard: (input: CardWriteInput) => Promise<CardRecord>
+  updateCard: (input: CardWriteInput) => Promise<CardRecord>
+  transferCard: (id: string, collaboratorId: string) => Promise<CardRecord>
+  deleteCard: (id: string) => Promise<void>
   listVouchers: (storeId?: string | null) => Promise<import('./vouchers').VoucherBoard>
   updateVoucher: (input: {
     collaboratorId: string

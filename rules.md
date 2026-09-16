@@ -852,10 +852,17 @@ O Card+ já existe em outro Supabase. FLOW não duplica cartões, metas, lojas o
 
 Tabelas lidas no Card+ (somente as confirmadas no projeto `teSTeSTE`):
 
-- `stores` — unidades
+- `stores` — unidades (`id`, `name`, `created_at`, `updated_at`)
 - `collaborators` — funcionários (nome, `sub_role`, loja, status)
-- `records` — um cartão aprovado por linha
+- `records` — um cartão por linha: `amount_in_cents` (limite), `amount_used_in_cents` (gasto), `activated`, `activated_later`
+- `digitacoes` — `quantity` por lançamento; soma = digitações do período
+- `daily_metrics` — `total_customers` (fluxo de clientes), `date_key`
+- `app_users` — login operacional da unidade (`username`, `password_hash` bcrypt, `role` EMPLOYEE, `store_id`)
 - `daily_goals` — metas; `date_key` `YYYY-MM-DD` = meta do dia; `month-cards:YYYY-MM` = meta mensal de cartões; `month-sales:YYYY-MM` = meta mensal de valor (centavos); `daily-sale:YYYY-MM-DD` = venda do dia registrada (centavos)
+
+Cadastro de unidade no FLOW: grava `stores.name` no Card+, cria colaborador `CAIXA` se faltar, e cria `app_users` EMPLOYEE (login/senha dos operadores). A senha nunca volta para o renderer.
+
+Aproveitamento = cartões / (digitações + cartões). Tx. aprovação = cartões / digitações. Ritmo = meta mensal / dias do mês sem domingo, arredondado.
 
 A conexão Card+ fica no processo principal do Electron (`CARDPLUS_*` no `.env.local`). O renderer nunca recebe a service role.
 

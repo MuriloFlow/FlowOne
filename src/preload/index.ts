@@ -56,6 +56,15 @@ const flow: FlowApi = {
       ipcRenderer.invoke('operations:store-board', { storeId: storeId ?? null }),
     createStore: (input) => ipcRenderer.invoke('operations:store-create', input),
     updateStore: (input) => ipcRenderer.invoke('operations:store-update', input),
+    listStoreAccess: (storeId) => ipcRenderer.invoke('operations:store-access', { storeId }),
+    upsertStoreAccess: (input) => ipcRenderer.invoke('operations:store-access-upsert', input),
+    getCardsBoard: (monthKey, storeId) =>
+      ipcRenderer.invoke('operations:cards', { monthKey: monthKey ?? null, storeId: storeId ?? null }),
+    createCard: (input) => ipcRenderer.invoke('operations:card-create', input),
+    updateCard: (input) => ipcRenderer.invoke('operations:card-update', input),
+    transferCard: (id, collaboratorId) =>
+      ipcRenderer.invoke('operations:card-transfer', { id, collaboratorId }),
+    deleteCard: (id) => ipcRenderer.invoke('operations:card-delete', { id }),
     listVouchers: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:vouchers', { storeId: storeId ?? null }),
     updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input)

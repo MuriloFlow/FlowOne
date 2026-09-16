@@ -4,6 +4,7 @@ import { EmployeeProfilePage } from '@/pages/employee-profile'
 import { EmployeesPage } from '@/pages/employees'
 import { FinancePage } from '@/pages/finance'
 import { OverviewPage } from '@/pages/overview'
+import { CardsPage } from '@/pages/cards'
 import { PlaceholderPage } from '@/pages/placeholder'
 import { StoresPage } from '@/pages/stores'
 import { VouchersPage } from '@/pages/vouchers'
@@ -62,6 +63,7 @@ export function ShellMain({
     activeId !== 'overview' &&
     activeId !== 'vouchers' &&
     activeId !== 'finance' &&
+    activeId !== 'cards' &&
     activeId !== 'stores' &&
     !(activeId === 'employees' && !employeeId)
 
@@ -114,7 +116,7 @@ export function ShellMain({
               {activeId === 'employees' && !employeeId ? (
                 <EmployeesPage storeId={storeId} onOpenProfile={onOpenEmployee} />
               ) : null}
-              {activeId === 'cards' ? <PlaceholderPage title="Cartões" /> : null}
+              {activeId === 'cards' ? <CardsPage storeId={storeId} /> : null}
               {activeId === 'vouchers' ? <VouchersPage storeId={storeId} /> : null}
               {activeId === 'stores' ? (
                 <StoresPage

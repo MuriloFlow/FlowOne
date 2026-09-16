@@ -1,9 +1,11 @@
 import log from 'electron-log'
+import { assertAccessUsernameAvailable, createOperationalAccess, listOperationalStoreIds } from './access'
 import {
   DAILY_SALE_PREFIX,
   MONTH_CARDS_PREFIX,
   MONTH_SALES_PREFIX,
   createStore as createCardplusStore,
+  ensureCaixaCollaborator,
   listEmployees,
   listGoalsByPrefix,
   listStores,
@@ -105,7 +107,7 @@ function salesForStore(
 export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard> {
   const today = dateKeyInSaoPaulo()
   const monthKey = monthKeyFromDateKey(today)
-  const [stores, employees, cards, cardGoals, saleGoals, dailySales, profiles, seats] = await Promise.all([
+  const [stores, employees, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores] = await Promise.all([
     listStores(storeId),
     listEmployees(storeId),
     storeMonthCardsByStore(storeId),
@@ -113,7 +115,8 @@ export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard
     listGoalsByPrefix(MONTH_SALES_PREFIX, storeId),
     listGoalsByPrefix(DAILY_SALE_PREFIX, storeId),
     listProfiles(),
-    listSeats()
+    listSeats(),
+    listOperationalStoreIds()
   ])
 
   const names = new Map(employees.map((item) => [item.id, item.name]))
@@ -161,7 +164,8 @@ export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard
       generalManager,
       supervisor,
       operationLead,
-      missingLeadership
+      missingLeadership,
+      hasOperationalAccess: operationalStores.has(store.id)
     } satisfies StoreBoardItem
   })
 
@@ -267,7 +271,21 @@ async function boardItem(storeId: string): Promise<StoreBoardItem> {
 }
 
 export async function createStoreDesk(input: StoreWriteInput): Promise<StoreBoardItem> {
+  const username = input.accessUsername?.trim() ?? ''
+  const password = input.accessPassword?.trim() ?? ''
+  if (!username || !password) {
+    throw new Error('Informe o login e a senha operacional da unidade.')
+  }
+  if (password.length < 6) throw new Error('A senha operacional precisa ter pelo menos 6 caracteres.')
+  const normalizedUsername = await assertAccessUsernameAvailable(username)
   const created = await createCardplusStore(input.name)
+  try {
+    await ensureCaixaCollaborator(created.id)
+    await createOperationalAccess(created.id, normalizedUsername, password, input.accessDisplayName)
+  } catch (error) {
+    log.warn('[stores] unidade criada, acesso operacional incompleto', error)
+    throw error instanceof Error ? error : new Error('Unidade criada, mas o login operacional falhou.')
+  }
   const people = await allowedPeople()
   try {
     await writeProfile(created.id, input)
@@ -276,7 +294,7 @@ export async function createStoreDesk(input: StoreWriteInput): Promise<StoreBoar
     log.warn('[stores] unidade criada no Card+, mesa FLOW incompleta', error)
     if (error instanceof Error && /0006_flow_store_desk/.test(error.message)) throw error
   }
-  await audit('store.create', created.id, { name: created.name })
+  await audit('store.create', created.id, { name: created.name, accessUsername: username })
   return boardItem(created.id)
 }
 

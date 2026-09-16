@@ -58,4 +58,28 @@ export function daysElapsedInMonth(dateKey: string): number {
   return Number(dateKey.slice(8, 10))
 }
 
+export function dateKeyFromIso(iso: string): string {
+  return dateKeyInSaoPaulo(new Date(iso))
+}
+
+export function isoFromDateKey(dateKey: string, endOfDay = false): string {
+  return new Date(`${dateKey}T${endOfDay ? '23:59:59.999' : '12:00:00'}-03:00`).toISOString()
+}
+
+export function weekdayInSaoPaulo(dateKey: string): number {
+  return new Date(`${dateKey}T12:00:00-03:00`).getDay()
+}
+
+export function workingDaysInMonth(monthKey: string, fromDateKey?: string): number {
+  const last = lastDayOfMonth(monthKey)
+  const start =
+    fromDateKey && fromDateKey.startsWith(monthKey) ? Number(fromDateKey.slice(8, 10)) : 1
+  let count = 0
+  for (let day = start; day <= last; day += 1) {
+    const key = `${monthKey}-${String(day).padStart(2, '0')}`
+    if (weekdayInSaoPaulo(key) !== 0) count += 1
+  }
+  return count
+}
+
 export { voucherPeriodKey } from '../shared/vouchers'

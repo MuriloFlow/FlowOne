@@ -209,6 +209,7 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
                       <span className="mt-0.5 block text-[11px] text-[#F0EFEC]/32">
                         {store.internalCode ? `Código ${store.internalCode}` : 'Sem código interno'}
                         {store.operationLead ? ` · Líder ${store.operationLead.name}` : ''}
+                        {store.hasOperationalAccess ? '' : ' · Sem login operacional'}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-[#F0EFEC]/70">{formatCount(store.employeeCount)}</td>
