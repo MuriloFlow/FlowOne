@@ -1,5 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { requiredEnv } from './env'
+import { resilientFetch } from './http'
+
+const clientOptions = {
+  auth: { persistSession: false, autoRefreshToken: false },
+  global: { fetch: resilientFetch }
+} as const
 
 let cardplusClient: SupabaseClient | null = null
 let flowAdminClient: SupabaseClient | null = null
@@ -9,9 +15,7 @@ export function getCardplusClient(): SupabaseClient {
   cardplusClient = createClient(
     requiredEnv('CARDPLUS_SUPABASE_URL'),
     requiredEnv('CARDPLUS_SUPABASE_SERVICE_ROLE_KEY'),
-    {
-      auth: { persistSession: false, autoRefreshToken: false }
-    }
+    clientOptions
   )
   return cardplusClient
 }
@@ -23,8 +27,6 @@ export function getFlowAdminClient(): SupabaseClient {
   if (!url || !key) {
     throw new Error('Banco FLOW ausente no .env.local')
   }
-  flowAdminClient = createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  })
+  flowAdminClient = createClient(url, key, clientOptions)
   return flowAdminClient
 }

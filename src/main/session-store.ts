@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import log from 'electron-log'
 import type { PersistedAuthSession } from '../shared/ipc'
+import { invalidateMemo } from './memo'
 
 const COOKIE_URL = 'https://flow.local'
 const ACCESS_COOKIE = 'flow_access_token'
@@ -128,4 +129,5 @@ export async function readAuthSession(): Promise<PersistedAuthSession | null> {
 export async function clearAuthSession(): Promise<void> {
   await clearCookies()
   clearEncryptedFile()
+  invalidateMemo()
 }

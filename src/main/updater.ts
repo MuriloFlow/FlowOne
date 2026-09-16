@@ -1,16 +1,27 @@
-import { app, BrowserWindow, ipcMain, powerMonitor } from 'electron'
+import { app, BrowserWindow, ipcMain, net, powerMonitor } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import type { UpdateStatus } from '../shared/ipc'
 
-const CHECK_EVERY_MS = 20_000
-const FOCUS_DEBOUNCE_MS = 4_000
+const CHECK_EVERY_MS = 8_000
+const FOCUS_DEBOUNCE_MS = 1_500
+const RETRY_DELAYS_MS = [2_000, 5_000, 12_000]
+const FEED_URL = 'https://github.com/MuriloFlow/FlowOne/releases/latest/download'
 
 autoUpdater.autoDownload = true
 autoUpdater.autoInstallOnAppQuit = true
 autoUpdater.allowDowngrade = false
+autoUpdater.allowPrerelease = false
 autoUpdater.logger = log
-;(autoUpdater as { verifyUpdateCodeSignature?: boolean }).verifyUpdateCodeSignature = false
+autoUpdater.requestHeaders = {
+  'Cache-Control': 'no-cache',
+  Pragma: 'no-cache'
+}
+Object.assign(autoUpdater, {
+  disableWebInstaller: true,
+  disableDifferentialDownload: true,
+  verifyUpdateCodeSignature: false
+})
 
 let currentStatus: UpdateStatus = { state: 'idle' }
 let mainWindow: BrowserWindow | null = null
@@ -19,6 +30,8 @@ let listenersRegistered = false
 let checking = false
 let lastCheckAt = 0
 let closeBound = false
+let retryAttempt = 0
+let retryTimer: ReturnType<typeof setTimeout> | null = null
 
 function isBusy(status: UpdateStatus = currentStatus): boolean {
   return status.state === 'available' || status.state === 'downloading' || status.state === 'ready'
@@ -45,7 +58,7 @@ function registerIpc(): void {
 
   ipcMain.handle('updater:status', () => currentStatus)
   ipcMain.handle('updater:check', async () => {
-    await checkForUpdates()
+    await checkForUpdates({ force: true })
     return currentStatus
   })
   ipcMain.handle('updater:install', () => {
@@ -55,7 +68,6 @@ function registerIpc(): void {
 
 function installReadyUpdate(): void {
   if (currentStatus.state !== 'ready') return
-  // Silent + force-run: NSIS /S --updated --force-run, sem o assistente de instalação.
   autoUpdater.quitAndInstall(true, true)
 }
 
@@ -69,16 +81,36 @@ function bindCloseToInstall(window: BrowserWindow): void {
   })
 }
 
+function clearRetry(): void {
+  retryAttempt = 0
+  if (!retryTimer) return
+  clearTimeout(retryTimer)
+  retryTimer = null
+}
+
+function scheduleRetry(): void {
+  if (retryTimer || isBusy() || retryAttempt >= RETRY_DELAYS_MS.length) return
+  const delay = RETRY_DELAYS_MS[retryAttempt]
+  retryAttempt += 1
+  log.info(`[updater] nova tentativa em ${delay}ms`)
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    void checkForUpdates({ force: true })
+  }, delay)
+}
+
 function registerListeners(): void {
   if (listenersRegistered) return
   listenersRegistered = true
 
   autoUpdater.on('update-available', (info) => {
+    clearRetry()
     if (currentStatus.state === 'ready') return
     emit({ state: 'available', version: info.version })
   })
 
   autoUpdater.on('update-not-available', () => {
+    clearRetry()
     if (isBusy()) return
     emit({ state: 'idle' })
   })
@@ -89,6 +121,7 @@ function registerListeners(): void {
   })
 
   autoUpdater.on('update-downloaded', (info) => {
+    clearRetry()
     emit({ state: 'ready', version: info.version })
   })
 
@@ -105,10 +138,12 @@ function registerListeners(): void {
     if (ignorable) {
       log.info('[updater] ignored:', message)
       emit({ state: 'idle' })
+      scheduleRetry()
       return
     }
     log.error('[updater]', error)
-    emit({ state: 'error', message })
+    emit({ state: 'error', message: 'Não foi possível verificar atualizações agora.' })
+    scheduleRetry()
   })
 }
 
@@ -124,13 +159,13 @@ export function registerUpdater(window: BrowserWindow): void {
 
   registerListeners()
   autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'MuriloFlow',
-    repo: 'FlowOne'
+    provider: 'generic',
+    url: FEED_URL
   })
 
-  void checkForUpdates()
+  void checkForUpdates({ force: true })
   setInterval(() => {
+    if (!net.isOnline()) return
     void checkForUpdates()
   }, CHECK_EVERY_MS)
 
@@ -138,21 +173,22 @@ export function registerUpdater(window: BrowserWindow): void {
     void checkForUpdates()
   })
   powerMonitor.on('resume', () => {
-    void checkForUpdates()
+    void checkForUpdates({ force: true })
   })
   powerMonitor.on('unlock-screen', () => {
-    void checkForUpdates()
+    void checkForUpdates({ force: true })
   })
 }
 
-export async function checkForUpdates(): Promise<void> {
+export async function checkForUpdates(options?: { force?: boolean }): Promise<void> {
   if (!app.isPackaged) {
     emit({ state: 'idle' })
     return
   }
+  if (!net.isOnline()) return
   if (checking || currentStatus.state === 'ready' || currentStatus.state === 'downloading') return
   const now = Date.now()
-  if (now - lastCheckAt < FOCUS_DEBOUNCE_MS) return
+  if (!options?.force && now - lastCheckAt < FOCUS_DEBOUNCE_MS) return
   lastCheckAt = now
   checking = true
   try {
@@ -160,7 +196,10 @@ export async function checkForUpdates(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log.info('[updater] check skipped:', message)
-    if (!isBusy()) emit({ state: 'idle' })
+    if (!isBusy()) {
+      emit({ state: 'idle' })
+      scheduleRetry()
+    }
   } finally {
     checking = false
   }

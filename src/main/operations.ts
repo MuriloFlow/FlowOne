@@ -12,6 +12,7 @@ import {
   updateEmployee
 } from './cardplus'
 import { deleteIdentity, getIdentity } from './identities'
+import { invalidateMemo, memo } from './memo'
 import { resolveActor, resolveStoreFilter } from './scope'
 import { readStorePreference, writeStorePreference } from './store-preference'
 import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
@@ -60,7 +61,31 @@ function parseWriteInput(payload: unknown): EmployeeWriteInput {
 
 function handle(channel: string, listener: (payload: unknown) => Promise<unknown>): void {
   ipcMain.removeHandler(channel)
-  ipcMain.handle(channel, async (_event, payload: unknown) => listener(payload))
+  ipcMain.handle(channel, async (_event, payload: unknown) => {
+    try {
+      return await listener(payload)
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Não foi possível concluir esta operação.'
+      log.warn(`[operations] ${channel}`, message)
+      throw new Error(message)
+    }
+  })
+}
+
+function cacheKey(name: string, storeId?: string | null): string {
+  return `${name}:${storeId ?? 'all'}`
+}
+
+function bustOperationsCache(): void {
+  invalidateMemo('overview')
+  invalidateMemo('finance')
+  invalidateMemo('employees')
+  invalidateMemo('stores')
+  invalidateMemo('vouchers')
+  invalidateMemo('employee')
 }
 
 export function registerOperationsIpc(): void {
@@ -68,26 +93,27 @@ export function registerOperationsIpc(): void {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
     log.info('[operations] overview', storeId ?? 'all')
-    return getOverview(storeId)
+    return memo(cacheKey('overview', storeId), 12_000, () => getOverview(storeId))
   })
 
   handle('operations:finance', async (payload) => {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
     log.info('[operations] finance', storeId ?? 'all')
-    return getFinance(storeId)
+    return memo(cacheKey('finance', storeId), 12_000, () => getFinance(storeId))
   })
 
   handle('operations:stores', async () => {
     const actor = await resolveActor()
-    return listStores(actor.canViewAll ? null : actor.boundStoreId)
+    const storeId = actor.canViewAll ? null : actor.boundStoreId
+    return memo(cacheKey('stores', storeId), 30_000, () => listStores(storeId))
   })
 
   handle('operations:employees', async (payload) => {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
     log.info('[operations] employees', storeId ?? 'all')
-    return listEmployees(storeId)
+    return memo(cacheKey('employees', storeId), 12_000, () => listEmployees(storeId))
   })
 
   handle('operations:employee', async (payload) => {
@@ -97,7 +123,8 @@ export function registerOperationsIpc(): void {
     }
     const body = payload as Record<string, unknown>
     const storeId = resolveStoreFilter(actor, normalizeStoreId(body))
-    return getEmployee(asString(body.id, 'Funcionário'), storeId)
+    const id = asString(body.id, 'Funcionário')
+    return memo(cacheKey(`employee:${id}`, storeId), 10_000, () => getEmployee(id, storeId))
   })
 
   handle('operations:employee-identity', async (payload) => {
@@ -119,7 +146,9 @@ export function registerOperationsIpc(): void {
     if (scopedStore && input.storeId !== scopedStore) {
       throw new Error('Você só pode cadastrar funcionários da sua unidade.')
     }
-    return createEmployee(input)
+    const created = await createEmployee(input)
+    bustOperationsCache()
+    return created
   })
 
   handle('operations:employee-update', async (payload) => {
@@ -136,7 +165,9 @@ export function registerOperationsIpc(): void {
     if (scopedStore && input.storeId !== scopedStore) {
       throw new Error('Você só pode editar funcionários da sua unidade.')
     }
-    return updateEmployee(input)
+    const updated = await updateEmployee(input)
+    bustOperationsCache()
+    return updated
   })
 
   handle('operations:employee-delete', async (payload) => {
@@ -150,6 +181,7 @@ export function registerOperationsIpc(): void {
     await deleteEmployee(id, storeId)
     await deleteIdentity(id)
     await deleteVoucher(id)
+    bustOperationsCache()
   })
 
   handle('operations:store-preference', async (payload) => {
@@ -164,7 +196,8 @@ export function registerOperationsIpc(): void {
 
   handle('operations:vouchers', async (payload) => {
     const actor = await resolveActor()
-    return listVoucherBoard(resolveStoreFilter(actor, normalizeStoreId(payload)))
+    const storeId = resolveStoreFilter(actor, normalizeStoreId(payload))
+    return memo(cacheKey('vouchers', storeId), 8_000, () => listVoucherBoard(storeId))
   })
 
   handle('operations:voucher-update', async (payload) => {
@@ -184,5 +217,6 @@ export function registerOperationsIpc(): void {
       transportCents: typeof body.transportCents === 'number' ? body.transportCents : undefined,
       status
     })
+    bustOperationsCache()
   })
 }

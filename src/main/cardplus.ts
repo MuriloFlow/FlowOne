@@ -69,6 +69,7 @@ const MONTH_CARDS_PREFIX = 'month-cards:'
 const MONTH_SALES_PREFIX = 'month-sales:'
 const DAILY_SALE_PREFIX = 'daily-sale:'
 const PAGE_SIZE = 1000
+const MAX_PAGES = 80
 
 function normalizeName(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
@@ -113,7 +114,7 @@ async function countRecords(filters: {
 async function listPaged<T>(loadPage: (from: number, to: number) => Promise<T[]>): Promise<T[]> {
   const rows: T[] = []
   let from = 0
-  while (true) {
+  for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
     const page = await loadPage(from, from + PAGE_SIZE - 1)
     rows.push(...page)
     if (page.length < PAGE_SIZE) break
@@ -320,40 +321,37 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
   const lastMonthKey = shiftMonth(monthKey, -1)
   const monthKeys = lastTwelveMonthKeys(monthKey)
   const todayRange = dayBounds(today)
-  const monthRange = monthBounds(monthKey)
-  const lastMonthRange = monthBounds(lastMonthKey)
 
-  const [stores, collaborators, cardsToday, cardsThisMonth, cardsLastMonth, goals, todayGoal, recentCards] =
-    await Promise.all([
-      listStores(storeId),
-      listCollaborators(storeId),
-      countRecords({ ...todayRange, storeId: storeId ?? undefined }),
-      countRecords({ ...monthRange, storeId: storeId ?? undefined }),
-      countRecords({ ...lastMonthRange, storeId: storeId ?? undefined }),
-      monthGoalMap(monthKeys, storeId),
-      todayGoalTotal(today, storeId),
-      listRecentCards(8, undefined, storeId)
-    ])
-
-  const months = await Promise.all(
-    monthKeys.map(async (key) => {
-      const bounds = monthBounds(key)
-      const cards = await countRecords({ ...bounds, storeId: storeId ?? undefined })
-      return {
+  const [stores, collaborators, cardsToday, monthCounts, goals, todayGoal, recentCards] = await Promise.all([
+    listStores(storeId),
+    listCollaborators(storeId),
+    countRecords({ ...todayRange, storeId: storeId ?? undefined }),
+    Promise.all(
+      monthKeys.map(async (key) => ({
         key,
-        label: monthLabel(key),
-        cards,
-        goal: goals.get(key) ?? null
-      } satisfies MonthPoint
-    })
-  )
+        cards: await countRecords({ ...monthBounds(key), storeId: storeId ?? undefined })
+      }))
+    ),
+    monthGoalMap(monthKeys, storeId),
+    todayGoalTotal(today, storeId),
+    listRecentCards(8, undefined, storeId)
+  ])
+
+  const countsByMonth = new Map(monthCounts.map((row) => [row.key, row.cards]))
+  const months = monthKeys.map((key) => ({
+    key,
+    label: monthLabel(key),
+    cards: countsByMonth.get(key) ?? 0,
+    goal: goals.get(key) ?? null
+  })) satisfies MonthPoint[]
 
   const monthGoal = goals.get(monthKey) ?? null
+  const cardsThisMonth = countsByMonth.get(monthKey) ?? 0
 
   return {
     cardsToday,
     cardsThisMonth,
-    cardsLastMonth,
+    cardsLastMonth: countsByMonth.get(lastMonthKey) ?? 0,
     monthGoal,
     todayGoal,
     remainingToMonthGoal: monthGoal === null ? null : Math.max(monthGoal - cardsThisMonth, 0),
@@ -446,18 +444,22 @@ export async function getEmployee(id: string, storeId?: string | null): Promise<
   const monthKey = monthKeyFromDateKey(today)
   const monthKeys = lastTwelveMonthKeys(monthKey)
   const todayRange = dayBounds(today)
-  const monthRange = monthBounds(monthKey)
 
   const row = await getCollaborator(id)
   if (storeId && row.store_id !== storeId) {
     throw new Error('Funcionário fora da unidade selecionada.')
   }
-  const [stores, identity, cardsToday, cardsThisMonth, cardsTotal, storeGoal, recentCards] =
+  const [stores, identity, cardsToday, monthCounts, cardsTotal, storeGoal, recentCards, edges, latest] =
     await Promise.all([
       listStores(),
       getIdentity(id),
       countRecords({ ...todayRange, collaboratorId: id }),
-      countRecords({ ...monthRange, collaboratorId: id }),
+      Promise.all(
+        monthKeys.map(async (key) => ({
+          key,
+          cards: await countRecords({ ...monthBounds(key), collaboratorId: id })
+        }))
+      ),
       (async () => {
         const { count, error } = await getCardplusClient()
           .from('records')
@@ -467,41 +469,35 @@ export async function getEmployee(id: string, storeId?: string | null): Promise<
         return count ?? 0
       })(),
       storeMonthGoal(row.store_id, monthKey),
-      listRecentCards(12, id)
+      listRecentCards(12, id),
+      getCardplusClient()
+        .from('records')
+        .select('created_at')
+        .eq('collaborator_id', id)
+        .order('created_at', { ascending: true })
+        .limit(1),
+      getCardplusClient()
+        .from('records')
+        .select('created_at')
+        .eq('collaborator_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
     ])
 
+  if (edges.error) throw new Error(`Erro ao carregar histórico: ${edges.error.message}`)
+  if (latest.error) throw new Error(`Erro ao carregar último cartão: ${latest.error.message}`)
+
+  const countsByMonth = new Map(monthCounts.map((row) => [row.key, row.cards]))
+  const cardsThisMonth = countsByMonth.get(monthKey) ?? 0
   const storeMap = new Map(stores.map((store) => [store.id, store.name]))
   const employee = toEmployeeItem(row, storeMap, identity, cardsThisMonth)
 
-  const months = await Promise.all(
-    monthKeys.map(async (key) => {
-      const cards = await countRecords({ ...monthBounds(key), collaboratorId: id })
-      return {
-        key,
-        label: monthLabel(key),
-        cards,
-        goal: null
-      } satisfies MonthPoint
-    })
-  )
-
-  const { data: edges, error: edgesError } = await getCardplusClient()
-    .from('records')
-    .select('created_at')
-    .eq('collaborator_id', id)
-    .order('created_at', { ascending: true })
-    .limit(1)
-
-  if (edgesError) throw new Error(`Erro ao carregar histórico: ${edgesError.message}`)
-
-  const { data: latest, error: latestError } = await getCardplusClient()
-    .from('records')
-    .select('created_at')
-    .eq('collaborator_id', id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-
-  if (latestError) throw new Error(`Erro ao carregar último cartão: ${latestError.message}`)
+  const months = monthKeys.map((key) => ({
+    key,
+    label: monthLabel(key),
+    cards: countsByMonth.get(key) ?? 0,
+    goal: null
+  })) satisfies MonthPoint[]
 
   const elapsed = daysElapsedInMonth(today)
   const projectedMonth = elapsed > 0 ? Math.round((cardsThisMonth / elapsed) * lastDayOfMonth(monthKey)) : null
@@ -512,8 +508,8 @@ export async function getEmployee(id: string, storeId?: string | null): Promise<
       cardsToday,
       cardsThisMonth,
       cardsTotal,
-      firstCardAt: edges?.[0]?.created_at ?? null,
-      lastCardAt: latest?.[0]?.created_at ?? null,
+      firstCardAt: edges.data?.[0]?.created_at ?? null,
+      lastCardAt: latest.data?.[0]?.created_at ?? null,
       storeMonthGoal: storeGoal,
       projectedMonth,
       projectionLabel:

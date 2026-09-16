@@ -305,7 +305,13 @@ export async function sendKobbi(
 ): Promise<string> {
   const actor = await resolveActor()
   const storeId = resolveStoreFilter(actor, normalizeStoreId(input.storeId))
-  const snapshot = await buildOperationsContext(storeId, input.userName, input.userRole)
+  let snapshot: string
+  try {
+    snapshot = await buildOperationsContext(storeId, input.userName, input.userRole)
+  } catch (error) {
+    log.warn('[kobbi] snapshot retry', error instanceof Error ? error.message : error)
+    snapshot = await buildOperationsContext(storeId, input.userName, input.userRole)
+  }
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt(snapshot) },
     ...toApiMessages(input.messages, input.attachments)
@@ -316,17 +322,27 @@ export async function sendKobbi(
   const controller = new AbortController()
   abortById.set(input.id, controller)
 
+  let timedOut = false
+  const timeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, 90_000)
+
   try {
     try {
       await complete(primary, messages, controller.signal, onDelta)
       return primary
     } catch (error) {
-      if (controller.signal.aborted) throw error
+      if (controller.signal.aborted) {
+        if (timedOut) throw new Error('O Kobbi demorou demais para responder.')
+        throw error
+      }
       log.warn('[kobbi] fallback', error instanceof Error ? error.message : error)
       await complete(fallback, messages, controller.signal, onDelta)
       return fallback
     }
   } finally {
+    clearTimeout(timeout)
     abortById.delete(input.id)
   }
 }
