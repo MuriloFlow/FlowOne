@@ -66,6 +66,7 @@ const flow: FlowApi = {
       ipcRenderer.invoke('operations:card-transfer', { id, collaboratorId }),
     deleteCard: (id) => ipcRenderer.invoke('operations:card-delete', { id }),
     upsertDailySale: (input) => ipcRenderer.invoke('operations:daily-sale-upsert', input),
+    upsertFinanceDay: (input) => ipcRenderer.invoke('operations:finance-day-upsert', input),
     listVouchers: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:vouchers', { storeId: storeId ?? null }),
     updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input)

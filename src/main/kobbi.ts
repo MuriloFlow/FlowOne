@@ -1,7 +1,8 @@
 import { ipcMain } from 'electron'
 import log from 'electron-log'
 import { dateKeyInSaoPaulo } from './dates'
-import { getFinance, getOverview, listEmployees, listStores } from './cardplus'
+import { getOverview, listEmployees, listStores } from './cardplus'
+import { getFinanceBoard } from './finance-days'
 import { requiredEnv } from './env'
 import { readKobbiWidth, writeKobbiWidth } from './kobbi-preference'
 import { resolveActor, resolveStoreFilter } from './scope'
@@ -31,7 +32,7 @@ function envOr(name: string, fallback: string): string {
 async function buildOperationsContext(storeId: string | null, userName?: string, userRole?: string): Promise<string> {
   const [overview, finance, employees, stores, vouchers] = await Promise.all([
     getOverview(storeId),
-    getFinance(storeId),
+    getFinanceBoard(storeId),
     listEmployees(storeId),
     listStores(storeId),
     listVoucherBoard(storeId)
@@ -96,6 +97,8 @@ async function buildOperationsContext(storeId: string | null, userName?: string,
       vendaMesPassado: brl(finance.salesLastMonthCents),
       metaValorMes: finance.monthSalesGoalCents === null ? null : brl(finance.monthSalesGoalCents),
       faltamParaMetaValor: finance.remainingToMonthSalesGoalCents === null ? null : brl(finance.remainingToMonthSalesGoalCents),
+      puMediaMes: finance.puAverage,
+      diasComPu: finance.puRegisteredDays,
       diasComVenda: finance.registeredDaysThisMonth,
       meses: finance.months.map((month) => ({
         periodo: month.label,

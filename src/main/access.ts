@@ -1,7 +1,13 @@
 import bcrypt from 'bcryptjs'
 import { getCardplusClient } from './supabase-clients'
-import { listStores } from './cardplus'
-import type { StoreAccessAccount, StoreAccessWriteInput } from '../shared/operations'
+import { listEmployees, listStores } from './cardplus'
+import type { EmployeeListItem, StoreAccessAccount, StoreAccessWriteInput } from '../shared/operations'
+import {
+  cardplusAccessRoleLabel,
+  isGlobalDeskAppRole,
+  isRegionalManagerAppRole,
+  normalizePersonName
+} from '../shared/roles'
 
 const BCRYPT_ROUNDS = 10
 
@@ -22,6 +28,17 @@ const ROLE_LABELS: Record<string, string> = {
   REGIONAL_MANAGER: 'Gerente regional',
   TI_ADMIN: 'TI',
   GLOBAL_ADMIN: 'Administrador'
+}
+
+export type GlobalDeskAccount = {
+  id: string
+  username: string
+  name: string
+  role: string
+  roleLabel: string
+  storeId: string | null
+  isActive: boolean
+  createdAt: string
 }
 
 function normalizeUsername(value: string): string {
@@ -136,22 +153,119 @@ export async function createOperationalAccess(
   })
 }
 
-export async function listRegionalManagerNames(): Promise<Set<string>> {
+export async function listGlobalDeskAccounts(): Promise<GlobalDeskAccount[]> {
   const { data, error } = await getCardplusClient()
     .from('app_users')
-    .select('name, username')
-    .eq('role', 'REGIONAL_MANAGER')
-    .eq('is_active', true)
+    .select('id, username, role, name, is_active, store_id, created_at')
+    .order('name')
   if (error) {
-    if (error.code === '42P01' || error.code === 'PGRST205') return new Set()
-    throw new Error(`Erro ao carregar gerentes regionais: ${error.message}`)
+    if (error.code === '42P01' || error.code === 'PGRST205') return []
+    throw new Error(`Erro ao carregar contas globais do Card+: ${error.message}`)
   }
-  const names = new Set<string>()
-  for (const row of (data ?? []) as Array<{ name: string | null; username: string | null }>) {
-    const name = (row.name ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ')
-    if (name) names.add(name)
+  return ((data ?? []) as Array<{
+    id: string
+    username: string
+    role: string
+    name: string | null
+    is_active: boolean
+    store_id: string | null
+    created_at: string | null
+  }>)
+    .filter((row) => isGlobalDeskAppRole(row.role))
+    .map((row) => ({
+      id: row.id,
+      username: row.username,
+      name: (row.name ?? '').trim() || row.username,
+      role: row.role,
+      roleLabel: cardplusAccessRoleLabel(row.role),
+      storeId: row.store_id,
+      isActive: Boolean(row.is_active),
+      createdAt: row.created_at ?? new Date(0).toISOString()
+    }))
+}
+
+function uniqueCollaboratorByName(list: EmployeeListItem[], name: string): EmployeeListItem | null {
+  const key = normalizePersonName(name)
+  if (!key) return null
+  const matches = list.filter(
+    (item) => item.directorySource !== 'app_user' && normalizePersonName(item.name) === key
+  )
+  return matches.length === 1 ? matches[0] : null
+}
+
+function toGlobalEmployee(
+  account: GlobalDeskAccount,
+  matched: EmployeeListItem | null,
+  storeNames: Map<string, string>
+): EmployeeListItem {
+  const storeName = account.storeId ? (storeNames.get(account.storeId) ?? 'Unidade') : 'Rede'
+  const regional = isRegionalManagerAppRole(account.role)
+  if (matched) {
+    return {
+      ...matched,
+      cardplusRole: account.roleLabel,
+      flowRole: regional ? 'SUPERVISOR' : matched.flowRole,
+      flowRoleLabel: regional ? 'Supervisor' : 'TI',
+      storeName,
+      isGlobalDesk: true,
+      directorySource: 'collaborator'
+    }
   }
-  return names
+  return {
+    id: account.id,
+    name: account.name,
+    storeId: account.storeId ?? '',
+    storeName,
+    cardplusRole: account.roleLabel,
+    flowRole: regional ? 'SUPERVISOR' : null,
+    flowRoleLabel: regional ? 'Supervisor' : 'TI',
+    cpfMasked: null,
+    hasCpf: false,
+    isActive: account.isActive,
+    cardsThisMonth: 0,
+    createdAt: account.createdAt,
+    directorySource: 'app_user',
+    isGlobalDesk: true
+  }
+}
+
+export function mergeGlobalDeskEmployees(
+  local: EmployeeListItem[],
+  collaborators: EmployeeListItem[],
+  accounts: GlobalDeskAccount[],
+  storeNames: Map<string, string>
+): EmployeeListItem[] {
+  const byId = new Map<string, EmployeeListItem>(
+    local.map((item) => [item.id, { ...item, directorySource: item.directorySource ?? 'collaborator' }])
+  )
+  for (const account of accounts) {
+    const matched = uniqueCollaboratorByName(collaborators, account.name)
+    const next = toGlobalEmployee(account, matched, storeNames)
+    const current = byId.get(next.id)
+    byId.set(next.id, current ? { ...current, ...next } : next)
+  }
+  return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
+}
+
+export async function listEmployeeDirectory(storeId?: string | null): Promise<EmployeeListItem[]> {
+  const [local, all, accounts, stores] = await Promise.all([
+    listEmployees(storeId),
+    storeId ? listEmployees() : Promise.resolve(null),
+    listGlobalDeskAccounts(),
+    listStores()
+  ])
+  const collaborators = all ?? local
+  const storeNames = new Map(stores.map((store) => [store.id, store.name]))
+  return mergeGlobalDeskEmployees(local, collaborators, accounts, storeNames)
+}
+
+export async function assertEmployeeDeletable(id: string): Promise<void> {
+  const accounts = await listGlobalDeskAccounts()
+  if (accounts.some((account) => account.id === id)) {
+    throw new Error(
+      'Contas de Gerente Regional e TI ficam no Card+ (Contas e acessos). Só é possível excluir no FLOW se a pessoa também for colaboradora da unidade.'
+    )
+  }
 }
 
 export async function upsertStoreAccess(input: StoreAccessWriteInput): Promise<StoreAccessAccount> {

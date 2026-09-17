@@ -37,6 +37,16 @@ function suggestUsername(name: string): string {
   return slug ? `operacao.${slug}` : 'operacao'
 }
 
+function personOptionLabel(item: StorePerson): string {
+  const role = item.roleLabel?.trim()
+  const unit = item.storeName?.trim() || 'Rede'
+  const inactive = item.isActive === false ? ' · inativo' : ''
+  if (role === 'Gerente Regional' || role === 'TI' || role === 'Supervisor') {
+    return `${item.name} · ${role} · ${unit}${inactive}`
+  }
+  return `${item.name}${inactive}`
+}
+
 export function StoreDialog({
   open,
   mode,
@@ -104,7 +114,7 @@ export function StoreDialog({
   }, [mode, open, step, name, username, displayName])
 
   const personOptions = useMemo(
-    () => [{ value: '', label: 'Ninguém definido' }, ...people.map((item) => ({ value: item.id, label: item.name }))],
+    () => [{ value: '', label: 'Ninguém definido' }, ...people.map((item) => ({ value: item.id, label: personOptionLabel(item) }))],
     [people]
   )
   const supervisorOptions = useMemo(() => {
@@ -116,9 +126,11 @@ export function StoreDialog({
       { value: '', label: 'Ninguém definido' },
       ...list.map((item) => ({
         value: item.id,
-        label: item.roleLabel
-          ? `${item.name} · ${item.roleLabel}${item.storeName ? ` · ${item.storeName}` : ''}`
-          : item.name
+        label: personOptionLabel({
+          ...item,
+          roleLabel: item.roleLabel || 'Gerente Regional',
+          storeName: item.storeName || 'Rede'
+        })
       }))
     ]
   }, [supervisorPeople, store?.supervisor])
@@ -296,7 +308,7 @@ export function StoreDialog({
                   placeholder="Gerente regional"
                 />
                 <p className="text-[11px] text-[#F0EFEC]/32">
-                  No Card+ esse cargo é Gerente Regional. A lista puxa supervisores de todas as unidades.
+                  No Card+ esse cargo é Gerente Regional. A lista inclui contas globais (Gerente Regional e TI) de qualquer unidade.
                 </p>
               </label>
               <label className="grid gap-1.5">
@@ -317,7 +329,7 @@ export function StoreDialog({
                       <label
                         key={person.id}
                         className={cn(
-                          'flex h-8 items-center gap-2 rounded-[8px] px-2 text-[13px] text-[#F0EFEC]/70',
+                          'flex min-h-8 items-center gap-2 rounded-[8px] px-2 py-1.5 text-[13px] leading-tight text-[#F0EFEC]/70',
                           checked ? 'bg-white/[0.04]' : 'hover:bg-white/[0.03]'
                         )}
                       >
@@ -327,7 +339,7 @@ export function StoreDialog({
                           onChange={() => toggleManager(person.id)}
                           className="size-3.5 accent-[#F0EFEC]"
                         />
-                        {person.name}
+                        {personOptionLabel(person)}
                       </label>
                     )
                   })

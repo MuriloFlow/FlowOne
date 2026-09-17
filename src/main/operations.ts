@@ -1,18 +1,17 @@
 import { ipcMain } from 'electron'
 import log from 'electron-log'
-import { listStoreAccess, upsertStoreAccess, assertAccessUsernameAvailable } from './access'
+import { listStoreAccess, upsertStoreAccess, assertAccessUsernameAvailable, listEmployeeDirectory, assertEmployeeDeletable } from './access'
 import {
   assertEmployeeInStore,
   createEmployee,
   deleteEmployee,
   getEmployee,
-  getFinance,
   getOverview,
-  listEmployees,
   listStores,
   updateEmployee,
   upsertDailySale
 } from './cardplus'
+import { getFinanceBoard, upsertFinanceDayExtras } from './finance-days'
 import { assertCardInStore, createCard, deleteCard, getCardsBoard, transferCard, updateCard } from './cards'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
 import { deleteIdentity, getIdentity } from './identities'
@@ -24,6 +23,7 @@ import type {
   CardWriteInput,
   CreateEmployeeInput,
   DailySaleWriteInput,
+  FinanceDayWriteInput,
   EmployeeWriteInput,
   StoreAccessWriteInput,
   StoreWriteInput,
@@ -168,7 +168,7 @@ export function registerOperationsIpc(): void {
     const storeId = resolveStoreFilter(actor, body)
     const monthKey = typeof body.monthKey === 'string' ? body.monthKey : null
     log.info('[operations] finance', storeId ?? 'all', monthKey ?? 'now')
-    return memo(cacheKey(`finance:${monthKey ?? 'now'}`, storeId), 12_000, () => getFinance(storeId, monthKey))
+    return memo(cacheKey(`finance:${monthKey ?? 'now'}`, storeId), 12_000, () => getFinanceBoard(storeId, monthKey))
   })
 
   handle('operations:stores', async () => {
@@ -181,7 +181,7 @@ export function registerOperationsIpc(): void {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, payload)
     log.info('[operations] employees', storeId ?? 'all')
-    return memo(cacheKey('employees', storeId), 12_000, () => listEmployees(storeId))
+    return memo(cacheKey('employees', storeId), 12_000, () => listEmployeeDirectory(storeId))
   })
 
   handle('operations:employee', async (payload) => {
@@ -277,6 +277,7 @@ export function registerOperationsIpc(): void {
     const body = payload as Record<string, unknown>
     const storeId = resolveStoreFilter(actor, normalizeStoreId(body))
     const id = asString(body.id, 'Funcionário')
+    await assertEmployeeDeletable(id)
     await deleteEmployee(id, storeId)
     await deleteIdentity(id)
     await deleteVoucher(id)
@@ -416,6 +417,36 @@ export function registerOperationsIpc(): void {
     const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
     if (scoped && input.storeId !== scoped) throw new Error('Você só pode registrar venda da sua unidade.')
     const saved = await upsertDailySale(input)
+    bustOperationsCache()
+    return saved
+  })
+
+  handle('operations:finance-day-upsert', async (payload) => {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Dados do dia inválidos.')
+    const body = payload as Record<string, unknown>
+    const input: FinanceDayWriteInput = {
+      storeId: asString(body.storeId, 'Unidade'),
+      dateKey: asString(body.dateKey, 'Data'),
+      amountInCents: Number(body.amountInCents),
+      goalCents: body.goalCents === null || body.goalCents === undefined ? null : Number(body.goalCents),
+      lastYearCents: body.lastYearCents === null || body.lastYearCents === undefined ? null : Number(body.lastYearCents),
+      pu: body.pu === null || body.pu === undefined ? null : Number(body.pu)
+    }
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
+    if (scoped && input.storeId !== scoped) throw new Error('Você só pode registrar o dia da sua unidade.')
+    const saved = await upsertDailySale({
+      storeId: input.storeId,
+      dateKey: input.dateKey,
+      amountInCents: input.amountInCents
+    })
+    await upsertFinanceDayExtras({
+      storeId: input.storeId,
+      dateKey: input.dateKey,
+      goalCents: input.goalCents,
+      lastYearCents: input.lastYearCents,
+      pu: input.pu
+    })
     bustOperationsCache()
     return saved
   })

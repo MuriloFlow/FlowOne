@@ -48,7 +48,9 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
   }, [storeId])
 
   const filtered = useMemo(() => {
-    const scoped = storeId ? employees.filter((employee) => employee.storeId === storeId) : employees
+    const scoped = storeId
+      ? employees.filter((employee) => employee.storeId === storeId || employee.isGlobalDesk)
+      : employees
     const term = query.trim().toLowerCase()
     if (!term) return scoped
     return scoped.filter((employee) =>
@@ -65,6 +67,7 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
   }
 
   function openEdit(employee: EmployeeListItem): void {
+    if (employee.directorySource === 'app_user') return
     setEditing(employee)
     setDialogOpen(true)
   }
@@ -193,16 +196,22 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
-                        <IconButton label="Editar" onClick={() => openEdit(employee)}>
-                          <Settings className="size-3.5" strokeWidth={1.7} />
-                        </IconButton>
-                        <IconButton label="Perfil" onClick={() => onOpenProfile(employee.id)}>
-                          <UserRound className="size-3.5" strokeWidth={1.7} />
-                        </IconButton>
-                        {employee.name.trim().toUpperCase() === 'CAIXA' ? null : (
-                          <IconButton label="Excluir" onClick={() => setRemoving(employee)}>
-                            <Trash2 className="size-3.5" strokeWidth={1.7} />
-                          </IconButton>
+                        {employee.directorySource === 'app_user' ? (
+                          <span className="px-1 text-[11px] text-[#F0EFEC]/32">Conta da rede</span>
+                        ) : (
+                          <>
+                            <IconButton label="Editar" onClick={() => openEdit(employee)}>
+                              <Settings className="size-3.5" strokeWidth={1.7} />
+                            </IconButton>
+                            <IconButton label="Perfil" onClick={() => onOpenProfile(employee.id)}>
+                              <UserRound className="size-3.5" strokeWidth={1.7} />
+                            </IconButton>
+                            {employee.name.trim().toUpperCase() === 'CAIXA' ? null : (
+                              <IconButton label="Excluir" onClick={() => setRemoving(employee)}>
+                                <Trash2 className="size-3.5" strokeWidth={1.7} />
+                              </IconButton>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>

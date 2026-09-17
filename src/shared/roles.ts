@@ -77,14 +77,45 @@ export function normalizeCardplusRoleKey(value: string | null | undefined): stri
     .replace(/\s+/g, ' ')
 }
 
+export function normalizePersonName(value: string): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
+export function isRegionalManagerAppRole(role: string | null | undefined): boolean {
+  const key = normalizeCardplusRoleKey(role)
+  return key === 'regional manager' || key === 'gerente regional'
+}
+
+export function isTiAdminAppRole(role: string | null | undefined): boolean {
+  const key = normalizeCardplusRoleKey(role)
+  return key === 'ti admin' || key === 'ti' || key === 'ti dev'
+}
+
+export function isGlobalDeskAppRole(role: string | null | undefined): boolean {
+  return isRegionalManagerAppRole(role) || isTiAdminAppRole(role)
+}
+
+export function cardplusAccessRoleLabel(role: string | null | undefined): string {
+  if (isRegionalManagerAppRole(role)) return 'Gerente Regional'
+  if (isTiAdminAppRole(role)) return 'TI'
+  return role?.trim() || 'Acesso'
+}
+
 export function isGerenteRegionalRole(cardplusRole: string | null | undefined): boolean {
-  const key = normalizeCardplusRoleKey(cardplusRole)
-  return key === 'gerente regional' || key === 'regional manager'
+  return isRegionalManagerAppRole(cardplusRole)
 }
 
 export function isTiRole(cardplusRole: string | null | undefined): boolean {
-  const key = normalizeCardplusRoleKey(cardplusRole)
-  return key === 'ti' || key === 'ti admin'
+  return isTiAdminAppRole(cardplusRole)
+}
+
+export function isGlobalDeskRole(cardplusRole: string | null | undefined): boolean {
+  return isGerenteRegionalRole(cardplusRole) || isTiRole(cardplusRole)
 }
 
 export function isSupervisorSeatCandidate(

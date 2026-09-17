@@ -378,7 +378,9 @@ function toEmployeeItem(
     hasCpf: Boolean(identity?.cpfDigits),
     isActive: row.is_active,
     cardsThisMonth,
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    directorySource: 'collaborator',
+    isGlobalDesk: false
   }
 }
 
@@ -556,7 +558,10 @@ export async function getFinance(storeId?: string | null, monthKeyInput?: string
     const dateKey = `${monthKey}-${String(last - index).padStart(2, '0')}`
     return {
       dateKey,
-      saleCents: registeredDates.has(dateKey) ? (salesByDate.get(dateKey) ?? 0) : null
+      saleCents: registeredDates.has(dateKey) ? (salesByDate.get(dateKey) ?? 0) : null,
+      goalCents: null,
+      lastYearCents: null,
+      pu: null
     }
   })
 
@@ -587,6 +592,8 @@ export async function getFinance(storeId?: string | null, monthKeyInput?: string
     monthSalesGoalCents,
     remainingToMonthSalesGoalCents:
       monthSalesGoalCents === null ? null : Math.max(monthSalesGoalCents - salesThisMonthCents, 0),
+    puAverage: null,
+    puRegisteredDays: 0,
     storeCount: stores.length,
     registeredDaysThisMonth: registeredDates.size,
     months: monthKeys.map((key) => ({
@@ -596,6 +603,7 @@ export async function getFinance(storeId?: string | null, monthKeyInput?: string
       goalCents: monthGoals.get(key) ?? null
     })),
     days,
+    storeDays: [],
     recentSales
   }
 }

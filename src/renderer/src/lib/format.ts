@@ -16,6 +16,19 @@ export function parseBRLToCents(value: string): number {
   return Math.round(amount * 100)
 }
 
+export function parseOptionalBRLToCents(value: string): number | null {
+  if (!value.trim()) return null
+  return parseBRLToCents(value)
+}
+
+export function parseOptionalNumber(value: string): number | null {
+  const trimmed = value.trim().replace('%', '').replace(/\s/g, '').replace(',', '.')
+  if (!trimmed) return null
+  const amount = Number(trimmed)
+  if (!Number.isFinite(amount) || amount < 0) return null
+  return amount
+}
+
 export function formatBRLInput(cents: number): string {
   return (cents / 100).toFixed(2).replace('.', ',')
 }

@@ -32,6 +32,7 @@ export type StorePerson = {
   name: string
   storeName?: string
   roleLabel?: string
+  isActive?: boolean
 }
 
 export type StoreBoardItem = {
@@ -223,6 +224,19 @@ export type DailySaleRow = {
 export type FinanceDayRow = {
   dateKey: string
   saleCents: number | null
+  goalCents: number | null
+  lastYearCents: number | null
+  pu: number | null
+}
+
+export type FinanceStoreDayRow = {
+  dateKey: string
+  storeId: string
+  storeName: string
+  saleCents: number | null
+  goalCents: number | null
+  lastYearCents: number | null
+  pu: number | null
 }
 
 export type FinanceMetrics = {
@@ -234,10 +248,13 @@ export type FinanceMetrics = {
   salesLastMonthCents: number
   monthSalesGoalCents: number | null
   remainingToMonthSalesGoalCents: number | null
+  puAverage: number | null
+  puRegisteredDays: number
   storeCount: number
   registeredDaysThisMonth: number
   months: FinanceMonthPoint[]
   days: FinanceDayRow[]
+  storeDays: FinanceStoreDayRow[]
   recentSales: DailySaleRow[]
 }
 
@@ -245,6 +262,12 @@ export type DailySaleWriteInput = {
   storeId: string
   dateKey: string
   amountInCents: number
+}
+
+export type FinanceDayWriteInput = DailySaleWriteInput & {
+  goalCents: number | null
+  lastYearCents: number | null
+  pu: number | null
 }
 
 export type EmployeeListItem = {
@@ -260,6 +283,8 @@ export type EmployeeListItem = {
   isActive: boolean
   cardsThisMonth: number
   createdAt: string
+  directorySource?: 'collaborator' | 'app_user'
+  isGlobalDesk?: boolean
 }
 
 export type EmployeeIdentity = {
@@ -326,6 +351,7 @@ export type OperationsApi = {
   transferCard: (id: string, collaboratorId: string) => Promise<CardRecord>
   deleteCard: (id: string) => Promise<void>
   upsertDailySale: (input: DailySaleWriteInput) => Promise<DailySaleRow>
+  upsertFinanceDay: (input: FinanceDayWriteInput) => Promise<DailySaleRow>
   listVouchers: (storeId?: string | null) => Promise<import('./vouchers').VoucherBoard>
   updateVoucher: (input: {
     collaboratorId: string

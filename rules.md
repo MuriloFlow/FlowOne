@@ -853,20 +853,22 @@ O Card+ já existe em outro Supabase. FLOW não duplica cartões, metas, lojas o
 Tabelas lidas no Card+ (somente as confirmadas no projeto `teSTeSTE`):
 
 - `stores` — unidades (`id`, `name`, `created_at`, `updated_at`)
-- `collaborators` — funcionários (nome, `sub_role`, loja, status). `Gerente Regional` no Card+ = cargo FLOW Supervisor. Também existem `Gerente Geral` e `TI`.
+- `collaborators` — funcionários da loja (nome, `sub_role`, `store_id`, status). `sub_role` confirmado ao vivo: `Funcionario Operacional`, `Caixa`, `Lider de Caixa`, `Vendedor`, `Gerente`. Não há `Gerente Regional` nem `TI` nessa coluna.
 - `records` — um cartão por linha: `amount_in_cents` (limite), `amount_used_in_cents` (gasto), `activated`, `activated_later`
 - `digitacoes` — `quantity` por lançamento; soma = digitações do período
-- `daily_metrics` — `total_customers` (fluxo de clientes), `date_key`
-- `app_users` — login operacional da unidade (`username`, `password_hash` bcrypt, `role` EMPLOYEE, `store_id`)
-- `daily_goals` — metas; `date_key` `YYYY-MM-DD` = meta do dia; `month-cards:YYYY-MM` = meta mensal de cartões; `month-sales:YYYY-MM` = meta mensal de valor (centavos); `daily-sale:YYYY-MM-DD` = venda do dia registrada (centavos)
+- `daily_metrics` — `total_customers` (fluxo de clientes), `total_trocas`, `total_caixa`, `date_key`. Sem coluna de PU nem last year.
+- `app_users` — contas do Card+ (`username`, `password_hash` bcrypt, `role`, `name`, `store_id`, `is_active`, `is_primary`). Sem coluna `collaborator_id`. `role` confirmado ao vivo: `EMPLOYEE`, `MANAGER`, `REGIONAL_MANAGER`, `TI_ADMIN`, `GLOBAL_ADMIN`. `REGIONAL_MANAGER` = Gerente regional; `TI_ADMIN` = TI (Dev). Essas duas contas são globais da rede: `store_id` pode ser null ou de uma loja qualquer — o FLOW não as trata como vinculadas a uma unidade.
+- `dev_users` — login interno do Card+ (`username`, `role` `TI_ADMIN`). Não é a lista de Funcionários do FLOW.
+- `daily_goals` — metas; `date_key` `YYYY-MM-DD` = meta do dia de **cartões**; `month-cards:YYYY-MM` = meta mensal de cartões; `month-sales:YYYY-MM` = meta mensal de valor (centavos); `daily-sale:YYYY-MM-DD` = venda do dia registrada (centavos). Confirmado ao vivo: não há prefixo de meta diária de valor, last year nem PU.
+- `viradas_pu` — log por colaborador (`store_id`, `collaborator_id`, `date_key`). Não é o PU digitado na mesa financeira.
 
 Cadastro de unidade no FLOW: grava `stores.name` no Card+, cria colaborador `CAIXA` se faltar, e cria `app_users` EMPLOYEE (login/senha dos operadores). A senha nunca volta para o renderer.
 
 Aproveitamento = cartões / (digitações + cartões) da unidade e do mês. Tx. aprovação = cartões / digitações. Clientes do mês = soma de `daily_metrics.total_customers` de todos os dias do mês na unidade filtrada. Digitações = soma de `digitacoes.quantity` no mês da unidade. Linhas sem `store_id` não entram no recorte da loja. Ritmo = cartões que faltam para a meta do mês / dias úteis restantes (a partir de hoje, sem domingo, incluindo hoje), arredondado.
 
-`collaborators.sub_role` `Gerente Regional` (comparação sem maiúsculas) é o mesmo cargo FLOW `SUPERVISOR`. Na mesa da unidade, o assento Supervisor lista esses colaboradores de qualquer loja, inclusive quem já existe só no Card+. `TI` e `Gerente Geral` também aparecem em Funcionários. Cadastro de Gerente ou Gerente Geral pelo Supervisor/Diretor cria o login `app_users` (role `MANAGER`) no mesmo modal.
+`app_users.role` `REGIONAL_MANAGER` (Gerente regional) mapeia para o cargo FLOW `SUPERVISOR`. `TI_ADMIN` aparece como TI. Ambos entram na mesa de qualquer unidade: Supervisor, Gerentes da unidade e Gerente geral — mesmo com `store_id` null ou de outra loja. Se existir colaborador com o mesmo nome, o assento grava `collaborators.id`; senão grava o `app_users.id` em `flow_store_leadership.cardplus_collaborator_id` (tabela FLOW, sem coluna nova no Card+). Funcionários lista essas contas em todas as unidades; exclusão no FLOW só vale para colaborador da loja, não apaga a conta admin do Card+. Cadastro de Gerente ou Gerente Geral pelo Supervisor/Diretor cria o login `app_users` (role `MANAGER`) no mesmo modal.
 
-Financeiro replica a mesa de Cartões: todos os dias do mês, clique no dia para registrar a venda em `daily_goals` com `date_key` `daily-sale:YYYY-MM-DD` (centavos), recortado pela unidade.
+Financeiro replica a mesa de Cartões: todos os dias do mês, clique no dia para registrar. A venda do dia continua em `daily_goals` com `date_key` `daily-sale:YYYY-MM-DD` (centavos), recortada pela unidade. Meta do dia, last year e PU **não existem** no Card+ — ficam na tabela FLOW `flow_finance_days` (`cardplus_store_id`, `date_key` `YYYY-MM-DD`, `goal_cents`, `last_year_cents`, `pu`). SQL: `supabase/migrations/0007_flow_finance_days.sql`. Média do PU do mês = média dos dias que têm PU preenchido (zero explícito entra; dia vazio não puxa a média). Exibição do PU no mesmo padrão de aproveitamento (`30%`), com hint de mix de peças no caixa.
 
 A conexão Card+ fica no processo principal do Electron (`CARDPLUS_*` no `.env.local`). O renderer nunca recebe a service role.
 
@@ -893,7 +895,9 @@ Tabela `flow_employee_vouchers`: vale-almoço e vale-transporte em centavos, sta
 
 Tabela `flow_store_profiles`: código interno, observação e flag de atenção da unidade. O Card+ `stores` só tem `id`, `name`, `created_at`, `updated_at` — FLOW não inventa coluna lá.
 
-Tabela `flow_store_leadership`: assentos `GERENTE` (vários), `GERENTE_GERAL`, `SUPERVISOR` e `LIDER_OPERACAO` (um de cada) por `cardplus_store_id`. Vínculo com `collaborators.id`. Cadastro/renomeio da loja escreve só `name` no Card+. Auditoria `store.create` / `store.update`.
+Tabela `flow_store_leadership`: assentos `GERENTE` (vários), `GERENTE_GERAL`, `SUPERVISOR` e `LIDER_OPERACAO` (um de cada) por `cardplus_store_id`. O uuid em `cardplus_collaborator_id` é `collaborators.id` quando houver vínculo por nome; para Gerente Regional / TI só em `app_users`, é o id dessa conta. Sem FK física. Cadastro/renomeio da loja escreve só `name` no Card+. Auditoria `store.create` / `store.update`.
+
+Tabela `flow_finance_days`: meta diária de valor, last year e PU por unidade/data. Sem coluna nova no Card+. Venda do dia permanece em `daily-sale`. Auditoria `finance.day.upsert`.
 
 Kobbi: assistente no launcher. A chave OpenAI (`OPENAI_*`) fica só no processo principal. O modelo usa o recorte já existente do painel (visão geral, financeiro, funcionários, vales, unidades) — sem inventar tabela do Card+.
 

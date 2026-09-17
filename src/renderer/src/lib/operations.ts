@@ -33,6 +33,7 @@ export function operations(): OperationsApi {
     transferCard: (id, collaboratorId) => api.transferCard(id, collaboratorId),
     deleteCard: (id) => api.deleteCard(id),
     upsertDailySale: (input) => api.upsertDailySale(input),
+    upsertFinanceDay: (input) => api.upsertFinanceDay(input),
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
     updateVoucher: (input) => api.updateVoucher(input)
   }

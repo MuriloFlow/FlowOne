@@ -1,12 +1,16 @@
 import log from 'electron-log'
-import { assertAccessUsernameAvailable, createOperationalAccess, listOperationalStoreIds, listRegionalManagerNames } from './access'
+import {
+  assertAccessUsernameAvailable,
+  createOperationalAccess,
+  listEmployeeDirectory,
+  listOperationalStoreIds
+} from './access'
 import {
   DAILY_SALE_PREFIX,
   MONTH_CARDS_PREFIX,
   MONTH_SALES_PREFIX,
   createStore as createCardplusStore,
   ensureCaixaCollaborator,
-  listEmployees,
   listGoalsByPrefix,
   listStores,
   renameStore as renameCardplusStore,
@@ -22,7 +26,7 @@ import type {
   StoreWriteInput
 } from '../shared/operations'
 import { STORE_SEATS } from '../shared/operations'
-import { isSupervisorSeatCandidate } from '../shared/roles'
+import { isGlobalDeskRole, isSupervisorSeatCandidate } from '../shared/roles'
 
 type ProfileRow = {
   cardplus_store_id: string
@@ -105,12 +109,29 @@ function salesForStore(
   return total
 }
 
-function asPerson(item: { id: string; name: string; storeName: string; flowRoleLabel: string }): StorePerson {
+function asPerson(item: { id: string; name: string; storeName: string; flowRoleLabel: string; isActive?: boolean }): StorePerson {
   return {
     id: item.id,
     name: item.name,
     storeName: item.storeName,
-    roleLabel: item.flowRoleLabel
+    roleLabel: item.flowRoleLabel,
+    isActive: item.isActive
+  }
+}
+
+function asGlobalDeskPerson(item: {
+  id: string
+  name: string
+  storeName: string
+  cardplusRole: string
+  isActive: boolean
+}): StorePerson {
+  return {
+    id: item.id,
+    name: item.name,
+    storeName: item.storeName?.trim() ? item.storeName : 'Rede',
+    roleLabel: isGlobalDeskRole(item.cardplusRole) ? item.cardplusRole : 'Gerente Regional',
+    isActive: item.isActive
   }
 }
 
@@ -125,24 +146,13 @@ function mergePeople(list: StorePerson[]): StorePerson[] {
   return next.sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
 }
 
-function normalizePersonName(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-}
-
 export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard> {
   const today = dateKeyInSaoPaulo()
   const monthKey = monthKeyFromDateKey(today)
-  const [stores, employees, leadershipPool, regionalNames, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores] =
+  const [stores, directory, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores] =
     await Promise.all([
       listStores(storeId),
-      listEmployees(storeId),
-      listEmployees(),
-      listRegionalManagerNames(),
+      listEmployeeDirectory(),
       storeMonthCardsByStore(storeId),
       listGoalsByPrefix(MONTH_CARDS_PREFIX, storeId),
       listGoalsByPrefix(MONTH_SALES_PREFIX, storeId),
@@ -152,22 +162,29 @@ export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard
       listOperationalStoreIds()
     ])
 
-  const names = new Map(leadershipPool.map((item) => [item.id, item.name]))
-  const localPeople = employees
-    .filter((item) => item.isActive && item.name.trim().toUpperCase() !== 'CAIXA')
+  const names = new Map(directory.map((item) => [item.id, item.name]))
+  const localPeople = directory
+    .filter(
+      (item) =>
+        item.directorySource !== 'app_user' &&
+        item.isActive &&
+        item.name.trim().toUpperCase() !== 'CAIXA' &&
+        (!storeId || item.storeId === storeId)
+    )
     .map(asPerson)
-  const supervisorPeople = mergePeople(
-    leadershipPool
+  const globalPeople = directory.filter((item) => item.isGlobalDesk).map(asGlobalDeskPerson)
+  const supervisorPeople = mergePeople([
+    ...globalPeople,
+    ...directory
       .filter(
         (item) =>
           item.isActive &&
           item.name.trim().toUpperCase() !== 'CAIXA' &&
-          (isSupervisorSeatCandidate(item.flowRole, item.cardplusRole) ||
-            regionalNames.has(normalizePersonName(item.name)))
+          isSupervisorSeatCandidate(item.flowRole, item.cardplusRole)
       )
       .map(asPerson)
-  )
-  const people = mergePeople(localPeople)
+  ])
+  const people = mergePeople([...globalPeople, ...localPeople])
 
   const board = stores.map((store) => {
     const profile = profiles.get(store.id)
@@ -188,8 +205,12 @@ export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard
       storeSeats.find((row) => row.seat === 'LIDER_OPERACAO')?.cardplus_collaborator_id ?? null,
       names
     )
-    const employeeCount = employees.filter(
-      (item) => item.storeId === store.id && item.isActive && item.name.trim().toUpperCase() !== 'CAIXA'
+    const employeeCount = directory.filter(
+      (item) =>
+        item.directorySource !== 'app_user' &&
+        item.storeId === store.id &&
+        item.isActive &&
+        item.name.trim().toUpperCase() !== 'CAIXA'
     ).length
     const missingLeadership = !generalManager || !supervisor || managers.length === 0
     return {
@@ -302,7 +323,7 @@ async function audit(action: string, storeId: string, metadata: Record<string, u
 }
 
 async function allowedPeople(): Promise<Set<string>> {
-  const employees = await listEmployees()
+  const employees = await listEmployeeDirectory()
   return new Set(
     employees.filter((item) => item.name.trim().toUpperCase() !== 'CAIXA').map((item) => item.id)
   )

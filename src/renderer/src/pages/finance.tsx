@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertTriangle, ArrowLeft, Banknote, ChevronRight, Target, TrendingUp } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Banknote, ChevronRight, History, Percent, Target, TrendingUp } from 'lucide-react'
 import { EmptyState } from '@/components/empty-state'
 import { MetricCard } from '@/components/metric-card'
 import { MonthSwitcher } from '@/components/month-switcher'
@@ -17,21 +17,28 @@ import {
   formatBRLInput,
   formatCount,
   formatDateKey,
+  formatPercent,
   isSunday,
   parseBRLToCents,
+  parseOptionalBRLToCents,
+  parseOptionalNumber,
   percentDelta,
   weekdayLabel,
   weekdayLong
 } from '@/lib/format'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
-import type { FinanceDayRow, FinanceMetrics, StoreOption } from '../../../shared/operations'
+import type { FinanceDayRow, FinanceMetrics, FinanceStoreDayRow, StoreOption } from '../../../shared/operations'
 
 type FinancePageProps = {
   storeId?: string | null
 }
 
 const ease = [0.22, 1, 0.36, 1] as const
+
+function dayIsEmpty(day: FinanceDayRow): boolean {
+  return day.saleCents === null && day.goalCents === null && day.lastYearCents === null && day.pu === null
+}
 
 export function FinancePage({ storeId = null }: FinancePageProps) {
   const today = currentDateKey()
@@ -70,9 +77,9 @@ export function FinancePage({ storeId = null }: FinancePageProps) {
   }, [storeId, monthKey])
 
   const dayRow = data?.days.find((item) => item.dateKey === selectedDate) ?? null
-  const daySales = useMemo(() => {
+  const dayStoreRows = useMemo(() => {
     if (!selectedDate || !data) return []
-    return data.recentSales.filter((sale) => sale.dateKey === selectedDate)
+    return data.storeDays.filter((row) => row.dateKey === selectedDate)
   }, [data, selectedDate])
 
   async function reload(): Promise<void> {
@@ -108,10 +115,8 @@ export function FinancePage({ storeId = null }: FinancePageProps) {
           >
             <DayDesk
               day={dayRow}
-              sales={daySales}
+              storeRows={dayStoreRows}
               storeName={data?.storeName ?? null}
-              monthGoalCents={data?.monthSalesGoalCents ?? null}
-              remainingCents={data?.remainingToMonthSalesGoalCents ?? null}
               onBack={() => setSelectedDate(null)}
               onRegister={() => setDialogOpen(true)}
             />
@@ -135,12 +140,12 @@ export function FinancePage({ storeId = null }: FinancePageProps) {
         ) : null}
       </AnimatePresence>
 
-      <SaleDialog
+      <DayDialog
         open={dialogOpen}
         dateKey={selectedDate}
         stores={stores}
+        storeDays={data?.storeDays ?? []}
         defaultStoreId={storeId}
-        initialCents={dayRow?.saleCents ?? 0}
         onClose={() => setDialogOpen(false)}
         onSaved={() => {
           void reload()
@@ -170,6 +175,10 @@ function MonthDesk({
       : data.remainingToMonthSalesGoalCents === 0
         ? 'Meta de valor do mês atingida'
         : `Faltam ${formatBRLFromCents(data.remainingToMonthSalesGoalCents ?? 0)} para a meta`
+  const puHint =
+    data.puAverage === null
+      ? 'Nenhum PU registrado neste mês'
+      : `Média de ${formatCount(data.puRegisteredDays)} ${data.puRegisteredDays === 1 ? 'dia' : 'dias'} com PU`
 
   return (
     <>
@@ -177,12 +186,12 @@ function MonthDesk({
         <h1 className="text-[22px] text-[#F0EFEC]/88">Financeiro</h1>
         <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
           {data.storeName
-            ? `Vendas e meta de valor de ${data.storeName}. Clique no dia para registrar.`
-            : 'Clique no dia para ver e registrar a venda daquela data no Card+.'}
+            ? `Venda, meta do dia, last year e PU de ${data.storeName}. Clique no dia para registrar.`
+            : 'Clique no dia para ver e registrar venda, meta, last year e PU daquela data.'}
         </p>
       </header>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <MetricCard
           label="Venda do dia"
           value={data.saleTodayCents ?? 0}
@@ -220,6 +229,14 @@ function MonthDesk({
             )
           }
         />
+        <MetricCard
+          percent
+          label="Média do PU"
+          value={data.puAverage ?? 0}
+          empty={data.puAverage === null}
+          hint={puHint}
+          icon={<Percent className="size-4" strokeWidth={1.7} />}
+        />
       </div>
 
       <div className="mt-3 grid shrink-0 grid-cols-[minmax(0,1fr)_280px] items-stretch gap-3">
@@ -247,10 +264,14 @@ function MonthDesk({
 
         <aside className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
           <h2 className="text-[15px] text-[#F0EFEC]/82">Mês atual</h2>
-          <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Resumo do valor cadastrado no Card+.</p>
+          <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Resumo do valor cadastrado no Card+ e do PU no FLOW.</p>
           <div className="mt-5 space-y-4">
             <AsideRow label="Unidades" value={formatCount(data.storeCount)} />
             <AsideRow label="Dias com venda" value={formatCount(data.registeredDaysThisMonth)} />
+            <AsideRow
+              label="Média do PU"
+              value={data.puAverage === null ? null : formatPercent(data.puAverage)}
+            />
             <AsideRow
               label="Meta restante"
               value={
@@ -267,7 +288,7 @@ function MonthDesk({
         <div className="flex items-center justify-between px-5 py-4">
           <div>
             <h2 className="text-[15px] text-[#F0EFEC]/82">Dias do mês</h2>
-            <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Todos os dias, mesmo com venda zerada.</p>
+            <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Todos os dias, com venda, meta, last year e PU.</p>
           </div>
           <MonthSwitcher value={monthKey} onChange={onMonthKey} />
         </div>
@@ -276,6 +297,9 @@ function MonthDesk({
             <tr className="border-t border-white/[0.04]">
               <th className="px-5 py-2.5 font-medium">Dia</th>
               <th className="px-3 py-2.5 font-medium">Venda</th>
+              <th className="px-3 py-2.5 font-medium">Meta</th>
+              <th className="px-3 py-2.5 font-medium">Last Year</th>
+              <th className="px-3 py-2.5 font-medium">PU</th>
               <th className="px-5 py-2.5 font-medium" />
             </tr>
           </thead>
@@ -305,11 +329,16 @@ function MonthDesk({
                     </p>
                   </td>
                   <td className="px-3 py-3">
-                    {day.saleCents === null ? (
-                      <span className="text-[#F0EFEC]/28">—</span>
-                    ) : (
-                      formatBRLFromCents(day.saleCents)
-                    )}
+                    <MoneyCell cents={day.saleCents} />
+                  </td>
+                  <td className="px-3 py-3">
+                    <MoneyCell cents={day.goalCents} />
+                  </td>
+                  <td className="px-3 py-3">
+                    <MoneyCell cents={day.lastYearCents} />
+                  </td>
+                  <td className="px-3 py-3">
+                    <PuCell pu={day.pu} />
                   </td>
                   <td className="px-5 py-3 text-right">
                     <ChevronRight className="ml-auto size-3.5 text-[#F0EFEC]/22" />
@@ -326,22 +355,18 @@ function MonthDesk({
 
 function DayDesk({
   day,
-  sales,
+  storeRows,
   storeName,
-  monthGoalCents,
-  remainingCents,
   onBack,
   onRegister
 }: {
   day: FinanceDayRow
-  sales: FinanceMetrics['recentSales']
+  storeRows: FinanceStoreDayRow[]
   storeName: string | null
-  monthGoalCents: number | null
-  remainingCents: number | null
   onBack: () => void
   onRegister: () => void
 }) {
-  const empty = day.saleCents === null
+  const empty = dayIsEmpty(day)
 
   return (
     <>
@@ -364,32 +389,48 @@ function DayDesk({
           onClick={onRegister}
           className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
         >
-          {empty ? 'Registrar venda' : 'Atualizar venda'}
+          {empty ? 'Registrar o dia' : 'Atualizar o dia'}
         </button>
       </header>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <MetricCard
           label="Venda do dia"
           value={day.saleCents ?? 0}
           money
-          empty={empty}
-          hint={empty ? 'Nenhuma venda deste dia no Card+' : storeName ? `Registrada em ${storeName}` : 'Registrada no Card+'}
+          empty={day.saleCents === null}
+          hint={
+            day.saleCents === null
+              ? 'Nenhuma venda deste dia no Card+'
+              : storeName
+                ? `Registrada em ${storeName}`
+                : 'Registrada no Card+'
+          }
           icon={<Banknote className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
-          label="Registros"
-          value={sales.length}
-          hint={sales.length === 1 ? 'Uma unidade neste dia' : 'Unidades com venda neste dia'}
-          icon={<Banknote className="size-4" strokeWidth={1.7} />}
-        />
-        <MetricCard
-          label="Meta restante no mês"
-          value={remainingCents ?? 0}
+          label="Meta do dia"
+          value={day.goalCents ?? 0}
           money
-          empty={monthGoalCents === null}
-          hint={monthGoalCents === null ? 'Sem meta de valor no Card+' : 'Para a meta mensal de valor'}
+          empty={day.goalCents === null}
+          hint={day.goalCents === null ? 'Sem meta de valor neste dia' : 'Meta de venda desta data'}
           icon={<Target className="size-4" strokeWidth={1.7} />}
+        />
+        <MetricCard
+          label="Last Year"
+          value={day.lastYearCents ?? 0}
+          money
+          empty={day.lastYearCents === null}
+          hint={day.lastYearCents === null ? 'Sem last year neste dia' : 'Venda da mesma data no ano anterior'}
+          icon={<History className="size-4" strokeWidth={1.7} />}
+        />
+        <MetricCard
+          percent
+          label="PU"
+          value={day.pu ?? 0}
+          empty={day.pu === null}
+          hint={day.pu === null ? 'Sem PU neste dia' : 'PU / mix de peças no caixa'}
+          icon={<Percent className="size-4" strokeWidth={1.7} />}
         />
       </div>
 
@@ -397,9 +438,9 @@ function DayDesk({
         {empty ? (
           <EmptyState
             icon={<Banknote className="size-6" strokeWidth={1.6} />}
-            title="Nenhuma venda neste dia"
-            description="Registre o valor vendido. Ele entra no Card+ como venda do dia desta unidade."
-            actionLabel="Registrar venda do dia"
+            title="Nada registrado neste dia"
+            description="Registre a venda, a meta do dia, o last year e o PU. A venda entra no Card+; meta, last year e PU ficam no FLOW."
+            actionLabel="Registrar o dia"
             onAction={onRegister}
           />
         ) : (
@@ -408,14 +449,28 @@ function DayDesk({
               <thead className="sticky top-0 bg-[#1A1A1A] text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
                 <tr className="border-y border-white/[0.04]">
                   <th className="px-5 py-2.5 font-medium">Unidade</th>
-                  <th className="px-5 py-2.5 font-medium">Valor</th>
+                  <th className="px-3 py-2.5 font-medium">Venda</th>
+                  <th className="px-3 py-2.5 font-medium">Meta</th>
+                  <th className="px-3 py-2.5 font-medium">Last Year</th>
+                  <th className="px-5 py-2.5 font-medium">PU</th>
                 </tr>
               </thead>
               <tbody>
-                {sales.map((sale) => (
-                  <tr key={`${sale.dateKey}:${sale.storeId}`} className="border-t border-white/[0.03] text-[#F0EFEC]/68">
-                    <td className="px-5 py-3">{sale.storeName}</td>
-                    <td className="px-5 py-3">{formatBRLFromCents(sale.amountInCents)}</td>
+                {storeRows.map((row) => (
+                  <tr key={`${row.dateKey}:${row.storeId}`} className="border-t border-white/[0.03] text-[#F0EFEC]/68">
+                    <td className="px-5 py-3">{row.storeName}</td>
+                    <td className="px-3 py-3">
+                      <MoneyCell cents={row.saleCents} />
+                    </td>
+                    <td className="px-3 py-3">
+                      <MoneyCell cents={row.goalCents} />
+                    </td>
+                    <td className="px-3 py-3">
+                      <MoneyCell cents={row.lastYearCents} />
+                    </td>
+                    <td className="px-5 py-3">
+                      <PuCell pu={row.pu} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -427,25 +482,28 @@ function DayDesk({
   )
 }
 
-function SaleDialog({
+function DayDialog({
   open,
   dateKey,
   stores,
+  storeDays,
   defaultStoreId,
-  initialCents,
   onClose,
   onSaved
 }: {
   open: boolean
   dateKey: string | null
   stores: StoreOption[]
+  storeDays: FinanceStoreDayRow[]
   defaultStoreId?: string | null
-  initialCents: number
   onClose: () => void
   onSaved: () => void
 }) {
   const [storeId, setStoreId] = useState('')
   const [amountText, setAmountText] = useState('')
+  const [goalText, setGoalText] = useState('')
+  const [lastYearText, setLastYearText] = useState('')
+  const [puText, setPuText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -454,18 +512,34 @@ function SaleDialog({
     setError(null)
     setSaving(false)
     setStoreId(defaultStoreId || stores[0]?.id || '')
-    setAmountText(initialCents > 0 ? formatBRLInput(initialCents) : '')
-  }, [open, defaultStoreId, stores, initialCents])
+  }, [open, defaultStoreId, stores])
+
+  useEffect(() => {
+    if (!open || !dateKey) return
+    const row = storeDays.find((item) => item.dateKey === dateKey && item.storeId === storeId)
+    setAmountText(row?.saleCents != null && row.saleCents > 0 ? formatBRLInput(row.saleCents) : '')
+    setGoalText(row?.goalCents != null ? formatBRLInput(row.goalCents) : '')
+    setLastYearText(row?.lastYearCents != null ? formatBRLInput(row.lastYearCents) : '')
+    setPuText(row?.pu != null ? String(row.pu).replace('.', ',') : '')
+  }, [open, dateKey, storeId, storeDays])
 
   async function submit(): Promise<void> {
     if (!dateKey || !storeId) return
+    const pu = parseOptionalNumber(puText)
+    if (puText.trim() && pu === null) {
+      setError('PU inválido.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
-      await operations().upsertDailySale({
+      await operations().upsertFinanceDay({
         storeId,
         dateKey,
-        amountInCents: parseBRLToCents(amountText)
+        amountInCents: parseBRLToCents(amountText),
+        goalCents: parseOptionalBRLToCents(goalText),
+        lastYearCents: parseOptionalBRLToCents(lastYearText),
+        pu
       })
       onSaved()
       onClose()
@@ -479,8 +553,8 @@ function SaleDialog({
   return (
     <Dialog
       open={open}
-      title="Registrar venda do dia"
-      description="O valor entra no Card+ como venda do dia desta unidade, em centavos."
+      title="Registrar o dia"
+      description="A venda entra no Card+. Meta do dia, last year e PU ficam no FLOW desta unidade."
       onClose={onClose}
     >
       <div className="space-y-3.5 px-5 pb-5">
@@ -504,9 +578,35 @@ function SaleDialog({
             className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
           />
         </div>
-        {dateKey ? (
-          <p className="text-[12px] text-[#F0EFEC]/35">{weekdayLong(dateKey)}</p>
-        ) : null}
+        <div className="space-y-1.5">
+          <Label className="text-[12px] text-[#F0EFEC]/45">Meta do dia</Label>
+          <Input
+            value={goalText}
+            onChange={(event) => setGoalText(event.target.value)}
+            placeholder="0,00"
+            className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-[12px] text-[#F0EFEC]/45">Last Year</Label>
+          <Input
+            value={lastYearText}
+            onChange={(event) => setLastYearText(event.target.value)}
+            placeholder="0,00"
+            className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-[12px] text-[#F0EFEC]/45">PU</Label>
+          <Input
+            value={puText}
+            onChange={(event) => setPuText(event.target.value)}
+            placeholder="30"
+            className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
+          />
+          <p className="text-[12px] text-[#F0EFEC]/35">PU / mix de peças no caixa. Ex.: 30.</p>
+        </div>
+        {dateKey ? <p className="text-[12px] text-[#F0EFEC]/35">{weekdayLong(dateKey)}</p> : null}
         {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
         <div className="flex justify-end gap-2 pt-1">
           <button
@@ -530,6 +630,16 @@ function SaleDialog({
   )
 }
 
+function MoneyCell({ cents }: { cents: number | null }) {
+  if (cents === null) return <span className="text-[#F0EFEC]/28">—</span>
+  return <>{formatBRLFromCents(cents)}</>
+}
+
+function PuCell({ pu }: { pu: number | null }) {
+  if (pu === null) return <span className="text-[#F0EFEC]/28">—</span>
+  return <>{formatPercent(pu)}</>
+}
+
 function AsideRow({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex items-center justify-between border-b border-white/[0.04] pb-3 last:border-0">
@@ -546,7 +656,8 @@ function AsideRow({ label, value }: { label: string; value: string | null }) {
 function FinanceSkeleton() {
   return (
     <div className="grid flex-1 grid-rows-[auto_1fr] gap-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
+        <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
