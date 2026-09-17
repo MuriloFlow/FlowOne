@@ -8,7 +8,8 @@ export function operations(): OperationsApi {
   const api = window.flow.operations
   return {
     getOverview: (storeId) => api.getOverview(storeId === undefined ? getCurrentStoreId() : storeId),
-    getFinance: (storeId) => api.getFinance(storeId === undefined ? getCurrentStoreId() : storeId),
+    getFinance: (storeId, monthKey) =>
+      api.getFinance(storeId === undefined ? getCurrentStoreId() : storeId, monthKey),
     listStores: () => api.listStores(),
     listEmployees: (storeId) => api.listEmployees(storeId === undefined ? getCurrentStoreId() : storeId),
     getEmployee: (id, storeId) =>
@@ -31,6 +32,7 @@ export function operations(): OperationsApi {
     updateCard: (input) => api.updateCard(input),
     transferCard: (id, collaboratorId) => api.transferCard(id, collaboratorId),
     deleteCard: (id) => api.deleteCard(id),
+    upsertDailySale: (input) => api.upsertDailySale(input),
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
     updateVoucher: (input) => api.updateVoucher(input)
   }

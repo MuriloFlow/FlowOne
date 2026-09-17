@@ -33,19 +33,27 @@ function toRecord(row: IdentityRow): IdentityRecord {
 }
 
 export async function listIdentities(): Promise<Map<string, IdentityRecord>> {
-  const { data, error } = await getFlowAdminClient()
-    .from('flow_employee_identities')
-    .select('cardplus_collaborator_id, cpf_digits, flow_role')
+  const rows: IdentityRow[] = []
+  const pageSize = 1000
+  for (let from = 0; from < 80_000; from += pageSize) {
+    const { data, error } = await getFlowAdminClient()
+      .from('flow_employee_identities')
+      .select('cardplus_collaborator_id, cpf_digits, flow_role')
+      .range(from, from + pageSize - 1)
 
-  if (error) {
-    if (isMissingTable(error)) {
-      log.warn('[identities] tabela flow_employee_identities ainda não existe')
-      return new Map()
+    if (error) {
+      if (isMissingTable(error)) {
+        log.warn('[identities] tabela flow_employee_identities ainda não existe')
+        return new Map()
+      }
+      throw new Error(`Erro ao carregar CPF dos funcionários: ${error.message}`)
     }
-    throw new Error(`Erro ao carregar CPF dos funcionários: ${error.message}`)
+    const page = (data ?? []) as IdentityRow[]
+    rows.push(...page)
+    if (page.length < pageSize) break
   }
 
-  return new Map(((data ?? []) as IdentityRow[]).map((row) => [row.cardplus_collaborator_id, toRecord(row)]))
+  return new Map(rows.map((row) => [row.cardplus_collaborator_id, toRecord(row)]))
 }
 
 export async function getIdentity(collaboratorId: string): Promise<IdentityRecord | null> {

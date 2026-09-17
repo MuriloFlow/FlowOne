@@ -5,10 +5,17 @@ export const CARDPLUS_SUB_ROLES = [
   'VM',
   'Vendedor',
   'Gerente',
-  'Gerente Regional'
+  'Gerente Geral',
+  'Gerente Regional',
+  'TI'
 ] as const
 
 export type CardPlusSubRole = (typeof CARDPLUS_SUB_ROLES)[number]
+
+export function isManagerLoginSubRole(role: string | null | undefined): boolean {
+  const key = (role ?? '').trim().toLowerCase()
+  return key === 'gerente' || key === 'gerente geral'
+}
 
 export type StoreOption = {
   id: string
@@ -94,6 +101,7 @@ export type StoreAccessWriteInput = {
   displayName?: string
   password?: string
   isActive?: boolean
+  role?: 'EMPLOYEE' | 'MANAGER'
 }
 
 export type MonthPoint = {
@@ -212,7 +220,15 @@ export type DailySaleRow = {
   amountInCents: number
 }
 
+export type FinanceDayRow = {
+  dateKey: string
+  saleCents: number | null
+}
+
 export type FinanceMetrics = {
+  monthKey: string
+  storeId: string | null
+  storeName: string | null
   saleTodayCents: number | null
   salesThisMonthCents: number
   salesLastMonthCents: number
@@ -221,7 +237,14 @@ export type FinanceMetrics = {
   storeCount: number
   registeredDaysThisMonth: number
   months: FinanceMonthPoint[]
+  days: FinanceDayRow[]
   recentSales: DailySaleRow[]
+}
+
+export type DailySaleWriteInput = {
+  storeId: string
+  dateKey: string
+  amountInCents: number
 }
 
 export type EmployeeListItem = {
@@ -270,7 +293,11 @@ export type EmployeeWriteInput = {
   isActive: boolean
 }
 
-export type CreateEmployeeInput = Omit<EmployeeWriteInput, 'isActive'>
+export type CreateEmployeeInput = Omit<EmployeeWriteInput, 'isActive'> & {
+  accessUsername?: string
+  accessPassword?: string
+  accessDisplayName?: string
+}
 
 export type UpdateEmployeeInput = EmployeeWriteInput & {
   id: string
@@ -278,7 +305,7 @@ export type UpdateEmployeeInput = EmployeeWriteInput & {
 
 export type OperationsApi = {
   getOverview: (storeId?: string | null) => Promise<OverviewMetrics>
-  getFinance: (storeId?: string | null) => Promise<FinanceMetrics>
+  getFinance: (storeId?: string | null, monthKey?: string | null) => Promise<FinanceMetrics>
   listStores: () => Promise<StoreOption[]>
   listEmployees: (storeId?: string | null) => Promise<EmployeeListItem[]>
   getEmployee: (id: string, storeId?: string | null) => Promise<EmployeeProfile>
@@ -298,6 +325,7 @@ export type OperationsApi = {
   updateCard: (input: CardWriteInput) => Promise<CardRecord>
   transferCard: (id: string, collaboratorId: string) => Promise<CardRecord>
   deleteCard: (id: string) => Promise<void>
+  upsertDailySale: (input: DailySaleWriteInput) => Promise<DailySaleRow>
   listVouchers: (storeId?: string | null) => Promise<import('./vouchers').VoucherBoard>
   updateVoucher: (input: {
     collaboratorId: string

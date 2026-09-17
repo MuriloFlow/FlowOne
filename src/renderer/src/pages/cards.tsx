@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, ArrowRightLeft, ChevronRight, CreditCard, Pencil, Trash2 } from 'lucide-react'
 import { CardDialog } from '@/components/card-dialog'
+import { EmptyState } from '@/components/empty-state'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MetricCard } from '@/components/metric-card'
@@ -489,16 +490,13 @@ function DayDesk({
           </span>
         </div>
         {records.length === 0 ? (
-          <div className="px-5 pb-6">
-            <p className="text-[13px] text-[#F0EFEC]/38">Nenhum cartão neste dia.</p>
-            <button
-              type="button"
-              onClick={onCreate}
-              className="mt-3 h-8 rounded-[8px] bg-white/[0.08] px-3 text-[13px] text-[#F0EFEC]/75"
-            >
-              Registrar o primeiro
-            </button>
-          </div>
+          <EmptyState
+            icon={<CreditCard className="size-6" strokeWidth={1.6} />}
+            title="Nenhum cartão neste dia"
+            description="Nada registrado nesta data. O primeiro cartão entra direto no Card+."
+            actionLabel="Registrar o primeiro"
+            onAction={onCreate}
+          />
         ) : (
           <div className="overflow-auto">
             <table className="w-full text-left text-[13px]">
@@ -559,10 +557,10 @@ function DayDesk({
 
 function MiniStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <article className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-4 py-3">
+    <article className="flex h-full min-h-[92px] flex-col rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-4 py-3">
       <p className="text-[12px] text-[#F0EFEC]/38">{label}</p>
       <p className="mt-1 text-[18px] tracking-tight text-[#F0EFEC]/86">{value}</p>
-      {hint ? <p className="mt-1 text-[11px] text-[#F0EFEC]/30">{hint}</p> : null}
+      {hint ? <p className="mt-auto pt-2 text-[11px] leading-snug text-[#F0EFEC]/30">{hint}</p> : null}
     </article>
   )
 }

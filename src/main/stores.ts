@@ -1,5 +1,5 @@
 import log from 'electron-log'
-import { assertAccessUsernameAvailable, createOperationalAccess, listOperationalStoreIds } from './access'
+import { assertAccessUsernameAvailable, createOperationalAccess, listOperationalStoreIds, listRegionalManagerNames } from './access'
 import {
   DAILY_SALE_PREFIX,
   MONTH_CARDS_PREFIX,
@@ -125,14 +125,24 @@ function mergePeople(list: StorePerson[]): StorePerson[] {
   return next.sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
 }
 
+function normalizePersonName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
 export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard> {
   const today = dateKeyInSaoPaulo()
   const monthKey = monthKeyFromDateKey(today)
-  const [stores, employees, leadershipPool, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores] =
+  const [stores, employees, leadershipPool, regionalNames, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores] =
     await Promise.all([
       listStores(storeId),
       listEmployees(storeId),
-      storeId ? listEmployees() : Promise.resolve(null),
+      listEmployees(),
+      listRegionalManagerNames(),
       storeMonthCardsByStore(storeId),
       listGoalsByPrefix(MONTH_CARDS_PREFIX, storeId),
       listGoalsByPrefix(MONTH_SALES_PREFIX, storeId),
@@ -142,17 +152,18 @@ export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard
       listOperationalStoreIds()
     ])
 
-  const names = new Map((leadershipPool ?? employees).map((item) => [item.id, item.name]))
+  const names = new Map(leadershipPool.map((item) => [item.id, item.name]))
   const localPeople = employees
     .filter((item) => item.isActive && item.name.trim().toUpperCase() !== 'CAIXA')
     .map(asPerson)
   const supervisorPeople = mergePeople(
-    (leadershipPool ?? employees)
+    leadershipPool
       .filter(
         (item) =>
           item.isActive &&
           item.name.trim().toUpperCase() !== 'CAIXA' &&
-          isSupervisorSeatCandidate(item.flowRole, item.cardplusRole)
+          (isSupervisorSeatCandidate(item.flowRole, item.cardplusRole) ||
+            regionalNames.has(normalizePersonName(item.name)))
       )
       .map(asPerson)
   )

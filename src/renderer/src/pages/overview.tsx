@@ -105,7 +105,11 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
               label="Aproveitamento"
               value={data.aproveitamentoPct ?? 0}
               empty={data.aproveitamentoPct === null}
-              hint={`${formatCount(data.digitacoesMonth)} digitações · ${formatCount(data.clientesMonth)} clientes`}
+              hint={
+                data.customerFlowMonth === null
+                  ? `${formatCount(data.digitacoesMonth)} digitações · sem clientes no Card+`
+                  : `${formatCount(data.digitacoesMonth)} digitações · ${formatCount(data.clientesMonth)} clientes`
+              }
               icon={<Percent className="size-4" strokeWidth={1.7} />}
             />
             <MetricCard
@@ -113,7 +117,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
               label="Fluxo de clientes"
               value={data.customerFlowMonth ?? 0}
               empty={data.customerFlowMonth === null}
-              hint="Soma do mês no Card+"
+              hint={data.storeName ? `Soma do mês em ${data.storeName}` : 'Soma do mês no Card+'}
               icon={<Users className="size-4" strokeWidth={1.7} />}
             />
             <MetricCard

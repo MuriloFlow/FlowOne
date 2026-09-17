@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import log from 'electron-log'
-import { listStoreAccess, upsertStoreAccess } from './access'
+import { listStoreAccess, upsertStoreAccess, assertAccessUsernameAvailable } from './access'
 import {
   assertEmployeeInStore,
   createEmployee,
@@ -10,7 +10,8 @@ import {
   getOverview,
   listEmployees,
   listStores,
-  updateEmployee
+  updateEmployee,
+  upsertDailySale
 } from './cardplus'
 import { assertCardInStore, createCard, deleteCard, getCardsBoard, transferCard, updateCard } from './cards'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
@@ -22,12 +23,13 @@ import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
 import type {
   CardWriteInput,
   CreateEmployeeInput,
+  DailySaleWriteInput,
   EmployeeWriteInput,
   StoreAccessWriteInput,
   StoreWriteInput,
   UpdateEmployeeInput
 } from '../shared/operations'
-import { CARDPLUS_SUB_ROLES } from '../shared/operations'
+import { CARDPLUS_SUB_ROLES, isManagerLoginSubRole } from '../shared/operations'
 import { canCreateStores, canEditStoreDesk, isFlowRole } from '../shared/roles'
 import { normalizeStoreId } from '../shared/store-scope'
 
@@ -42,7 +44,11 @@ function asOptionalString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-function parseWriteInput(payload: unknown): EmployeeWriteInput {
+function parseWriteInput(payload: unknown): EmployeeWriteInput & {
+  accessUsername?: string
+  accessPassword?: string
+  accessDisplayName?: string
+} {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Dados inválidos.')
   }
@@ -62,7 +68,10 @@ function parseWriteInput(payload: unknown): EmployeeWriteInput {
     cardplusRole,
     flowRole,
     cpf: asOptionalString(body.cpf),
-    isActive: typeof body.isActive === 'boolean' ? body.isActive : true
+    isActive: typeof body.isActive === 'boolean' ? body.isActive : true,
+    accessUsername: asOptionalString(body.accessUsername),
+    accessPassword: asOptionalString(body.accessPassword),
+    accessDisplayName: asOptionalString(body.accessDisplayName)
   }
 }
 
@@ -155,9 +164,11 @@ export function registerOperationsIpc(): void {
 
   handle('operations:finance', async (payload) => {
     const actor = await resolveActor()
-    const storeId = resolveStoreFilter(actor, payload)
-    log.info('[operations] finance', storeId ?? 'all')
-    return memo(cacheKey('finance', storeId), 12_000, () => getFinance(storeId))
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const storeId = resolveStoreFilter(actor, body)
+    const monthKey = typeof body.monthKey === 'string' ? body.monthKey : null
+    log.info('[operations] finance', storeId ?? 'all', monthKey ?? 'now')
+    return memo(cacheKey(`finance:${monthKey ?? 'now'}`, storeId), 12_000, () => getFinance(storeId, monthKey))
   })
 
   handle('operations:stores', async () => {
@@ -198,12 +209,37 @@ export function registerOperationsIpc(): void {
 
   handle('operations:employee-create', async (payload) => {
     const actor = await resolveActor()
-    const input = parseWriteInput(payload) satisfies CreateEmployeeInput
+    const parsed = parseWriteInput(payload)
+    const input = {
+      name: parsed.name,
+      storeId: parsed.storeId,
+      cardplusRole: parsed.cardplusRole,
+      flowRole: parsed.flowRole,
+      cpf: parsed.cpf
+    } satisfies CreateEmployeeInput
     const scopedStore = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
     if (scopedStore && input.storeId !== scopedStore) {
       throw new Error('Você só pode cadastrar funcionários da sua unidade.')
     }
+    if (isManagerLoginSubRole(input.cardplusRole)) {
+      const username = parsed.accessUsername?.trim() ?? ''
+      const password = parsed.accessPassword?.trim() ?? ''
+      if (!username || !password) {
+        throw new Error('Informe o login e a senha do Card+ para Gerente ou Gerente Geral.')
+      }
+      if (password.length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.')
+      await assertAccessUsernameAvailable(username)
+    }
     const created = await createEmployee(input)
+    if (isManagerLoginSubRole(input.cardplusRole)) {
+      await upsertStoreAccess({
+        storeId: input.storeId,
+        username: parsed.accessUsername ?? '',
+        password: parsed.accessPassword,
+        displayName: parsed.accessDisplayName?.trim() || parsed.name,
+        role: 'MANAGER'
+      })
+    }
     bustOperationsCache()
     return created
   })
@@ -214,8 +250,14 @@ export function registerOperationsIpc(): void {
       throw new Error('Dados inválidos.')
     }
     const body = payload as Record<string, unknown>
+    const parsed = parseWriteInput(payload)
     const input: UpdateEmployeeInput = {
-      ...parseWriteInput(payload),
+      name: parsed.name,
+      storeId: parsed.storeId,
+      cardplusRole: parsed.cardplusRole,
+      flowRole: parsed.flowRole,
+      cpf: parsed.cpf,
+      isActive: parsed.isActive,
       id: asString(body.id, 'Funcionário')
     }
     const scopedStore = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
@@ -360,6 +402,22 @@ export function registerOperationsIpc(): void {
     const scoped = resolveStoreFilter(actor, normalizeStoreId(body))
     await deleteCard(id, scoped)
     bustOperationsCache()
+  })
+
+  handle('operations:daily-sale-upsert', async (payload) => {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Dados da venda inválidos.')
+    const body = payload as Record<string, unknown>
+    const input: DailySaleWriteInput = {
+      storeId: asString(body.storeId, 'Unidade'),
+      dateKey: asString(body.dateKey, 'Data'),
+      amountInCents: Number(body.amountInCents)
+    }
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
+    if (scoped && input.storeId !== scoped) throw new Error('Você só pode registrar venda da sua unidade.')
+    const saved = await upsertDailySale(input)
+    bustOperationsCache()
+    return saved
   })
 
   handle('operations:store-preference', async (payload) => {

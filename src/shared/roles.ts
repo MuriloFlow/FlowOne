@@ -67,8 +67,24 @@ export function canEditStoreDesk(role: string | null | undefined): boolean {
   )
 }
 
+export function normalizeCardplusRoleKey(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_./-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
 export function isGerenteRegionalRole(cardplusRole: string | null | undefined): boolean {
-  return (cardplusRole ?? '').trim().toLowerCase() === 'gerente regional'
+  const key = normalizeCardplusRoleKey(cardplusRole)
+  return key === 'gerente regional' || key === 'regional manager'
+}
+
+export function isTiRole(cardplusRole: string | null | undefined): boolean {
+  const key = normalizeCardplusRoleKey(cardplusRole)
+  return key === 'ti' || key === 'ti admin'
 }
 
 export function isSupervisorSeatCandidate(
@@ -79,7 +95,8 @@ export function isSupervisorSeatCandidate(
 }
 
 export function employeeRoleLabel(flowRole: string | null | undefined, cardplusRole: string): string {
-  if (flowRole && isFlowRole(flowRole)) return roleLabel(flowRole)
   if (isGerenteRegionalRole(cardplusRole)) return 'Supervisor'
+  if (isTiRole(cardplusRole)) return 'TI'
+  if (flowRole && isFlowRole(flowRole)) return roleLabel(flowRole)
   return cardplusRole
 }

@@ -21,7 +21,7 @@ export function MonthSwitcher({ value, onChange }: MonthSwitcherProps) {
       >
         <ChevronLeft className="size-3.5" strokeWidth={1.8} />
       </button>
-      <span className="min-w-[148px] px-1 text-center text-[13px] capitalize text-[#F0EFEC]/78">
+      <span className="min-w-[148px] px-1 text-center text-[13px] text-[#F0EFEC]/78">
         {monthLongLabel(value)}
       </span>
       <button

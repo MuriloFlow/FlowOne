@@ -37,8 +37,8 @@ const flow: FlowApi = {
   operations: {
     getOverview: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:overview', { storeId: storeId ?? null }),
-    getFinance: (storeId?: string | null) =>
-      ipcRenderer.invoke('operations:finance', { storeId: storeId ?? null }),
+    getFinance: (storeId?: string | null, monthKey?: string | null) =>
+      ipcRenderer.invoke('operations:finance', { storeId: storeId ?? null, monthKey: monthKey ?? null }),
     listStores: () => ipcRenderer.invoke('operations:stores'),
     listEmployees: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:employees', { storeId: storeId ?? null }),
@@ -65,6 +65,7 @@ const flow: FlowApi = {
     transferCard: (id, collaboratorId) =>
       ipcRenderer.invoke('operations:card-transfer', { id, collaboratorId }),
     deleteCard: (id) => ipcRenderer.invoke('operations:card-delete', { id }),
+    upsertDailySale: (input) => ipcRenderer.invoke('operations:daily-sale-upsert', input),
     listVouchers: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:vouchers', { storeId: storeId ?? null }),
     updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input)

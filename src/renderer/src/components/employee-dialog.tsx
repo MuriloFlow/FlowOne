@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/select'
 import { formatCpf, onlyCpfDigits } from '../../../shared/cpf'
 import {
   CARDPLUS_SUB_ROLES,
+  isManagerLoginSubRole,
   type CardPlusSubRole,
   type EmployeeIdentity,
   type EmployeeListItem,
@@ -43,6 +44,11 @@ export function EmployeeDialog({
   const [cardplusRole, setCardplusRole] = useState<CardPlusSubRole>(CARDPLUS_SUB_ROLES[0])
   const [cpf, setCpf] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loadingIdentity, setLoadingIdentity] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -61,6 +67,11 @@ export function EmployeeDialog({
     )
     setIsActive(employee?.isActive ?? true)
     setCpf('')
+    setUsername('')
+    setPassword('')
+    setConfirmPassword('')
+    setDisplayName(employee?.name ?? '')
+    setShowPassword(false)
 
     if (mode === 'edit' && employee) {
       setLoadingIdentity(true)
@@ -75,17 +86,30 @@ export function EmployeeDialog({
     }
   }, [open, mode, employee, stores, defaultStoreId])
 
+  const needsLogin = isManagerLoginSubRole(cardplusRole)
+
   async function submit(): Promise<void> {
     setSaving(true)
     setError(null)
     try {
+      if (needsLogin && mode === 'create') {
+        if (!username.trim() || password.length < 6) {
+          throw new Error('Informe login e senha com pelo menos 6 caracteres.')
+        }
+        if (password !== confirmPassword) {
+          throw new Error('As senhas não coincidem.')
+        }
+      }
       const payload = {
         name,
         storeId,
         cardplusRole,
         flowRole,
         cpf: onlyCpfDigits(cpf),
-        isActive
+        isActive,
+        accessUsername: needsLogin ? username : undefined,
+        accessPassword: needsLogin ? password : undefined,
+        accessDisplayName: needsLogin ? displayName || name : undefined
       }
       const saved =
         mode === 'create'
@@ -104,7 +128,11 @@ export function EmployeeDialog({
     <Dialog
       open={open}
       title={mode === 'create' ? 'Cadastrar funcionário' : 'Editar funcionário'}
-      description="Nome, unidade e função operacional ficam no Card+. CPF e cargo FLOW ficam só neste launcher."
+      description={
+        needsLogin && mode === 'create'
+          ? 'Nome e função vão para o Card+. Login e senha deste gerente também entram no mesmo cadastro.'
+          : 'Nome, unidade e função operacional ficam no Card+. CPF e cargo FLOW ficam só neste launcher.'
+      }
       onClose={onClose}
     >
       <div className="space-y-3.5 px-5 pb-5">
@@ -179,6 +207,71 @@ export function EmployeeDialog({
           </div>
         ) : null}
 
+        {needsLogin && mode === 'create' ? (
+          <div className="space-y-3.5 rounded-[12px] border border-white/[0.06] bg-white/[0.02] p-3.5">
+            <div>
+              <p className="text-[13px] text-[#F0EFEC]/78">Acesso operacional no Card+</p>
+              <p className="mt-0.5 text-[12px] text-[#F0EFEC]/38">
+                Login separado da unidade, para este Gerente ou Gerente Geral entrar no Card+.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[12px] text-[#F0EFEC]/45">Login</Label>
+                <Input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="nome.sobrenome"
+                  autoComplete="off"
+                  className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[12px] text-[#F0EFEC]/45">Nome no Card+</Label>
+                <Input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder={name.trim() || 'Nome de exibição'}
+                  className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[12px] text-[#F0EFEC]/45">Senha</Label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    autoComplete="new-password"
+                    className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] pr-10 text-[13px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    className="absolute top-1/2 right-2 -translate-y-1/2 text-[#F0EFEC]/35"
+                  >
+                    {showPassword ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[12px] text-[#F0EFEC]/45">Confirmar senha</Label>
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Repita a senha"
+                  autoComplete="new-password"
+                  className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
 
         <div className="flex items-center justify-end gap-2 pt-1">
@@ -191,7 +284,13 @@ export function EmployeeDialog({
           </button>
           <button
             type="button"
-            disabled={saving || loadingIdentity || !name.trim() || !storeId}
+            disabled={
+              saving ||
+              loadingIdentity ||
+              !name.trim() ||
+              !storeId ||
+              (needsLogin && mode === 'create' && (!username.trim() || password.length < 6))
+            }
             onClick={() => void submit()}
             className="inline-flex h-8 items-center justify-center rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] font-medium text-[#111111] transition-opacity disabled:opacity-40"
           >

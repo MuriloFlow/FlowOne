@@ -38,6 +38,11 @@ function usedOf(row: Pick<RecordRow, 'amount_used_in_cents'>): number {
   return Math.max(0, Number(row.amount_used_in_cents) || 0)
 }
 
+function belongsToStore(rowStoreId: string | null | undefined, storeId?: string | null): boolean {
+  if (!storeId) return true
+  return Boolean(rowStoreId) && rowStoreId === storeId
+}
+
 function toRecord(row: RecordRow, stores: Map<string, string>): CardRecord {
   const used = usedOf(row)
   const limit = Math.max(0, Number(row.amount_in_cents) || 0)
@@ -82,15 +87,19 @@ async function getCollaborator(id: string): Promise<CollaboratorRow> {
 }
 
 async function listPeople(storeId?: string | null): Promise<StorePerson[]> {
-  let query = getCardplusClient()
-    .from('collaborators')
-    .select('id, name, store_id, is_active, merged_into_id')
-    .order('name')
-  if (storeId) query = query.eq('store_id', storeId)
-  const { data, error } = await query
-  if (error) throw new Error(`Erro ao carregar equipe: ${error.message}`)
-  return ((data ?? []) as CollaboratorRow[])
-    .filter((row) => !row.merged_into_id && row.is_active && (!storeId || row.store_id === storeId))
+  const rows = await listPaged(async (from, to) => {
+    let query = getCardplusClient()
+      .from('collaborators')
+      .select('id, name, store_id, is_active, merged_into_id')
+      .order('name')
+      .range(from, to)
+    if (storeId) query = query.eq('store_id', storeId)
+    const { data, error } = await query
+    if (error) throw new Error(`Erro ao carregar equipe: ${error.message}`)
+    return (data ?? []) as CollaboratorRow[]
+  })
+  return rows
+    .filter((row) => !row.merged_into_id && row.is_active && belongsToStore(row.store_id, storeId))
     .map((row) => ({ id: row.id, name: row.name }))
 }
 
@@ -174,7 +183,7 @@ async function sumDigitacoesByDay(
   })
   const map = new Map<string, number>()
   for (const row of rows) {
-    if (storeId && row.store_id && row.store_id !== storeId) continue
+    if (!belongsToStore(row.store_id, storeId)) continue
     const key = dateKeyFromIso(row.created_at)
     map.set(key, (map.get(key) ?? 0) + (Number(row.quantity) || 0))
   }
@@ -233,7 +242,7 @@ export async function getCardsBoard(monthKeyInput?: string | null, storeId?: str
   const storeMap = new Map(stores.map((store) => [store.id, store.name]))
   const records = monthRows
     .map((row) => toRecord(row, storeMap))
-    .filter((card) => !storeId || card.storeId === storeId)
+    .filter((card) => belongsToStore(card.storeId || null, storeId))
   const dayMap = new Map<
     string,
     { cards: number; pending: number; activated: number; limitCents: number; usedCents: number }

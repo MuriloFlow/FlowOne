@@ -52,7 +52,7 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
     const term = query.trim().toLowerCase()
     if (!term) return scoped
     return scoped.filter((employee) =>
-      [employee.name, employee.storeName, employee.flowRoleLabel, employee.cpfMasked ?? '']
+      [employee.name, employee.storeName, employee.flowRoleLabel, employee.cardplusRole, employee.cpfMasked ?? '']
         .join(' ')
         .toLowerCase()
         .includes(term)

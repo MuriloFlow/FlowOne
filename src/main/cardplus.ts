@@ -23,6 +23,7 @@ import {
 import { getCardplusClient } from './supabase-clients'
 import type {
   CreateEmployeeInput,
+  DailySaleRow,
   EmployeeListItem,
   EmployeeProfile,
   MonthPoint,
@@ -82,6 +83,11 @@ function normalizeName(value: string): string {
 function normalizeCardPlusRole(value: string): CardPlusSubRole {
   const match = CARDPLUS_SUB_ROLES.find((role) => role.toLowerCase() === value.trim().toLowerCase())
   return match ?? 'Funcionario Operacional'
+}
+
+function belongsToStore(rowStoreId: string | null | undefined, storeId?: string | null): boolean {
+  if (!storeId) return true
+  return Boolean(rowStoreId) && rowStoreId === storeId
 }
 
 async function throwIfError<T>(
@@ -189,15 +195,18 @@ export async function storeMonthCardsByStore(storeId?: string | null): Promise<M
 }
 
 async function listCollaborators(storeId?: string | null): Promise<CollaboratorRow[]> {
-  let query = getCardplusClient()
-    .from('collaborators')
-    .select('id, name, store_id, sub_role, is_active, merged_into_id, created_at')
-    .order('name')
-  if (storeId) query = query.eq('store_id', storeId)
-  const data = await throwIfError(await query, 'Erro ao carregar funcionários')
-  return ((data ?? []) as CollaboratorRow[]).filter(
-    (row) => !row.merged_into_id && (!storeId || row.store_id === storeId)
-  )
+  const rows = await listPaged(async (from, to) => {
+    let query = getCardplusClient()
+      .from('collaborators')
+      .select('id, name, store_id, sub_role, is_active, merged_into_id, created_at')
+      .order('name')
+      .range(from, to)
+    if (storeId) query = query.eq('store_id', storeId)
+    const { data, error } = await query
+    if (error) throw new Error(`Erro ao carregar funcionários: ${error.message}`)
+    return (data ?? []) as CollaboratorRow[]
+  })
+  return rows.filter((row) => !row.merged_into_id && belongsToStore(row.store_id, storeId))
 }
 
 async function getCollaborator(id: string): Promise<CollaboratorRow> {
@@ -250,7 +259,9 @@ async function listRecentCards(
   if (storeId) query = query.eq('store_id', storeId)
 
   const data = await throwIfError(await query, 'Erro ao carregar cartões recentes')
-  return ((data ?? []) as RecordRow[]).map((row) => ({
+  return ((data ?? []) as RecordRow[])
+    .filter((row) => belongsToStore(row.store_id, storeId))
+    .map((row) => ({
     id: row.id,
     operatorName: row.operator_name,
     clientName: row.client_name,
@@ -264,19 +275,11 @@ async function listRecentCards(
 }
 
 async function monthGoalMap(monthKeys: string[], storeId?: string | null): Promise<Map<string, number>> {
-  let query = getCardplusClient()
-    .from('daily_goals')
-    .select('store_id, date_key, goal')
-    .like('date_key', `${MONTH_CARDS_PREFIX}%`)
-  if (storeId) query = query.eq('store_id', storeId)
-  const { data, error } = await query
-
-  if (error) throw new Error(`Erro ao carregar metas: ${error.message}`)
-
+  const data = await listGoalsByPrefix(MONTH_CARDS_PREFIX, storeId)
   const wanted = new Set(monthKeys.map((key) => `${MONTH_CARDS_PREFIX}${key}`))
   const totals = new Map<string, number>()
-  for (const row of (data ?? []) as GoalRow[]) {
-    if (!wanted.has(row.date_key)) continue
+  for (const row of data) {
+    if (!wanted.has(row.date_key) || !belongsToStore(row.store_id, storeId)) continue
     const monthKey = row.date_key.slice(MONTH_CARDS_PREFIX.length)
     totals.set(monthKey, (totals.get(monthKey) ?? 0) + row.goal)
   }
@@ -307,13 +310,17 @@ async function todayGoalTotal(dateKey: string, storeId?: string | null): Promise
 }
 
 export async function listGoalsByPrefix(prefix: string, storeId?: string | null): Promise<GoalRow[]> {
-  let query = getCardplusClient()
-    .from('daily_goals')
-    .select('store_id, date_key, goal')
-    .like('date_key', `${prefix}%`)
-  if (storeId) query = query.eq('store_id', storeId)
-  const data = await throwIfError(await query, 'Erro ao carregar planejamento do Card+')
-  return (data ?? []) as GoalRow[]
+  return listPaged(async (from, to) => {
+    let query = getCardplusClient()
+      .from('daily_goals')
+      .select('store_id, date_key, goal')
+      .like('date_key', `${prefix}%`)
+      .range(from, to)
+    if (storeId) query = query.eq('store_id', storeId)
+    const { data, error } = await query
+    if (error) throw new Error(`Erro ao carregar planejamento do Card+: ${error.message}`)
+    return ((data ?? []) as GoalRow[]).filter((row) => belongsToStore(row.store_id, storeId))
+  })
 }
 
 function sumMatchingGoals(rows: GoalRow[], match: (row: GoalRow) => boolean): number | null {
@@ -392,24 +399,36 @@ async function sumDigitacoes(range: { start: string; end: string }, storeId?: st
     return (data ?? []) as Array<{ quantity: number | null; store_id: string | null }>
   })
   return rows
-    .filter((row) => !storeId || !row.store_id || row.store_id === storeId)
+    .filter((row) => belongsToStore(row.store_id, storeId))
     .reduce((total, row) => total + (Number(row.quantity) || 0), 0)
 }
 
 async function sumCustomerFlow(monthKey: string, storeId?: string | null): Promise<number | null> {
-  let query = getCardplusClient()
-    .from('daily_metrics')
-    .select('total_customers, date_key')
-    .like('date_key', `${monthKey}%`)
-  if (storeId) query = query.eq('store_id', storeId)
-  const { data, error } = await query
-  if (error) {
-    if (error.code === '42P01' || error.code === 'PGRST205') return null
-    throw new Error(`Erro ao carregar fluxo de clientes: ${error.message}`)
+  const last = String(lastDayOfMonth(monthKey)).padStart(2, '0')
+  try {
+    const rows = await listPaged(async (from, to) => {
+      let query = getCardplusClient()
+        .from('daily_metrics')
+        .select('total_customers, date_key, store_id')
+        .gte('date_key', `${monthKey}-01`)
+        .lte('date_key', `${monthKey}-${last}`)
+        .range(from, to)
+      if (storeId) query = query.eq('store_id', storeId)
+      const { data, error } = await query
+      if (error) {
+        if (error.code === '42P01' || error.code === 'PGRST205') return []
+        throw error
+      }
+      return (data ?? []) as Array<{ total_customers: number | null; date_key: string; store_id: string | null }>
+    })
+    const scoped = rows.filter((row) => belongsToStore(row.store_id, storeId))
+    if (scoped.length === 0) return null
+    return scoped.reduce((total, row) => total + (Number(row.total_customers) || 0), 0)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/42P01|PGRST205/.test(message)) return null
+    throw new Error(`Erro ao carregar fluxo de clientes: ${message}`)
   }
-  const rows = (data ?? []) as Array<{ total_customers: number | null }>
-  if (rows.length === 0) return null
-  return rows.reduce((total, row) => total + (Number(row.total_customers) || 0), 0)
 }
 
 async function countPendingCards(range: { start: string; end: string }, storeId?: string | null): Promise<number> {
@@ -464,7 +483,8 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
 
   const monthGoal = goals.get(monthKey) ?? null
   const cardsThisMonth = countsByMonth.get(monthKey) ?? 0
-  const clientesMonth = digitacoesMonth + cardsThisMonth
+  const clientesMonth = customerFlow ?? 0
+  const conversionBase = digitacoesMonth + cardsThisMonth
   const remainingToMonthGoal = monthGoal === null ? null : Math.max(monthGoal - cardsThisMonth, 0)
   const workingDays = workingDaysInMonth(monthKey)
   const remainingDays = workingDaysInMonth(monthKey, today)
@@ -484,7 +504,7 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
     digitacoesToday,
     digitacoesMonth,
     clientesMonth,
-    aproveitamentoPct: clientesMonth > 0 ? Number(((cardsThisMonth / clientesMonth) * 100).toFixed(1)) : null,
+    aproveitamentoPct: conversionBase > 0 ? Number(((cardsThisMonth / conversionBase) * 100).toFixed(1)) : null,
     customerFlowMonth: customerFlow,
     approvalRatePct: digitacoesMonth > 0 ? Number(((cardsThisMonth / digitacoesMonth) * 100).toFixed(1)) : null,
     pacePerDay,
@@ -499,9 +519,10 @@ export async function getOverview(storeId?: string | null): Promise<OverviewMetr
   }
 }
 
-export async function getFinance(storeId?: string | null): Promise<FinanceMetrics> {
+export async function getFinance(storeId?: string | null, monthKeyInput?: string | null): Promise<FinanceMetrics> {
   const today = dateKeyInSaoPaulo()
-  const monthKey = monthKeyFromDateKey(today)
+  const currentMonth = monthKeyFromDateKey(today)
+  const monthKey = monthKeyInput && /^\d{4}-\d{2}$/.test(monthKeyInput) ? monthKeyInput : currentMonth
   const lastMonthKey = shiftMonth(monthKey, -1)
   const monthKeys = lastTwelveMonthKeys(monthKey)
   const todaySaleKey = `${DAILY_SALE_PREFIX}${today}`
@@ -517,7 +538,27 @@ export async function getFinance(storeId?: string | null): Promise<FinanceMetric
   const monthSales = dailySalesByMonth(dailySaleRows, monthKeys)
   const monthSalesGoalCents = monthGoals.get(monthKey) ?? null
   const salesThisMonthCents = monthSales.get(monthKey) ?? 0
-  const saleTodayCents = sumMatchingGoals(dailySaleRows, (row) => row.date_key === todaySaleKey)
+  const saleTodayCents =
+    monthKey === currentMonth ? sumMatchingGoals(dailySaleRows, (row) => row.date_key === todaySaleKey) : null
+
+  const salesByDate = new Map<string, number>()
+  const registeredDates = new Set<string>()
+  for (const row of dailySaleRows) {
+    if (!row.date_key.startsWith(DAILY_SALE_PREFIX) || !belongsToStore(row.store_id, storeId)) continue
+    const dateKey = row.date_key.slice(DAILY_SALE_PREFIX.length)
+    if (!dateKey.startsWith(monthKey)) continue
+    registeredDates.add(dateKey)
+    salesByDate.set(dateKey, (salesByDate.get(dateKey) ?? 0) + row.goal)
+  }
+
+  const last = lastDayOfMonth(monthKey)
+  const days = Array.from({ length: last }, (_, index) => {
+    const dateKey = `${monthKey}-${String(last - index).padStart(2, '0')}`
+    return {
+      dateKey,
+      saleCents: registeredDates.has(dateKey) ? (salesByDate.get(dateKey) ?? 0) : null
+    }
+  })
 
   const recentSales = dailySaleRows
     .map((row) => {
@@ -529,7 +570,7 @@ export async function getFinance(storeId?: string | null): Promise<FinanceMetric
         amountInCents: row.goal
       }
     })
-    .filter((row) => row.dateKey.startsWith(monthKey))
+    .filter((row) => row.dateKey.startsWith(monthKey) && belongsToStore(row.storeId, storeId))
     .sort((left, right) => {
       const byDate = right.dateKey.localeCompare(left.dateKey)
       if (byDate !== 0) return byDate
@@ -537,6 +578,9 @@ export async function getFinance(storeId?: string | null): Promise<FinanceMetric
     })
 
   return {
+    monthKey,
+    storeId: storeId ?? null,
+    storeName: storeId ? stores[0]?.name ?? null : null,
     saleTodayCents,
     salesThisMonthCents,
     salesLastMonthCents: monthSales.get(lastMonthKey) ?? 0,
@@ -544,14 +588,65 @@ export async function getFinance(storeId?: string | null): Promise<FinanceMetric
     remainingToMonthSalesGoalCents:
       monthSalesGoalCents === null ? null : Math.max(monthSalesGoalCents - salesThisMonthCents, 0),
     storeCount: stores.length,
-    registeredDaysThisMonth: new Set(recentSales.map((row) => row.dateKey)).size,
+    registeredDaysThisMonth: registeredDates.size,
     months: monthKeys.map((key) => ({
       key,
       label: monthLabel(key),
       salesCents: monthSales.get(key) ?? 0,
       goalCents: monthGoals.get(key) ?? null
     })),
+    days,
     recentSales
+  }
+}
+
+export async function upsertDailySale(input: {
+  storeId: string
+  dateKey: string
+  amountInCents: number
+}): Promise<DailySaleRow> {
+  if (!input.storeId) throw new Error('Unidade é obrigatória.')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dateKey)) throw new Error('Data inválida.')
+  if (!Number.isFinite(input.amountInCents) || input.amountInCents < 0) {
+    throw new Error('Valor de venda inválido.')
+  }
+  const amountInCents = Math.round(input.amountInCents)
+  const dateKey = `${DAILY_SALE_PREFIX}${input.dateKey}`
+  const stores = await listStores(input.storeId)
+  const store = stores[0]
+  if (!store) throw new Error('Unidade não encontrada no Card+.')
+
+  const existing = await throwIfError(
+    await getCardplusClient()
+      .from('daily_goals')
+      .select('store_id, date_key, goal')
+      .eq('store_id', input.storeId)
+      .eq('date_key', dateKey)
+      .maybeSingle(),
+    'Erro ao carregar venda do dia'
+  )
+
+  if (existing) {
+    const { error } = await getCardplusClient()
+      .from('daily_goals')
+      .update({ goal: amountInCents })
+      .eq('store_id', input.storeId)
+      .eq('date_key', dateKey)
+    if (error) throw new Error(`Erro ao atualizar venda do dia: ${error.message}`)
+  } else {
+    const { error } = await getCardplusClient().from('daily_goals').insert({
+      store_id: input.storeId,
+      date_key: dateKey,
+      goal: amountInCents
+    })
+    if (error) throw new Error(`Erro ao registrar venda do dia: ${error.message}`)
+  }
+
+  return {
+    dateKey: input.dateKey,
+    storeId: input.storeId,
+    storeName: store.name,
+    amountInCents
   }
 }
 

@@ -853,7 +853,7 @@ O Card+ já existe em outro Supabase. FLOW não duplica cartões, metas, lojas o
 Tabelas lidas no Card+ (somente as confirmadas no projeto `teSTeSTE`):
 
 - `stores` — unidades (`id`, `name`, `created_at`, `updated_at`)
-- `collaborators` — funcionários (nome, `sub_role`, loja, status). `Gerente Regional` no Card+ = cargo FLOW Supervisor.
+- `collaborators` — funcionários (nome, `sub_role`, loja, status). `Gerente Regional` no Card+ = cargo FLOW Supervisor. Também existem `Gerente Geral` e `TI`.
 - `records` — um cartão por linha: `amount_in_cents` (limite), `amount_used_in_cents` (gasto), `activated`, `activated_later`
 - `digitacoes` — `quantity` por lançamento; soma = digitações do período
 - `daily_metrics` — `total_customers` (fluxo de clientes), `date_key`
@@ -862,9 +862,11 @@ Tabelas lidas no Card+ (somente as confirmadas no projeto `teSTeSTE`):
 
 Cadastro de unidade no FLOW: grava `stores.name` no Card+, cria colaborador `CAIXA` se faltar, e cria `app_users` EMPLOYEE (login/senha dos operadores). A senha nunca volta para o renderer.
 
-Aproveitamento = cartões / (digitações + cartões). Tx. aprovação = cartões / digitações. Ritmo = cartões que faltam para a meta do mês / dias úteis restantes (a partir de hoje, sem domingo, incluindo hoje), arredondado.
+Aproveitamento = cartões / (digitações + cartões) da unidade e do mês. Tx. aprovação = cartões / digitações. Clientes do mês = soma de `daily_metrics.total_customers` de todos os dias do mês na unidade filtrada. Digitações = soma de `digitacoes.quantity` no mês da unidade. Linhas sem `store_id` não entram no recorte da loja. Ritmo = cartões que faltam para a meta do mês / dias úteis restantes (a partir de hoje, sem domingo, incluindo hoje), arredondado.
 
-`collaborators.sub_role` `Gerente Regional` é o mesmo cargo FLOW `SUPERVISOR`. Na mesa da unidade, o assento Supervisor lista esses colaboradores de qualquer loja.
+`collaborators.sub_role` `Gerente Regional` (comparação sem maiúsculas) é o mesmo cargo FLOW `SUPERVISOR`. Na mesa da unidade, o assento Supervisor lista esses colaboradores de qualquer loja, inclusive quem já existe só no Card+. `TI` e `Gerente Geral` também aparecem em Funcionários. Cadastro de Gerente ou Gerente Geral pelo Supervisor/Diretor cria o login `app_users` (role `MANAGER`) no mesmo modal.
+
+Financeiro replica a mesa de Cartões: todos os dias do mês, clique no dia para registrar a venda em `daily_goals` com `date_key` `daily-sale:YYYY-MM-DD` (centavos), recortado pela unidade.
 
 A conexão Card+ fica no processo principal do Electron (`CARDPLUS_*` no `.env.local`). O renderer nunca recebe a service role.
 

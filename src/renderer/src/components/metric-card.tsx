@@ -34,8 +34,8 @@ export function MetricCard({
   return (
     <article
       className={cn(
-        'rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
-        compact ? 'px-4 py-3' : 'px-5 py-4'
+        'flex h-full flex-col rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
+        compact ? 'min-h-[108px] px-4 py-3' : 'min-h-[148px] px-5 py-4'
       )}
     >
       <div className={cn('flex items-start justify-between gap-3', compact ? 'mb-3' : 'mb-5')}>
@@ -64,21 +64,21 @@ export function MetricCard({
         )}
       </p>
       {goal !== null ? (
-        <div className="mt-3">
+        <div className="mt-auto pt-3">
           <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
             <div
               className="h-full rounded-full bg-[#F0EFEC]/80"
               style={{ width: `${Math.max(ratio ?? 0, value > 0 ? 4 : 0)}%` }}
             />
           </div>
-          <p className="mt-2 text-[12px] text-[#F0EFEC]/32">
+          <p className="mt-2 text-[12px] leading-snug text-[#F0EFEC]/32">
             {empty
               ? hint
               : `Meta ${formatCount(goal)} · ${ratio === null ? hint : `${Math.round(ratio)}%`}`}
           </p>
         </div>
       ) : (
-        <p className="mt-3 text-[12px] text-[#F0EFEC]/32">{hint}</p>
+        <p className="mt-auto pt-3 text-[12px] leading-snug text-[#F0EFEC]/32">{hint}</p>
       )}
     </article>
   )

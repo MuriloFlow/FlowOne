@@ -38,7 +38,7 @@ export function Select({ value, options, placeholder = 'Selecionar', onChange }:
     const spaceBelow = window.innerHeight - rect.bottom - 12
     const spaceAbove = rect.top - 12
     const openUp = spaceBelow < 200 && spaceAbove > spaceBelow
-    const maxHeight = Math.max(120, Math.min(224, openUp ? spaceAbove : spaceBelow))
+    const maxHeight = Math.max(120, Math.min(320, openUp ? spaceAbove : spaceBelow))
     setCoords({
       left: rect.left,
       width: rect.width,

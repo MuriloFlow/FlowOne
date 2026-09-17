@@ -136,6 +136,24 @@ export async function createOperationalAccess(
   })
 }
 
+export async function listRegionalManagerNames(): Promise<Set<string>> {
+  const { data, error } = await getCardplusClient()
+    .from('app_users')
+    .select('name, username')
+    .eq('role', 'REGIONAL_MANAGER')
+    .eq('is_active', true)
+  if (error) {
+    if (error.code === '42P01' || error.code === 'PGRST205') return new Set()
+    throw new Error(`Erro ao carregar gerentes regionais: ${error.message}`)
+  }
+  const names = new Set<string>()
+  for (const row of (data ?? []) as Array<{ name: string | null; username: string | null }>) {
+    const name = (row.name ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ')
+    if (name) names.add(name)
+  }
+  return names
+}
+
 export async function upsertStoreAccess(input: StoreAccessWriteInput): Promise<StoreAccessAccount> {
   const username = normalizeUsername(input.username)
   if (!isUsernameValid(username)) {
@@ -185,13 +203,14 @@ export async function upsertStoreAccess(input: StoreAccessWriteInput): Promise<S
   if (password.length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.')
   const stores = await listStores(input.storeId)
   const storeName = stores[0]?.name ?? 'Unidade'
+  const role = input.role === 'MANAGER' ? 'MANAGER' : 'EMPLOYEE'
   const { data, error } = await getCardplusClient()
     .from('app_users')
     .insert({
       username,
       password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS),
-      role: 'EMPLOYEE',
-      name: displayName || `Operadores - ${storeName}`,
+      role,
+      name: displayName || (role === 'MANAGER' ? storeName : `Operadores - ${storeName}`),
       is_active: input.isActive ?? true,
       store_id: input.storeId,
       is_primary: false
