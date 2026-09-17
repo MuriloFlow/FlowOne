@@ -47,6 +47,13 @@ export function operations(): OperationsApi {
     upsertStoreAccess: (input) => api.upsertStoreAccess(input),
     getCardsBoard: (monthKey, storeId) =>
       api.getCardsBoard(monthKey, storeId === undefined ? getCurrentStoreId() : storeId),
+    upsertCardMonthTotal: (input) => {
+      const api = window.flow?.operations
+      if (typeof api?.upsertCardMonthTotal === 'function') {
+        return api.upsertCardMonthTotal(input)
+      }
+      return invokeOperation('upsertCardMonthTotal', 'operations:card-month-total', input)
+    },
     createCard: (input) => api.createCard(input),
     updateCard: (input) => api.updateCard(input),
     transferCard: (id, collaboratorId) => api.transferCard(id, collaboratorId),

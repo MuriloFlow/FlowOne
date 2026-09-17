@@ -75,11 +75,13 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
               value={data.cardsThisMonth}
               goal={data.monthGoal}
               hint={
-                data.monthGoal === null
-                  ? 'Sem meta mensal no Card+'
-                  : data.remainingToMonthGoal === 0
-                    ? 'Meta do mês atingida'
-                    : `Faltam ${formatCount(data.remainingToMonthGoal ?? 0)}`
+                data.cardTotalOverride != null
+                  ? `${formatCount(data.cardsThisMonthRegistered ?? data.cardsThisMonth)} lançados · total ajustado ${formatCount(data.cardsThisMonth)}`
+                  : data.monthGoal === null
+                    ? 'Sem meta mensal no Card+'
+                    : data.remainingToMonthGoal === 0
+                      ? 'Meta do mês atingida'
+                      : `Faltam ${formatCount(data.remainingToMonthGoal ?? 0)}`
               }
               icon={<CreditCard className="size-4" strokeWidth={1.7} />}
             />
@@ -125,7 +127,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
               label="Tx. aprovação mês"
               value={data.approvalRatePct ?? 0}
               empty={data.approvalRatePct === null}
-              hint={`${formatCount(data.cardsThisMonth)} cartões / ${formatCount(data.digitacoesMonth)} digitações`}
+              hint={`${formatCount(data.cardsThisMonthRegistered ?? data.cardsThisMonth)} cartões / ${formatCount(data.digitacoesMonth)} digitações`}
               icon={<Activity className="size-4" strokeWidth={1.7} />}
             />
             <MetricCard

@@ -61,6 +61,7 @@ const flow: FlowApi = {
     upsertStoreAccess: (input) => ipcRenderer.invoke('operations:store-access-upsert', input),
     getCardsBoard: (monthKey, storeId) =>
       ipcRenderer.invoke('operations:cards', { monthKey: monthKey ?? null, storeId: storeId ?? null }),
+    upsertCardMonthTotal: (input) => ipcRenderer.invoke('operations:card-month-total', input),
     createCard: (input) => ipcRenderer.invoke('operations:card-create', input),
     updateCard: (input) => ipcRenderer.invoke('operations:card-update', input),
     transferCard: (id, collaboratorId) =>

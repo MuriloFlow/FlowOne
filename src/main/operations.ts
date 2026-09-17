@@ -1,10 +1,11 @@
 import { ipcMain } from 'electron'
 import log from 'electron-log'
-import { listStoreAccess, upsertStoreAccess, assertAccessUsernameAvailable, listEmployeeDirectory, assertEmployeeDeletable, linkedDeskAccountId, syncDeskAccountName } from './access'
+import { listStoreAccess, upsertStoreAccess, assertAccessUsernameAvailable, listEmployeeDirectory, deleteGlobalDeskAccount, linkedDeskAccountId, syncDeskAccountName } from './access'
 import {
   assertEmployeeInStore,
   createEmployee,
   deleteEmployee,
+  getCollaboratorOrNull,
   getEmployee,
   getOverview,
   listStores,
@@ -13,6 +14,7 @@ import {
 } from './cardplus'
 import { getFinanceBoard, upsertFinanceDayExtras } from './finance-days'
 import { assertCardInStore, createCard, deleteCard, getCardsBoard, transferCard, updateCard } from './cards'
+import { applyOverviewCardOverlay, deleteCardTotalOverride, upsertCardTotalOverride } from './card-overrides'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
 import { deleteIdentity, getIdentity, syncProfileRoleIfSamePerson, upsertIdentity } from './identities'
 import { invalidateMemo, memo } from './memo'
@@ -23,6 +25,7 @@ import { readStorePreference, writeStorePreference } from './store-preference'
 import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
 import { listFlowUsers, upsertFlowUser } from './users'
 import type {
+  CardMonthTotalWrite,
   CardWriteInput,
   CreateEmployeeInput,
   DailySaleWriteInput,
@@ -206,7 +209,9 @@ export function registerOperationsIpc(): void {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, payload)
     log.info('[operations] overview', storeId ?? 'all')
-    return memo(cacheKey('overview', storeId), 12_000, () => getOverview(storeId))
+    return memo(cacheKey('overview', storeId), 12_000, async () =>
+      applyOverviewCardOverlay(await getOverview(storeId), storeId)
+    )
   })
 
   handle('operations:finance', async (payload) => {
@@ -346,10 +351,22 @@ export function registerOperationsIpc(): void {
     const body = payload as Record<string, unknown>
     const storeId = resolveStoreFilter(actor, normalizeStoreId(body))
     const id = asString(body.id, 'Funcionário')
-    await assertEmployeeDeletable(id)
-    await deleteEmployee(id, storeId)
-    await deleteIdentity(id)
-    await deleteVoucher(id)
+    const collaborator = await getCollaboratorOrNull(id)
+    const deskId = collaborator ? await linkedDeskAccountId(collaborator.name, collaborator.id) : id
+    if (collaborator) {
+      await deleteEmployee(collaborator.id, storeId)
+      await deleteIdentity(collaborator.id)
+      await deleteVoucher(collaborator.id)
+    }
+    if (deskId && deskId !== collaborator?.id) {
+      await deleteGlobalDeskAccount(deskId)
+      await deleteIdentity(deskId)
+      await deleteVoucher(deskId)
+    } else if (!collaborator) {
+      await deleteGlobalDeskAccount(id)
+      await deleteIdentity(id)
+      await deleteVoucher(id)
+    }
     bustOperationsCache()
   })
 
@@ -428,7 +445,43 @@ export function registerOperationsIpc(): void {
     const storeId = resolveStoreFilter(actor, body)
     const monthKey = typeof body.monthKey === 'string' ? body.monthKey : null
     log.info('[operations] cards', storeId ?? 'all', monthKey ?? 'now')
-    return memo(cacheKey(`cards:${monthKey ?? 'now'}`, storeId), 8_000, () => getCardsBoard(monthKey, storeId))
+    const board = await memo(cacheKey(`cards:${monthKey ?? 'now'}`, storeId), 8_000, () =>
+      getCardsBoard(monthKey, storeId)
+    )
+    return { ...board, canEdit: canEditStoreDesk(actor.role) }
+  })
+
+  handle('operations:card-month-total', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) {
+      throw new Error('Você não pode ajustar o total de cartões desta unidade.')
+    }
+    if (!payload || typeof payload !== 'object') throw new Error('Dados do ajuste inválidos.')
+    const body = payload as Record<string, unknown>
+    const input: CardMonthTotalWrite = {
+      storeId: asString(body.storeId, 'Unidade'),
+      monthKey: asString(body.monthKey, 'Mês'),
+      total: body.total === null || body.total === undefined ? null : Number(body.total),
+      note: typeof body.note === 'string' ? body.note : null
+    }
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
+    if (scoped && input.storeId !== scoped) {
+      throw new Error('Você só pode ajustar o total da sua unidade.')
+    }
+    if (input.total === null) {
+      await deleteCardTotalOverride(input.storeId, input.monthKey)
+    } else {
+      await upsertCardTotalOverride({
+        storeId: input.storeId,
+        monthKey: input.monthKey,
+        total: input.total,
+        note: input.note,
+        actorUserId: actor.userId
+      })
+    }
+    bustOperationsCache()
+    const board = await getCardsBoard(input.monthKey, input.storeId)
+    return { ...board, canEdit: true }
   })
 
   handle('operations:card-create', async (payload) => {

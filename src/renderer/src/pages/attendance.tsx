@@ -537,14 +537,7 @@ function QuadroReadout({ rows, filled }: { rows: TeamHeadcountRow[]; filled: boo
 function KindChip({ kind, justified }: { kind: AttendanceKind; justified: boolean }) {
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]', toneClass(kind, justified))}>
-      <span
-        className={cn(
-          'flex size-3.5 items-center justify-center rounded-full text-[9px] font-semibold text-white',
-          toneDot(kind, justified)
-        )}
-      >
-        !
-      </span>
+      <span className={cn('size-2 shrink-0 rounded-full', toneDot(kind, justified))} />
       {attendanceKindLabel(kind, justified)}
     </span>
   )

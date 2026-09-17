@@ -207,24 +207,18 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
-                        {employee.directorySource === 'app_user' ? (
-                          <IconButton label="Editar" onClick={() => openEdit(employee)}>
-                            <Settings className="size-3.5" strokeWidth={1.7} />
+                        <IconButton label="Editar" onClick={() => openEdit(employee)}>
+                          <Settings className="size-3.5" strokeWidth={1.7} />
+                        </IconButton>
+                        {employee.directorySource === 'app_user' ? null : (
+                          <IconButton label="Perfil" onClick={() => onOpenProfile(employee.id)}>
+                            <UserRound className="size-3.5" strokeWidth={1.7} />
                           </IconButton>
-                        ) : (
-                          <>
-                            <IconButton label="Editar" onClick={() => openEdit(employee)}>
-                              <Settings className="size-3.5" strokeWidth={1.7} />
-                            </IconButton>
-                            <IconButton label="Perfil" onClick={() => onOpenProfile(employee.id)}>
-                              <UserRound className="size-3.5" strokeWidth={1.7} />
-                            </IconButton>
-                            {employee.name.trim().toUpperCase() === 'CAIXA' ? null : (
-                              <IconButton label="Excluir" onClick={() => setRemoving(employee)}>
-                                <Trash2 className="size-3.5" strokeWidth={1.7} />
-                              </IconButton>
-                            )}
-                          </>
+                        )}
+                        {employee.name.trim().toUpperCase() === 'CAIXA' ? null : (
+                          <IconButton label="Excluir" onClick={() => setRemoving(employee)}>
+                            <Trash2 className="size-3.5" strokeWidth={1.7} />
+                          </IconButton>
                         )}
                       </div>
                     </td>
@@ -248,8 +242,14 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
 
       <Dialog
         open={Boolean(removing)}
-        title="Excluir funcionário"
-        description="Os cartões dele no Card+ passam para o CAIXA. Depois o cadastro some do Card+ e do FLOW."
+        title={removing?.directorySource === 'app_user' || removing?.isGlobalDesk ? 'Excluir login da rede' : 'Excluir funcionário'}
+        description={
+          removing?.directorySource === 'app_user'
+            ? 'Remove o login TI/Regional no Card+. Não apaga cartões nem o quadro da loja.'
+            : removing?.isGlobalDesk
+              ? 'Os cartões da loja passam para o CAIXA e o login da rede também sai do Card+.'
+              : 'Os cartões dele no Card+ passam para o CAIXA. Depois o cadastro some do Card+ e do FLOW.'
+        }
         onClose={() => {
           if (!deleting) setRemoving(null)
         }}

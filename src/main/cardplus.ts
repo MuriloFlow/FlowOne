@@ -213,7 +213,7 @@ async function listCollaborators(storeId?: string | null): Promise<CollaboratorR
   return rows.filter((row) => !row.merged_into_id && belongsToStore(row.store_id, storeId))
 }
 
-async function getCollaboratorOrNull(id: string): Promise<CollaboratorRow | null> {
+export async function getCollaboratorOrNull(id: string): Promise<CollaboratorRow | null> {
   const data = await throwIfError(
     await getCardplusClient()
       .from('collaborators')

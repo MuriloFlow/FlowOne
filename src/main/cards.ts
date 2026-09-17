@@ -8,6 +8,7 @@ import {
   monthKeyFromDateKey
 } from './dates'
 import { listStores } from './cardplus'
+import { getCardTotalOverride, overlayMonthTotal } from './card-overrides'
 import { getCardplusClient } from './supabase-clients'
 import type { CardRecord, CardWriteInput, CardsBoard, StorePerson } from '../shared/operations'
 
@@ -299,13 +300,19 @@ export async function getCardsBoard(monthKeyInput?: string | null, storeId?: str
     }
   })
 
+  const registered = records.length
+  const override = storeId ? await getCardTotalOverride(storeId, monthKey) : null
+
   return {
     monthKey,
     storeId: storeId ?? null,
     storeName: storeId ? stores[0]?.name ?? null : null,
+    canEdit: false,
     cardsToday: monthKey === monthKeyFromDateKey(today) ? records.filter((card) => card.dateKey === today).length : todayCount,
     todayGoal: dayGoal,
-    cardsThisMonth: records.length,
+    cardsThisMonth: overlayMonthTotal(registered, override?.total),
+    cardsThisMonthRegistered: registered,
+    cardTotalOverride: override?.total ?? null,
     monthGoal: monthGoalValue,
     cardsTotal: totalCount,
     pendingCount,

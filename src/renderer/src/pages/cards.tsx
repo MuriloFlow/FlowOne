@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, ArrowRightLeft, ChevronRight, CreditCard, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, ChevronDown, ChevronRight, CreditCard, Pencil, Trash2 } from 'lucide-react'
 import { CardDialog } from '@/components/card-dialog'
 import { EmptyState } from '@/components/empty-state'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { MetricCard } from '@/components/metric-card'
 import { MonthSwitcher } from '@/components/month-switcher'
 import {
@@ -43,6 +44,7 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
   const [selected, setSelected] = useState<CardRecord | null>(null)
   const [removing, setRemoving] = useState<CardRecord | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [invalidateOpen, setInvalidateOpen] = useState(false)
 
   useEffect(() => {
     setSelectedDate(null)
@@ -193,6 +195,7 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
               today={today}
               onMonthKey={setMonthKey}
               onOpenDay={setSelectedDate}
+              onInvalidate={() => setInvalidateOpen(true)}
             />
           </motion.div>
         ) : null}
@@ -213,6 +216,17 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
         onSaved={() => {
           void reload()
         }}
+      />
+
+      <InvalidateCardsDialog
+        open={invalidateOpen}
+        board={board}
+        onClose={() => setInvalidateOpen(false)}
+        onSaved={(payload) => {
+          setBoard(payload)
+          setInvalidateOpen(false)
+        }}
+        onError={setError}
       />
 
       <Dialog
@@ -253,23 +267,35 @@ function MonthDesk({
   monthKey,
   today,
   onMonthKey,
-  onOpenDay
+  onOpenDay,
+  onInvalidate
 }: {
   board: CardsBoard
   monthKey: string
   today: string
   onMonthKey: (value: string) => void
   onOpenDay: (dateKey: string) => void
+  onInvalidate: () => void
 }) {
+  const overlayHint =
+    board.cardTotalOverride === null
+      ? board.monthGoal === null
+        ? 'Sem meta mensal no Card+'
+        : 'Progresso da meta mensal'
+      : `${formatCount(board.cardsThisMonthRegistered)} lançados · total ajustado ${formatCount(board.cardsThisMonth)}`
+
   return (
     <>
-      <header className="mb-5">
-        <h1 className="text-[22px] text-[#F0EFEC]/88">Cartões</h1>
-        <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
-          {board.storeName
-            ? `Métricas e registros de ${board.storeName}. Clique no dia para ver e registrar.`
-            : 'Clique no dia para ver, editar e registrar os cartões daquela data.'}
-        </p>
+      <header className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] text-[#F0EFEC]/88">Cartões</h1>
+          <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
+            {board.storeName
+              ? `Métricas e registros de ${board.storeName}. Clique no dia para ver e registrar.`
+              : 'Clique no dia para ver, editar e registrar os cartões daquela data.'}
+          </p>
+        </div>
+        {board.canEdit ? <OptionsMenu onInvalidate={onInvalidate} /> : null}
       </header>
 
       <div className="grid grid-cols-3 gap-3">
@@ -284,7 +310,7 @@ function MonthDesk({
           label="Cartões do mês"
           value={board.cardsThisMonth}
           goal={board.monthGoal}
-          hint={board.monthGoal === null ? 'Sem meta mensal no Card+' : 'Progresso da meta mensal'}
+          hint={overlayHint}
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
@@ -294,6 +320,13 @@ function MonthDesk({
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
         />
       </div>
+
+      {board.cardTotalOverride !== null ? (
+        <p className="mt-2 text-[12px] text-[#F0EFEC]/36">
+          {formatCount(board.cardsThisMonthRegistered)} lançados · total ajustado {formatCount(board.cardsThisMonth)}.
+          Os dias e os registros dos funcionários continuam intactos.
+        </p>
+      ) : null}
 
       <div className="mt-3 grid grid-cols-4 gap-3">
         <MiniStat label="Pendentes" value={formatCount(board.pendingCount)} hint="Neste mês" />
@@ -552,6 +585,167 @@ function DayDesk({
         )}
       </section>
     </>
+  )
+}
+
+function OptionsMenu({ onInvalidate }: { onInvalidate: () => void }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-white/[0.08] bg-white/[0.03] px-3 text-[13px] text-[#F0EFEC]/70 hover:bg-white/[0.05] hover:text-[#F0EFEC]/88"
+      >
+        Opções
+        <ChevronDown className={cn('size-3.5 text-[#F0EFEC]/40 transition-transform', open ? 'rotate-180' : null)} />
+      </button>
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.14 }}
+            className="absolute top-[calc(100%+6px)] right-0 z-20 min-w-[200px] rounded-[12px] border border-white/[0.08] bg-[#171717] p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                onInvalidate()
+              }}
+              className="flex h-8 w-full items-center rounded-[8px] px-2.5 text-left text-[13px] text-[#F0EFEC]/72 hover:bg-white/[0.05] hover:text-[#F0EFEC]/90"
+            >
+              Invalidar cartões
+            </button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function InvalidateCardsDialog({
+  open,
+  board,
+  onClose,
+  onSaved,
+  onError
+}: {
+  open: boolean
+  board: CardsBoard | null
+  onClose: () => void
+  onSaved: (board: CardsBoard) => void
+  onError: (message: string) => void
+}) {
+  const registered = board?.cardsThisMonthRegistered ?? 0
+  const [total, setTotal] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open || !board) return
+    setTotal(String(board.cardTotalOverride ?? ''))
+  }, [open, board])
+
+  async function save(next: number | null): Promise<void> {
+    if (!board?.storeId) {
+      onError('Escolha uma unidade no filtro para ajustar o total do mês.')
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = await operations().upsertCardMonthTotal({
+        storeId: board.storeId,
+        monthKey: board.monthKey,
+        total: next
+      })
+      onSaved(payload)
+    } catch (saveError) {
+      onError(operationError(saveError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      title="Invalidar cartões"
+      description="O sistema próprio da loja (não o FLOW nem o Card+) pode invalidar cartões. O FLOW guarda todos os lançamentos do dia."
+      onClose={onClose}
+    >
+      <div className="px-5 pb-5">
+        <p className="text-[13px] leading-relaxed text-[#F0EFEC]/55">
+          Aqui você informa o <span className="text-[#F0EFEC]/78">total correto</span> e o FLOW só ajusta o
+          total exibido em Cartões do mês. A tabela diária e os registros dos funcionários continuam iguais.
+        </p>
+        <p className="mt-3 text-[12px] text-[#F0EFEC]/38">
+          Exemplo: 73 lançados, real 69. Neste mês há {formatCount(registered)}{' '}
+          {registered === 1 ? 'lançamento' : 'lançamentos'}
+          {board?.storeName ? ` em ${board.storeName}` : ''}.
+        </p>
+        {!board?.storeId ? (
+          <p className="mt-3 rounded-[10px] border border-amber-400/15 bg-amber-400/8 px-3 py-2 text-[12px] text-amber-100/75">
+            Escolha uma unidade no filtro da sidebar para gravar o ajuste.
+          </p>
+        ) : (
+          <div className="mt-4">
+            <Label htmlFor="card-total-override" className="text-[12px] text-[#F0EFEC]/55">
+              Total correto do mês
+            </Label>
+            <Input
+              id="card-total-override"
+              inputMode="numeric"
+              value={total}
+              onChange={(event) => setTotal(event.target.value.replace(/[^\d]/g, ''))}
+              placeholder={String(registered)}
+              className="mt-1.5 h-9 rounded-[8px] border-white/[0.08] bg-transparent text-[13px]"
+            />
+          </div>
+        )}
+        <div className="mt-5 flex items-center justify-end gap-2">
+          {board && board.cardTotalOverride !== null ? (
+            <button
+              type="button"
+              disabled={saving || !board.storeId}
+              onClick={() => void save(null)}
+              className="mr-auto h-8 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/45 hover:text-[#F0EFEC]/70"
+            >
+              Voltar ao lançado
+            </button>
+          ) : null}
+          <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/45">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={saving || !board?.storeId || total.trim() === ''}
+            onClick={() => void save(Number(total))}
+            className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111] disabled:opacity-40"
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
 

@@ -2,6 +2,7 @@ import log from 'electron-log'
 import { assertEmployeeInStore, listEmployees, listStores } from './cardplus'
 import { dateKeyInSaoPaulo, lastDayOfMonth, monthKeyFromDateKey } from './dates'
 import { getFlowAdminClient } from './supabase-clients'
+import { compactScheduleKey } from '../shared/schedules'
 import { canEditStoreDesk, type FlowRoleId } from '../shared/roles'
 import {
   TEAM_HEADCOUNT_ROLES,
@@ -182,6 +183,28 @@ async function actorDisplayName(userId: string): Promise<string | null> {
   return name || null
 }
 
+export async function listAttendanceEventsRange(
+  storeId: string,
+  fromDate: string,
+  toDate: string
+): Promise<AttendanceEvent[]> {
+  if (!storeId || !fromDate || !toDate) return []
+  const { data, error } = await getFlowAdminClient()
+    .from('flow_attendance_events')
+    .select(
+      'id, cardplus_store_id, date_key, cardplus_collaborator_id, collaborator_name, kind, justified, note, created_by, created_by_name, created_at'
+    )
+    .eq('cardplus_store_id', storeId)
+    .gte('date_key', fromDate)
+    .lte('date_key', toDate)
+    .order('date_key', { ascending: true })
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw new Error(`Erro ao carregar ocorrências: ${error.message}`)
+  }
+  return ((data ?? []) as EventRow[]).map(toEvent)
+}
+
 export async function listAttendanceKinds(
   storeId: string,
   dateKeys: string[]
@@ -190,7 +213,7 @@ export async function listAttendanceKinds(
   if (!storeId || dateKeys.length === 0) return map
   const { data, error } = await getFlowAdminClient()
     .from('flow_attendance_events')
-    .select('date_key, cardplus_collaborator_id, kind, justified')
+    .select('date_key, cardplus_collaborator_id, collaborator_name, kind, justified')
     .eq('cardplus_store_id', storeId)
     .in('date_key', dateKeys)
   if (error) {
@@ -200,11 +223,14 @@ export async function listAttendanceKinds(
   for (const row of (data ?? []) as Array<{
     date_key: string
     cardplus_collaborator_id: string
+    collaborator_name: string
     kind: string
     justified: boolean | null
   }>) {
     const kind = normalizeAttendanceKind(row.kind, Boolean(row.justified))
     map.set(`${row.cardplus_collaborator_id}:${row.date_key}`, kind)
+    const nameKey = compactScheduleKey(row.collaborator_name)
+    if (nameKey) map.set(`name:${nameKey}:${row.date_key}`, kind)
   }
   return map
 }

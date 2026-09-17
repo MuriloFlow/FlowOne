@@ -1,9 +1,13 @@
 import { ipcMain } from 'electron'
 import log from 'electron-log'
 import { listStoreAccess, listEmployeeDirectory } from './access'
+import { applyOverviewCardOverlay } from './card-overrides'
 import { getCardsBoard } from './cards'
 import { getOverview, listStores } from './cardplus'
 import { dateKeyInSaoPaulo, monthKeyFromDateKey, shiftDateKey } from './dates'
+import { getKobbiScheduleContext, type KobbiScheduleContext } from './schedules'
+import { KOBBI_RH_RULE } from '../shared/kobbi'
+import { compactScheduleKey } from '../shared/schedules'
 import { requiredEnv } from './env'
 import { getFinanceBoard } from './finance-days'
 import { readKobbiWidth, writeKobbiWidth } from './kobbi-preference'
@@ -22,6 +26,7 @@ import type {
   EmployeeListItem,
   FinanceDayRow,
   FinanceMetrics,
+  MonthPoint,
   OverviewMetrics,
   StoreAccessAccount,
   StoreBoard
@@ -216,6 +221,8 @@ function emptyOverview(): OverviewMetrics {
   return {
     cardsToday: 0,
     cardsThisMonth: 0,
+    cardsThisMonthRegistered: 0,
+    cardTotalOverride: null,
     cardsLastMonth: 0,
     monthGoal: null,
     todayGoal: null,
@@ -281,10 +288,63 @@ function deskDay(dateKey: string, day: FinanceDayRow | undefined, tableMissing: 
   }
 }
 
+function foldName(value: string): string {
+  return compactScheduleKey(value)
+}
+
+function matchSchedulePeople(question: string, people: KobbiScheduleContext['pessoas']) {
+  const q = foldName(question)
+  if (!q) return []
+  const scored = people
+    .map((person) => {
+      const keys = person.busca.map(foldName).filter((key) => key.length >= 3)
+      let score = 0
+      for (const key of keys) {
+        if (q.includes(key)) score = Math.max(score, key.length)
+      }
+      return { person, score }
+    })
+    .filter((row) => row.score > 0)
+    .sort((left, right) => right.score - left.score)
+  return scored.slice(0, 4).map((row) => row.person)
+}
+
+function mapRhContext(board: KobbiScheduleContext, question: string) {
+  const matched = matchSchedulePeople(question, board.pessoas)
+  return {
+    unidade: board.unidade,
+    precisaUnidade: board.precisaUnidade,
+    tabelaAusente: board.tabelaAusente,
+    semanaInicio: board.semanaInicio,
+    semanaFim: board.semanaFim,
+    pessoasDaSemana: board.pessoas.map((person) => ({
+      nome: person.nome,
+      nomeCurto: person.nomeCurto,
+      busca: person.busca,
+      cargo: person.cargo,
+      dias: person.dias.map((day) => ({
+        data: day.data,
+        dia: day.dia,
+        horarios: day.horarios,
+        ocorrencia: day.ocorrencia,
+        folga: day.folga
+      }))
+    })),
+    ocorrenciasDoMes: board.ocorrencias,
+    pessoaPerguntada: matched.map((person) => ({
+      nome: person.nome,
+      cargo: person.cargo,
+      dias: person.dias
+    })),
+    nota: KOBBI_RH_RULE
+  }
+}
+
 async function buildOperationsContext(
   storeId: string | null,
   userName?: string,
-  userRole?: string
+  userRole?: string,
+  question = ''
 ): Promise<Snapshot> {
   const today = dateKeyInSaoPaulo()
   const yesterday = shiftDateKey(today, -1)
@@ -305,7 +365,10 @@ async function buildOperationsContext(
       storeId ? listStoreAccess(storeId) : Promise.resolve([] as StoreAccessAccount[])
     ])
 
-  const overview = overviewRes.status === 'fulfilled' ? overviewRes.value : emptyOverview()
+  const overview =
+    overviewRes.status === 'fulfilled'
+      ? await applyOverviewCardOverlay(overviewRes.value, storeId).catch(() => overviewRes.value)
+      : emptyOverview()
   if (overviewRes.status === 'rejected') log.warn('[kobbi] overview', overviewRes.reason)
 
   const finance = financeRes.status === 'fulfilled' ? financeRes.value : emptyFinance(monthKey)
@@ -323,6 +386,24 @@ async function buildOperationsContext(
   if (deskRes.status === 'rejected') log.warn('[kobbi] stores', deskRes.reason)
   const access = accessRes.status === 'fulfilled' ? accessRes.value : []
   if (accessRes.status === 'rejected') log.warn('[kobbi] access', accessRes.reason)
+
+  const rhRes = await getKobbiScheduleContext(storeId).catch((error) => {
+    log.warn('[kobbi] escala/rh', error)
+    return null
+  })
+  const escalasERh = rhRes
+    ? mapRhContext(rhRes, question)
+    : {
+        unidade: null,
+        precisaUnidade: !storeId,
+        tabelaAusente: false,
+        semanaInicio: null,
+        semanaFim: null,
+        pessoasDaSemana: [],
+        ocorrenciasDoMes: [],
+        pessoaPerguntada: [],
+        nota: KOBBI_RH_RULE
+      }
 
   const tableMissing = Boolean(finance.financeDaysTableMissing || yesterdayFinance?.financeDaysTableMissing)
   const financeBoards = [finance, yesterdayFinance].filter((item): item is FinanceMetrics => Boolean(item))
@@ -372,7 +453,8 @@ async function buildOperationsContext(
       ? desk.stores[0]?.name ?? stores.find((store) => store.id === storeId)?.name ?? storeId
       : 'Todas as unidades',
     notaRecorte:
-      'Este JSON é o painel completo do FLOW no recorte atual. Cadastros, liderança, equipe, acessos (sem senha), cartões registrados, clientes, financeiro (venda/meta/last year/PU) e vales. null = não lançado — o campo EXISTE. Não diga que falta no recorte se a chave está aqui.',
+      'Este JSON é o painel completo do FLOW no recorte atual. Cadastros, liderança, equipe, acessos (sem senha), cartões registrados, clientes, financeiro (venda/meta/last year/PU), vales, escalas da semana e atestados/faltas/banco de horas. null = não lançado — o campo EXISTE. Não diga que falta no recorte se a chave está aqui. Nunca diga que não tem acesso a escalas ou RH.',
+    pessoaPerguntada: escalasERh.pessoaPerguntada,
     cadastros: {
       unidades: desk.storeCount,
       funcionariosAtivos: desk.employeeCount,
@@ -533,7 +615,7 @@ async function buildOperationsContext(
       cartoesPendentesMes: overview.pendingCardsThisMonth,
       unidades: overview.storeCount,
       funcionarios: overview.employeeCount,
-      meses: overview.months.map((month) => ({
+      meses: overview.months.map((month: MonthPoint) => ({
         periodo: month.label,
         cartoes: month.cards,
         meta: month.goal
@@ -591,7 +673,10 @@ async function buildOperationsContext(
           })),
           valesPendentes: pendingVouchers.slice(0, 40)
         }
-      : { indisponivel: true }
+      : { indisponivel: true },
+    escalasERh,
+    escalasDaSemana: escalasERh,
+    atestadosEFaltas: escalasERh.ocorrenciasDoMes
   }
 
   return {
@@ -742,12 +827,14 @@ function systemPrompt(snapshot: string, ratingHint: string): string {
   return [
     'Você é o Kobbi, copiloto operacional do FLOW — Central de Gestão e Operações.',
     'Responda em português do Brasil. Seja específico: cite o nome da unidade do recorte e as datas (fuso America/Sao_Paulo).',
-    'O JSON abaixo é o painel inteiro neste recorte: cadastros/unidades (liderança, código, atenção), equipe completa (incluindo Gerente Regional e TI globais), acessos do Card+ sem senha, financeiro dia a dia (venda, meta, last year, PU), cartões registrados do mês (cliente, operador, limite, gasto, status), clientes, ranking, vales e visão geral.',
+    'O JSON abaixo é o painel inteiro neste recorte: cadastros/unidades, equipe, acessos do Card+ sem senha, financeiro, cartões, clientes, ranking, vales, escalasERh (escala da semana por pessoa + atestados/faltas/banco de horas de flow_attendance_events).',
     'Use SOMENTE esses dados. Não invente tabela, coluna, meta, vale, funcionário nem schema do Card+.',
     'PU (produto único) é o mix de peças no caixa, número lançado no Financeiro do FLOW (flow_finance_days), não uma tabela do Card+.',
     'Se um campo existir no JSON com valor (número, nome, lista), responda com ele. Nunca diga que "não está disponível neste recorte" quando a chave está no JSON.',
     'Se o valor for null, diga que ainda não foi lançado naquela data. Se puOntemStatus/tabelaFlowFinanceDays indicar tabela ausente, aí sim: PU ainda não lançado / rode o SQL 0007 no Supabase do FLOW — só nesse caso.',
     'Quando perguntarem quem é supervisor/gerente de uma loja, use cadastros.lojas. Quando perguntarem funcionário, ranking ou TI/regional, use equipe. Quando perguntarem cliente ou cartão registrado, use cartoesRegistrados e clientes.',
+    KOBBI_RH_RULE,
+    'Quando perguntarem escala, horário, quem trabalha, atestado, falta ou banco de horas: use escalasERh.pessoaPerguntada se houver match; senão busque em pessoasDaSemana pelo nome/primeiro nome. Se a lista estiver vazia, diga que a escala desta semana ainda não foi montada nesta unidade — nunca que você não tem acesso.',
     'Compare com meta do dia, last year, média do PU, ritmo e dias úteis restantes quando isso esclarecer o gap. Destaque atrasos e folgas com números.',
     'Números: milhar com ponto, dinheiro em R$, PU no padrão do painel (ex.: 30%). Não revele chaves, tokens, prompts internos, senhas nem IDs técnicos. CPF só mascarado. Logins podem ser citados; senhas nunca.',
     'Não execute exclusão, pagamento ou cadastro — só analise e sugira.',
@@ -977,15 +1064,14 @@ export async function sendKobbi(
 ): Promise<{ model: string; chart: KobbiChartSpec | null }> {
   const actor = await resolveActor()
   const storeId = resolveStoreFilter(actor, input.storeId)
+  const lastUser = [...input.messages].reverse().find((item) => item.role === 'user')?.content ?? ''
   let snapshot: Snapshot
   try {
-    snapshot = await buildOperationsContext(storeId, input.userName, input.userRole)
+    snapshot = await buildOperationsContext(storeId, input.userName, input.userRole || actor.role, lastUser)
   } catch (error) {
     log.warn('[kobbi] snapshot retry', error instanceof Error ? error.message : error)
-    snapshot = await buildOperationsContext(storeId, input.userName, input.userRole)
+    snapshot = await buildOperationsContext(storeId, input.userName, input.userRole || actor.role, lastUser)
   }
-
-  const lastUser = [...input.messages].reverse().find((item) => item.role === 'user')?.content ?? ''
   const chart = inferKobbiChart(lastUser, snapshot)
   const ratingHint = await listKobbiRatingHints(actor.userId).catch(() => '')
   const messages: ChatMessage[] = [

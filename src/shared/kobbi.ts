@@ -89,3 +89,6 @@ export const KOBBI_WIDTH_MIN = 380
 export const KOBBI_WIDTH_MAX = 920
 export const KOBBI_WIDTH_DEFAULT = 480
 export const KOBBI_THREAD_LIMIT = 5
+
+export const KOBBI_RH_RULE =
+  'O FLOW entrega ao Kobbi a escala da semana da unidade filtrada (horários por pessoa e dia) e as ocorrências de flow_attendance_events (atestado, falta, falta justificada, banco de horas). Combine pessoas pelo nome, primeiro nome ou parte do nome. É proibido dizer que não há acesso a escalas, RH ou folha.'

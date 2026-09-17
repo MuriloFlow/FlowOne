@@ -344,13 +344,23 @@ export async function syncDeskAccountName(accountId: string, name: string): Prom
   if (error) throw new Error(`Erro ao atualizar a conta da rede no Card+: ${error.message}`)
 }
 
-export async function assertEmployeeDeletable(id: string): Promise<void> {
+export async function deleteGlobalDeskAccount(id: string): Promise<void> {
   const accounts = await listGlobalDeskAccounts()
-  if (accounts.some((account) => account.id === id)) {
-    throw new Error(
-      'Contas de Gerente Regional e TI ficam no Card+ (Contas e acessos). Só é possível excluir no FLOW se a pessoa também for colaboradora da unidade.'
-    )
+  const account = accounts.find((item) => item.id === id)
+  if (!account) return
+  const { error } = await getCardplusClient().from('app_users').delete().eq('id', id)
+  if (!error) return
+  if (error.code === '23503') {
+    const { error: disableError } = await getCardplusClient()
+      .from('app_users')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (disableError) {
+      throw new Error(`Erro ao desativar o login da rede no Card+: ${disableError.message}`)
+    }
+    return
   }
+  throw new Error(`Erro ao excluir o login da rede no Card+: ${error.message}`)
 }
 
 export async function upsertStoreAccess(input: StoreAccessWriteInput): Promise<StoreAccessAccount> {

@@ -16,6 +16,7 @@ import {
   renameStore as renameCardplusStore,
   storeMonthCardsByStore
 } from './cardplus'
+import { listCardTotalOverrides, overlayMonthTotal } from './card-overrides'
 import { dateKeyInSaoPaulo, monthKeyFromDateKey } from './dates'
 import { getFlowAdminClient } from './supabase-clients'
 import type {
@@ -150,7 +151,7 @@ function mergePeople(list: StorePerson[]): StorePerson[] {
 export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard> {
   const today = dateKeyInSaoPaulo()
   const monthKey = monthKeyFromDateKey(today)
-  const [stores, directory, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores] =
+  const [stores, directory, cards, cardGoals, saleGoals, dailySales, profiles, seats, operationalStores, cardOverrides] =
     await Promise.all([
       listStores(storeId),
       listEmployeeDirectory(),
@@ -160,7 +161,8 @@ export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard
       listGoalsByPrefix(DAILY_SALE_PREFIX, storeId),
       listProfiles(),
       listSeats(),
-      listOperationalStoreIds()
+      listOperationalStoreIds(),
+      listCardTotalOverrides(monthKey)
     ])
 
   const names = new Map(directory.map((item) => [item.id, item.name]))
@@ -222,7 +224,7 @@ export async function getStoreBoard(storeId?: string | null): Promise<StoreBoard
       notes: profile?.notes ?? null,
       flagged: Boolean(profile?.flagged),
       employeeCount,
-      cardsThisMonth: cards.get(store.id) ?? 0,
+      cardsThisMonth: overlayMonthTotal(cards.get(store.id) ?? 0, cardOverrides.get(store.id)),
       monthGoal: goalForStore(cardGoals, store.id, `${MONTH_CARDS_PREFIX}${monthKey}`),
       salesThisMonthCents: salesForStore(dailySales, store.id, monthKey),
       monthSalesGoalCents: goalForStore(saleGoals, store.id, `${MONTH_SALES_PREFIX}${monthKey}`),

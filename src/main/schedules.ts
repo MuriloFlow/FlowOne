@@ -1,16 +1,17 @@
 import { listEmployeeDirectory } from './access'
-import { listAttendanceKinds } from './attendance'
+import { listAttendanceEventsRange, listAttendanceKinds } from './attendance'
 import { ensureOperationalCollaborator, listEmployees, listStores } from './cardplus'
-import { dateKeyInSaoPaulo, isoWeekday, mondayOf, shiftWeek, weekDateKeys } from './dates'
+import { dateKeyInSaoPaulo, isoWeekday, lastDayOfMonth, mondayOf, monthKeyFromDateKey, shiftWeek, weekDateKeys } from './dates'
 import { syncProfileRoleIfSamePerson } from './identities'
 import { getFlowAdminClient } from './supabase-clients'
-import { canEditStoreDesk, isTiAdminAppRole, isTiRole } from '../shared/roles'
+import { canEditStoreDesk, isTiAdminAppRole, isTiRole, type FlowRoleId } from '../shared/roles'
 import {
   DEFAULT_SCHEDULE_SLOTS,
   SCHEDULE_BANDS,
   SCHEDULE_TEAMS,
   bandLabel,
   formatClock,
+  compactScheduleKey,
   scheduleActorMatchScore,
   scheduleDisplayRole,
   scheduleSlotBaseCode,
@@ -31,7 +32,7 @@ import {
   type ScheduleTeam,
   type ScheduleWeekday
 } from '../shared/schedules'
-import type { FlowRoleId } from '../shared/roles'
+import { attendanceKindLabel } from '../shared/attendance'
 
 type SlotRow = {
   id: string
@@ -592,7 +593,10 @@ export async function getScheduleBoard(
             .sort((left, right) => left.sortOrder - right.sortOrder)
             .map((item) => ({
               ...item,
-              absenceKind: absences.get(`${item.collaboratorId}:${dateKey}`) ?? null
+              absenceKind:
+                absences.get(`${item.collaboratorId}:${dateKey}`) ??
+                absences.get(`name:${compactScheduleKey(item.name)}:${dateKey}`) ??
+                null
             }))
         }))
     }
@@ -790,6 +794,161 @@ export async function deleteScheduleAssignment(id: string, storeId: string): Pro
     .eq('id', id)
     .eq('cardplus_store_id', storeId)
   if (error) throw new Error(`Erro ao tirar da escala: ${error.message}`)
+}
+
+export type KobbiScheduleContext = {
+  unidade: string | null
+  precisaUnidade: boolean
+  tabelaAusente: boolean
+  semanaInicio: string
+  semanaFim: string
+  dias: string[]
+  pessoas: Array<{
+    id: string
+    nome: string
+    nomeCurto: string
+    busca: string[]
+    cargo: string
+    time: string
+    dias: Array<{
+      data: string
+      dia: string
+      horarios: string[]
+      ocorrencia: string | null
+      folga: boolean
+    }>
+  }>
+  ocorrencias: Array<{
+    nome: string
+    data: string
+    tipo: string
+    observacao: string | null
+  }>
+}
+
+export async function getKobbiScheduleContext(
+  storeId: string | null | undefined
+): Promise<KobbiScheduleContext> {
+  const today = dateKeyInSaoPaulo()
+  const weekStart = mondayOf(today)
+  const dates = weekDateKeys(weekStart)
+  const empty: KobbiScheduleContext = {
+    unidade: null,
+    precisaUnidade: !storeId,
+    tabelaAusente: false,
+    semanaInicio: weekStart,
+    semanaFim: dates[6] ?? weekStart,
+    dias: dates,
+    pessoas: [],
+    ocorrencias: []
+  }
+  if (!storeId) return empty
+
+  const stores = await listStores(storeId)
+  const store = stores[0]
+  if (!store) return { ...empty, precisaUnidade: true }
+
+  let slots: ScheduleSlot[] = []
+  try {
+    slots = await listSlots(storeId)
+  } catch (error) {
+    if (error instanceof Error && /0009_flow_schedules/i.test(error.message)) {
+      return { ...empty, unidade: store.name, tabelaAusente: true }
+    }
+    throw error
+  }
+
+  const [people, assignmentsRes, absences, events] = await Promise.all([
+    listEmployees(storeId),
+    getFlowAdminClient()
+      .from('flow_schedule_assignments')
+      .select('id, slot_id, weekday, cardplus_collaborator_id, sort_order, note')
+      .eq('cardplus_store_id', storeId)
+      .eq('week_start', weekStart),
+    listAttendanceKinds(storeId, dates),
+    listAttendanceEventsRange(
+      storeId,
+      `${monthKeyFromDateKey(today)}-01`,
+      `${monthKeyFromDateKey(today)}-${String(lastDayOfMonth(monthKeyFromDateKey(today))).padStart(2, '0')}`
+    )
+  ])
+
+  if (assignmentsRes.error) {
+    if (isMissingTable(assignmentsRes.error)) {
+      return { ...empty, unidade: store.name, tabelaAusente: true }
+    }
+    throw new Error(`Erro ao carregar a escala: ${assignmentsRes.error.message}`)
+  }
+
+  const slotById = new Map(slots.map((slot) => [slot.id, slot]))
+  const byPersonDay = new Map<string, string[]>()
+  for (const row of (assignmentsRes.data ?? []) as AssignmentRow[]) {
+    const slot = slotById.get(row.slot_id)
+    if (!slot) continue
+    const weekday = asWeekday(row.weekday)
+    const dateKey = dates[weekday - 1]
+    if (!dateKey) continue
+    const label = `${slot.label} ${formatClock(slot.startMinutes)}–${formatClock(slot.endMinutes)}`
+    const key = `${row.cardplus_collaborator_id}:${dateKey}`
+    const list = byPersonDay.get(key) ?? []
+    list.push(label)
+    byPersonDay.set(key, list)
+  }
+
+  const activePeople = people.filter(
+    (item) => item.isActive !== false && item.name.trim().toUpperCase() !== 'CAIXA'
+  )
+
+  const pessoas = activePeople.map((item) => {
+    const team = scheduleTeamOf(item.flowRole, item.cardplusRole, item.cardplusRole)
+    const nome = item.name.trim()
+    const nomeCurto = shortPersonName(nome)
+    const busca = Array.from(
+      new Set(
+        [nome, nomeCurto, compactScheduleKey(nome), compactScheduleKey(nomeCurto)].filter(
+          (value) => value.length >= 2
+        )
+      )
+    )
+    return {
+      id: item.id,
+      nome,
+      nomeCurto,
+      busca,
+      cargo: scheduleDisplayRole(item.cardplusRole, item.flowRoleLabel),
+      time: team ?? 'OPERACAO',
+      dias: dates.map((dateKey) => {
+        const horarios = byPersonDay.get(`${item.id}:${dateKey}`) ?? []
+        const kind =
+          absences.get(`${item.id}:${dateKey}`) ??
+          absences.get(`name:${compactScheduleKey(item.name)}:${dateKey}`) ??
+          null
+        return {
+          data: dateKey,
+          dia: weekdayName(isoWeekday(dateKey)),
+          horarios,
+          ocorrencia: kind ? attendanceKindLabel(kind) : null,
+          folga: horarios.length === 0
+        }
+      })
+    }
+  })
+
+  return {
+    unidade: store.name,
+    precisaUnidade: false,
+    tabelaAusente: false,
+    semanaInicio: weekStart,
+    semanaFim: dates[6] ?? weekStart,
+    dias: dates,
+    pessoas,
+    ocorrencias: events.map((event) => ({
+      nome: event.name,
+      data: event.dateKey,
+      tipo: attendanceKindLabel(event.kind, event.justified),
+      observacao: event.note
+    }))
+  }
 }
 
 export { formatClock, shiftWeek }

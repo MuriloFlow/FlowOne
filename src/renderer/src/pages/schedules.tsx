@@ -543,11 +543,11 @@ function DropSlot({
             )}
           >
             <span className="truncate text-[12px] text-[#F0EFEC]/82">{item.shortName}</span>
-            <span className="flex shrink-0 items-center gap-1.5 pl-2">
+              <span className="flex shrink-0 items-center gap-1.5 pl-2">
               <span className="text-[10px] text-[#F0EFEC]/32">
                 {overlapIds.has(item.id) ? 'Divergência' : (item.note ?? hint.split(' – ')[0])}
               </span>
-              {item.absenceKind ? <AbsenceBadge kind={item.absenceKind} /> : null}
+              {item.absenceKind ? <AbsenceDot kind={item.absenceKind} /> : null}
             </span>
           </div>
         ))}
@@ -562,27 +562,17 @@ function DropSlot({
   )
 }
 
-function AbsenceBadge({ kind }: { kind: AttendanceKind }) {
+function AbsenceDot({ kind }: { kind: AttendanceKind }) {
   const label = attendanceKindLabel(kind)
   const tone = attendanceKindTone(kind)
   return (
-    <span className="group/absence relative inline-flex shrink-0" title={label}>
-      <span
-        aria-label={label}
-        className={cn(
-          'flex size-4 items-center justify-center rounded-full text-[10px] font-semibold leading-none text-white',
-          tone === 'blue'
-            ? 'bg-[#3B82F6] shadow-[0_0_0_1px_rgba(59,130,246,0.28)]'
-            : tone === 'yellow'
-              ? 'bg-[#EAB308] shadow-[0_0_0_1px_rgba(234,179,8,0.28)]'
-              : 'bg-[#EF4444] shadow-[0_0_0_1px_rgba(239,68,68,0.28)]'
-        )}
-      >
-        !
-      </span>
-      <span className="pointer-events-none absolute top-1/2 left-full z-20 ml-1.5 -translate-y-1/2 rounded-[6px] bg-[#111111] px-1.5 py-0.5 text-[10px] whitespace-nowrap text-[#F0EFEC]/82 opacity-0 shadow-[0_8px_20px_rgba(0,0,0,0.45)] ring-1 ring-white/10 transition-opacity duration-150 group-hover/absence:opacity-100">
-        {label}
-      </span>
-    </span>
+    <span
+      title={label}
+      aria-label={label}
+      className={cn(
+        'inline-block size-2 shrink-0 rounded-full',
+        tone === 'blue' ? 'bg-[#3B82F6]' : tone === 'yellow' ? 'bg-[#EAB308]' : 'bg-[#EF4444]'
+      )}
+    />
   )
 }

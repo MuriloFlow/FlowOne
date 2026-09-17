@@ -128,6 +128,8 @@ export type RecentCard = {
 export type OverviewMetrics = {
   cardsToday: number
   cardsThisMonth: number
+  cardsThisMonthRegistered?: number
+  cardTotalOverride?: number | null
   cardsLastMonth: number
   monthGoal: number | null
   todayGoal: number | null
@@ -181,9 +183,12 @@ export type CardsBoard = {
   monthKey: string
   storeId: string | null
   storeName: string | null
+  canEdit: boolean
   cardsToday: number
   todayGoal: number | null
   cardsThisMonth: number
+  cardsThisMonthRegistered: number
+  cardTotalOverride: number | null
   monthGoal: number | null
   cardsTotal: number
   pendingCount: number
@@ -195,6 +200,13 @@ export type CardsBoard = {
   days: CardDayRow[]
   records: CardRecord[]
   people: StorePerson[]
+}
+
+export type CardMonthTotalWrite = {
+  storeId: string
+  monthKey: string
+  total: number | null
+  note?: string | null
 }
 
 export type CardWriteInput = {
@@ -380,6 +392,7 @@ export type OperationsApi = {
   listStoreAccess: (storeId: string) => Promise<StoreAccessAccount[]>
   upsertStoreAccess: (input: StoreAccessWriteInput) => Promise<StoreAccessAccount>
   getCardsBoard: (monthKey?: string | null, storeId?: string | null) => Promise<CardsBoard>
+  upsertCardMonthTotal: (input: CardMonthTotalWrite) => Promise<CardsBoard>
   createCard: (input: CardWriteInput) => Promise<CardRecord>
   updateCard: (input: CardWriteInput) => Promise<CardRecord>
   transferCard: (id: string, collaboratorId: string) => Promise<CardRecord>
