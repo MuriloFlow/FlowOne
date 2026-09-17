@@ -40,6 +40,86 @@ function dayIsEmpty(day: FinanceDayRow): boolean {
   return day.saleCents === null && day.goalCents === null && day.lastYearCents === null && day.pu === null
 }
 
+function signedTone(delta: number | null): 'up' | 'down' | 'neutral' {
+  if (delta === null || delta === 0) return 'neutral'
+  return delta > 0 ? 'up' : 'down'
+}
+
+function formatSignedBRL(cents: number): string {
+  const formatted = formatBRLFromCents(Math.abs(cents))
+  if (cents > 0) return `+${formatted}`
+  if (cents < 0) return `−${formatted}`
+  return formatted
+}
+
+function formatSignedPercent(value: number): string {
+  const formatted = `${Math.abs(value).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
+  if (value > 0) return `+${formatted}`
+  if (value < 0) return `−${formatted}`
+  return formatted
+}
+
+function ratioPct(value: number, goal: number): number | null {
+  if (goal <= 0) return null
+  return Number(((value / goal) * 100).toFixed(1))
+}
+
+function financeMiniStats(data: FinanceMetrics, today: string) {
+  const goal = data.monthSalesGoalCents
+  const sales = data.salesThisMonthCents
+  const completedPct = goal !== null ? ratioPct(sales, goal) : null
+  const monthDelta = goal !== null && goal > 0 ? sales - goal : null
+  const monthDeltaPct = goal !== null ? ratioPct(sales - goal, goal) : null
+
+  const isCurrentMonth = data.monthKey === today.slice(0, 7)
+  const elapsedDays = (isCurrentMonth ? data.days.filter((day) => day.dateKey <= today) : data.days).length
+  const todayRow = data.days.find((day) => day.dateKey === today) ?? null
+  const todaySale = data.saleTodayCents ?? todayRow?.saleCents ?? null
+  const todayGoal = todayRow?.goalCents ?? null
+
+  let daySale: number | null = null
+  let dayGoal: number | null = null
+  let dayScope: 'today' | 'month' = 'today'
+
+  if (isCurrentMonth && todayGoal !== null && todayGoal > 0) {
+    daySale = todaySale
+    dayGoal = todayGoal
+  } else {
+    const rows = (isCurrentMonth ? data.days.filter((day) => day.dateKey <= today) : data.days).filter(
+      (day) => day.goalCents !== null && day.goalCents > 0
+    )
+    if (rows.length > 0) {
+      daySale = rows.reduce((sum, day) => sum + (day.saleCents ?? 0), 0)
+      dayGoal = rows.reduce((sum, day) => sum + (day.goalCents ?? 0), 0)
+      dayScope = 'month'
+    }
+  }
+
+  const dayDelta = daySale !== null && dayGoal !== null && dayGoal > 0 ? daySale - dayGoal : null
+  const dayDeltaPct = dayGoal !== null && daySale !== null ? ratioPct(daySale - dayGoal, dayGoal) : null
+  const projectionCents = elapsedDays > 0 ? Math.round((sales / elapsedDays) * data.days.length) : null
+  const projectionDelta =
+    projectionCents !== null && goal !== null && goal > 0 ? projectionCents - goal : null
+  const projectionDeltaPct =
+    projectionCents !== null && goal !== null ? ratioPct(projectionCents - goal, goal) : null
+
+  return {
+    completedPct,
+    monthDelta,
+    monthDeltaPct,
+    daySale,
+    dayGoal,
+    dayDelta,
+    dayDeltaPct,
+    dayScope,
+    isCurrentMonth,
+    elapsedDays,
+    projectionCents,
+    projectionDelta,
+    projectionDeltaPct
+  }
+}
+
 export function FinancePage({ storeId = null }: FinancePageProps) {
   const today = currentDateKey()
   const [data, setData] = useState<FinanceMetrics | null>(null)
@@ -179,6 +259,47 @@ function MonthDesk({
     data.puAverage === null
       ? 'Nenhum PU registrado neste mês'
       : `Média de ${formatCount(data.puRegisteredDays)} ${data.puRegisteredDays === 1 ? 'dia' : 'dias'} com PU`
+  const mini = financeMiniStats(data, today)
+  const completedHint =
+    data.monthSalesGoalCents === null
+      ? 'Sem meta de valor no Card+'
+      : mini.completedPct === null
+        ? 'Meta zerada — sem divisão'
+        : mini.completedPct >= 100
+          ? 'Meta de valor concluída'
+          : `Faltam ${formatPercent(Math.max(0, 100 - mini.completedPct)) ?? '—'} da meta`
+  const monthDeltaHint =
+    data.monthSalesGoalCents === null
+      ? 'Sem meta de valor no Card+'
+      : mini.monthDelta === null || mini.monthDeltaPct === null
+        ? 'Meta zerada — sem divisão'
+        : mini.monthDelta === 0
+          ? 'Na meta do mês'
+          : mini.monthDelta > 0
+            ? `${formatSignedPercent(mini.monthDeltaPct)} acima da meta`
+            : `${formatSignedPercent(mini.monthDeltaPct)} abaixo da meta`
+  const dayHint =
+    mini.dayGoal === null
+      ? 'Sem meta do dia neste recorte'
+      : mini.daySale === null
+        ? 'Nenhuma venda do dia registrada'
+        : mini.dayDelta === null || mini.dayDeltaPct === null
+          ? 'Meta do dia zerada — sem divisão'
+          : mini.dayScope === 'today'
+            ? mini.dayDelta >= 0
+              ? `${formatSignedPercent(mini.dayDeltaPct)} · base do dia batida`
+              : `${formatSignedPercent(mini.dayDeltaPct)} · abaixo da base`
+            : `${formatSignedPercent(mini.dayDeltaPct)} · soma das metas do dia`
+  const projectionHint =
+    mini.projectionCents === null
+      ? 'Sem dias para projetar'
+      : data.monthSalesGoalCents === null
+        ? mini.isCurrentMonth
+          ? `Ritmo de ${formatCount(mini.elapsedDays)} ${mini.elapsedDays === 1 ? 'dia' : 'dias'}`
+          : 'Mês encerrado · sem meta de valor'
+        : mini.projectionDeltaPct === null
+          ? 'Meta zerada — sem divisão'
+          : `${formatSignedPercent(mini.projectionDeltaPct)} vs meta no ritmo atual`
 
   return (
     <>
@@ -236,6 +357,33 @@ function MonthDesk({
           empty={data.puAverage === null}
           hint={puHint}
           icon={<Percent className="size-4" strokeWidth={1.7} />}
+        />
+      </div>
+
+      <div className="mt-3 grid grid-cols-4 gap-3">
+        <MiniStat
+          label="% concluído"
+          value={mini.completedPct === null ? '—' : formatPercent(mini.completedPct) ?? '—'}
+          hint={completedHint}
+          tone={mini.completedPct === null ? 'neutral' : mini.completedPct >= 100 ? 'up' : 'down'}
+        />
+        <MiniStat
+          label="Vs meta do mês"
+          value={mini.monthDelta === null ? '—' : formatSignedBRL(mini.monthDelta)}
+          hint={monthDeltaHint}
+          tone={signedTone(mini.monthDelta)}
+        />
+        <MiniStat
+          label={mini.dayScope === 'today' ? 'Vs meta do dia' : 'Vs metas do dia'}
+          value={mini.dayDelta === null ? '—' : formatSignedBRL(mini.dayDelta)}
+          hint={dayHint}
+          tone={signedTone(mini.dayDelta)}
+        />
+        <MiniStat
+          label="Projeção do mês"
+          value={mini.projectionCents === null ? '—' : formatBRLFromCents(mini.projectionCents)}
+          hint={projectionHint}
+          tone={signedTone(mini.projectionDelta)}
         />
       </div>
 
@@ -653,6 +801,33 @@ function AsideRow({ label, value }: { label: string; value: string | null }) {
   )
 }
 
+function MiniStat({
+  label,
+  value,
+  hint,
+  tone = 'neutral'
+}: {
+  label: string
+  value: string
+  hint?: string
+  tone?: 'up' | 'down' | 'neutral'
+}) {
+  return (
+    <article className="flex h-full min-h-[92px] flex-col rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-4 py-3">
+      <p className="text-[12px] text-[#F0EFEC]/38">{label}</p>
+      <p
+        className={cn(
+          'mt-1 text-[18px] tracking-tight',
+          tone === 'up' ? 'text-[#34D399]' : tone === 'down' ? 'text-red-300/85' : 'text-[#F0EFEC]/86'
+        )}
+      >
+        {value}
+      </p>
+      {hint ? <p className="mt-auto pt-2 text-[11px] leading-snug text-[#F0EFEC]/30">{hint}</p> : null}
+    </article>
+  )
+}
+
 function FinanceSkeleton() {
   return (
     <div className="grid flex-1 grid-rows-[auto_1fr] gap-3">
@@ -661,6 +836,12 @@ function FinanceSkeleton() {
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
+        <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
+        <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
+        <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
       </div>
       <div className="min-h-[280px] animate-pulse rounded-[16px] bg-white/4" />
     </div>

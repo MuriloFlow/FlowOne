@@ -125,12 +125,13 @@ function asGlobalDeskPerson(item: {
   storeName: string
   cardplusRole: string
   isActive: boolean
+  globalDeskLabel?: string | null
 }): StorePerson {
   return {
     id: item.id,
     name: item.name,
     storeName: item.storeName?.trim() ? item.storeName : 'Rede',
-    roleLabel: isGlobalDeskRole(item.cardplusRole) ? item.cardplusRole : 'Gerente Regional',
+    roleLabel: item.globalDeskLabel || (isGlobalDeskRole(item.cardplusRole) ? item.cardplusRole : 'Gerente Regional'),
     isActive: item.isActive
   }
 }

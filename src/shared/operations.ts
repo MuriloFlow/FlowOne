@@ -1,16 +1,17 @@
-export const CARDPLUS_SUB_ROLES = [
+export const CARDPLUS_STORE_ROLES = [
   'Funcionario Operacional',
   'Caixa',
   'Lider de Caixa',
   'VM',
   'Vendedor',
   'Gerente',
-  'Gerente Geral',
-  'Gerente Regional',
-  'TI'
+  'Gerente Geral'
 ] as const
 
+export const CARDPLUS_SUB_ROLES = [...CARDPLUS_STORE_ROLES, 'Gerente Regional', 'TI'] as const
+
 export type CardPlusSubRole = (typeof CARDPLUS_SUB_ROLES)[number]
+export type CardPlusStoreRole = (typeof CARDPLUS_STORE_ROLES)[number]
 
 export function isManagerLoginSubRole(role: string | null | undefined): boolean {
   const key = (role ?? '').trim().toLowerCase()
@@ -286,6 +287,7 @@ export type EmployeeListItem = {
   createdAt: string
   directorySource?: 'collaborator' | 'app_user'
   isGlobalDesk?: boolean
+  globalDeskLabel?: string | null
 }
 
 export type EmployeeIdentity = {
@@ -329,6 +331,37 @@ export type UpdateEmployeeInput = EmployeeWriteInput & {
   id: string
 }
 
+export type FlowLauncherUser = {
+  id: string
+  email: string
+  displayName: string
+  role: string
+  roleLabel: string
+  status: 'active' | 'inactive' | 'locked'
+  storeId: string | null
+  storeName: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type ActorScopeView = {
+  role: string
+  canViewAll: boolean
+  storeId: string | null
+  blocked: boolean
+  message: string | null
+}
+
+export type FlowLauncherUserWrite = {
+  id?: string
+  email: string
+  displayName: string
+  role: string
+  password?: string
+  storeId?: string | null
+  status?: 'active' | 'inactive'
+}
+
 export type OperationsApi = {
   getOverview: (storeId?: string | null) => Promise<OverviewMetrics>
   getFinance: (storeId?: string | null, monthKey?: string | null) => Promise<FinanceMetrics>
@@ -354,10 +387,14 @@ export type OperationsApi = {
   upsertDailySale: (input: DailySaleWriteInput) => Promise<DailySaleRow>
   upsertFinanceDay: (input: FinanceDayWriteInput) => Promise<DailySaleRow>
   getScheduleBoard: (storeId?: string | null, weekStart?: string | null) => Promise<import('./schedules').ScheduleBoard>
-  saveScheduleSlots: (storeId: string, slots: import('./schedules').ScheduleSlotWrite[]) => Promise<void>
-  resetScheduleSlots: (storeId: string) => Promise<void>
+  saveScheduleSlots: (storeId: string, slots: import('./schedules').ScheduleSlotWrite[], team?: import('./schedules').ScheduleTeam) => Promise<void>
+  resetScheduleSlots: (storeId: string, team?: import('./schedules').ScheduleTeam) => Promise<void>
   upsertScheduleAssignment: (input: import('./schedules').ScheduleAssignmentWrite) => Promise<void>
   deleteScheduleAssignment: (id: string, storeId: string) => Promise<void>
+  getAttendanceBoard: (storeId?: string | null, monthKey?: string | null) => Promise<import('./attendance').AttendanceBoard>
+  upsertTeamHeadcount: (input: import('./attendance').TeamHeadcountWrite) => Promise<void>
+  upsertAttendanceEvent: (input: import('./attendance').AttendanceEventWrite) => Promise<import('./attendance').AttendanceEvent>
+  deleteAttendanceEvent: (id: string, storeId: string) => Promise<void>
   listVouchers: (storeId?: string | null) => Promise<import('./vouchers').VoucherBoard>
   updateVoucher: (input: {
     collaboratorId: string
@@ -365,4 +402,7 @@ export type OperationsApi = {
     transportCents?: number
     status?: import('./vouchers').VoucherStatus
   }) => Promise<void>
+  listFlowUsers: () => Promise<FlowLauncherUser[]>
+  upsertFlowUser: (input: FlowLauncherUserWrite) => Promise<FlowLauncherUser>
+  getActorScope: () => Promise<ActorScopeView>
 }

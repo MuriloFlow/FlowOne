@@ -6,14 +6,14 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { formatCpf, onlyCpfDigits } from '../../../shared/cpf'
 import {
-  CARDPLUS_SUB_ROLES,
+  CARDPLUS_STORE_ROLES,
   isManagerLoginSubRole,
   type CardPlusSubRole,
   type EmployeeIdentity,
   type EmployeeListItem,
   type StoreOption
 } from '../../../shared/operations'
-import { DEFAULT_EMPLOYEE_ROLE, FLOW_ROLES, isFlowRole, type FlowRoleId } from '@/lib/roles'
+import { DEFAULT_EMPLOYEE_ROLE, FLOW_ROLES, isFlowRole, suggestedFlowRole, type FlowRoleId } from '@/lib/roles'
 import { operationError, operations } from '@/lib/operations'
 
 type EmployeeDialogProps = {
@@ -27,7 +27,7 @@ type EmployeeDialogProps = {
 }
 
 const ROLE_OPTIONS = FLOW_ROLES.map((role) => ({ value: role.id, label: role.label }))
-const CARDPLUS_OPTIONS = CARDPLUS_SUB_ROLES.map((role) => ({ value: role, label: role }))
+const CARDPLUS_OPTIONS = CARDPLUS_STORE_ROLES.map((role) => ({ value: role, label: role }))
 
 export function EmployeeDialog({
   open,
@@ -41,7 +41,7 @@ export function EmployeeDialog({
   const [name, setName] = useState('')
   const [storeId, setStoreId] = useState('')
   const [flowRole, setFlowRole] = useState<FlowRoleId>(DEFAULT_EMPLOYEE_ROLE)
-  const [cardplusRole, setCardplusRole] = useState<CardPlusSubRole>(CARDPLUS_SUB_ROLES[0])
+  const [cardplusRole, setCardplusRole] = useState<CardPlusSubRole>(CARDPLUS_STORE_ROLES[0])
   const [cpf, setCpf] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [username, setUsername] = useState('')
@@ -58,13 +58,12 @@ export function EmployeeDialog({
     setError(null)
     setSaving(false)
     setName(employee?.name ?? '')
-    setStoreId(employee?.storeId ?? defaultStoreId ?? stores[0]?.id ?? '')
-    const nextRole = employee?.flowRole
-    setFlowRole(nextRole && isFlowRole(nextRole) ? nextRole : DEFAULT_EMPLOYEE_ROLE)
-    setCardplusRole(
-      CARDPLUS_SUB_ROLES.find((role) => role.toLowerCase() === (employee?.cardplusRole ?? '').toLowerCase()) ??
-        CARDPLUS_SUB_ROLES[0]
-    )
+    setStoreId(employee?.storeId?.trim() || defaultStoreId || stores[0]?.id || '')
+    setFlowRole(suggestedFlowRole(employee?.flowRole, employee?.cardplusRole, employee?.globalDeskLabel))
+    const matchedCard =
+      CARDPLUS_STORE_ROLES.find((role) => role.toLowerCase() === (employee?.cardplusRole ?? '').toLowerCase()) ??
+      CARDPLUS_STORE_ROLES[0]
+    setCardplusRole(matchedCard)
     setIsActive(employee?.isActive ?? true)
     setCpf('')
     setUsername('')
@@ -79,7 +78,9 @@ export function EmployeeDialog({
         .getEmployeeIdentity(employee.id)
         .then((identity: EmployeeIdentity) => {
           setCpf(identity.cpf ? formatCpf(identity.cpf) : '')
-          if (identity.flowRole && isFlowRole(identity.flowRole)) setFlowRole(identity.flowRole)
+          if (identity.flowRole && isFlowRole(identity.flowRole)) {
+            setFlowRole(suggestedFlowRole(identity.flowRole, employee.cardplusRole, employee.globalDeskLabel))
+          }
         })
         .catch((identityError: unknown) => setError(operationError(identityError)))
         .finally(() => setLoadingIdentity(false))
@@ -129,9 +130,11 @@ export function EmployeeDialog({
       open={open}
       title={mode === 'create' ? 'Cadastrar funcionário' : 'Editar funcionário'}
       description={
-        needsLogin && mode === 'create'
-          ? 'Nome e função vão para o Card+. Login e senha deste gerente também entram no mesmo cadastro.'
-          : 'Nome, unidade e função operacional ficam no Card+. CPF e cargo FLOW ficam só neste launcher.'
+        employee?.isGlobalDesk
+          ? 'Cargo FLOW é o que vale no launcher e no menu. Função operacional grava no colaborador da loja no Card+. A conta TI/Regional da rede continua lá, mas não aparece como cargo.'
+          : needsLogin && mode === 'create'
+            ? 'Nome e função vão para o Card+. Login e senha deste gerente também entram no mesmo cadastro.'
+            : 'Nome, unidade e função operacional gravam no Card+. CPF e cargo FLOW ficam neste launcher e acompanham o login se for a mesma pessoa.'
       }
       onClose={onClose}
     >
@@ -175,7 +178,7 @@ export function EmployeeDialog({
               value={cardplusRole}
               options={CARDPLUS_OPTIONS}
               onChange={(value) => {
-                if ((CARDPLUS_SUB_ROLES as readonly string[]).includes(value)) {
+                if ((CARDPLUS_STORE_ROLES as readonly string[]).includes(value)) {
                   setCardplusRole(value as CardPlusSubRole)
                 }
               }}

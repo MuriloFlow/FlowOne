@@ -9,6 +9,11 @@ const COOKIE_URL = 'https://flow.local'
 const ACCESS_COOKIE = 'flow_access_token'
 const REFRESH_COOKIE = 'flow_refresh_token'
 const EXPIRES_COOKIE = 'flow_expires_at'
+const SESSION_COOKIE = 'flow_session_id'
+const PERSIST_SECONDS = 60 * 60 * 24 * 30
+
+let cachedSession: PersistedAuthSession | null = null
+let hydrated = false
 
 function sessionFilePath(): string {
   const dir = app.getPath('userData')
@@ -31,49 +36,70 @@ function isValidSession(value: unknown): value is PersistedAuthSession {
   )
 }
 
+function remember(payload: PersistedAuthSession | null): PersistedAuthSession | null {
+  cachedSession = payload
+  hydrated = true
+  return payload
+}
+
 async function writeCookies(payload: PersistedAuthSession): Promise<void> {
   const electronSession = session.defaultSession
-  const accessExpiry = Math.max(payload.expiresAt, Math.floor(Date.now() / 1000) + 60)
-  const refreshExpiry = accessExpiry + 60 * 60 * 24 * 30
+  const persistUntil = Math.floor(Date.now() / 1000) + PERSIST_SECONDS
 
-  await electronSession.cookies.set({
-    url: COOKIE_URL,
-    name: ACCESS_COOKIE,
-    value: payload.accessToken,
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    expirationDate: accessExpiry
-  })
+  await Promise.all([
+    electronSession.cookies.set({
+      url: COOKIE_URL,
+      name: ACCESS_COOKIE,
+      value: payload.accessToken,
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      expirationDate: persistUntil
+    }),
+    electronSession.cookies.set({
+      url: COOKIE_URL,
+      name: REFRESH_COOKIE,
+      value: payload.refreshToken,
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      expirationDate: persistUntil
+    }),
+    electronSession.cookies.set({
+      url: COOKIE_URL,
+      name: EXPIRES_COOKIE,
+      value: String(payload.expiresAt),
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      expirationDate: persistUntil
+    }),
+    electronSession.cookies.set({
+      url: COOKIE_URL,
+      name: SESSION_COOKIE,
+      value: payload.sessionId,
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      expirationDate: persistUntil
+    })
+  ])
 
-  await electronSession.cookies.set({
-    url: COOKIE_URL,
-    name: REFRESH_COOKIE,
-    value: payload.refreshToken,
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    expirationDate: refreshExpiry
-  })
-
-  await electronSession.cookies.set({
-    url: COOKIE_URL,
-    name: EXPIRES_COOKIE,
-    value: String(payload.expiresAt),
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    expirationDate: refreshExpiry
-  })
+  try {
+    await electronSession.cookies.flushStore()
+  } catch (error) {
+    log.warn('[session] cookie flush failed', error)
+  }
 }
 
 async function readCookies(): Promise<PersistedAuthSession | null> {
   const cookies = await session.defaultSession.cookies.get({ url: COOKIE_URL })
   const accessToken = cookies.find((cookie) => cookie.name === ACCESS_COOKIE)?.value
   const refreshToken = cookies.find((cookie) => cookie.name === REFRESH_COOKIE)?.value
+  const sessionId = cookies.find((cookie) => cookie.name === SESSION_COOKIE)?.value
   const expiresAtRaw = cookies.find((cookie) => cookie.name === EXPIRES_COOKIE)?.value
   const expiresAt = expiresAtRaw ? Number(expiresAtRaw) : NaN
-  const payload = { accessToken, refreshToken, expiresAt }
+  const payload = { accessToken, refreshToken, expiresAt, sessionId }
   return isValidSession(payload) ? payload : null
 }
 
@@ -82,24 +108,34 @@ async function clearCookies(): Promise<void> {
   await Promise.all([
     electronSession.cookies.remove(COOKIE_URL, ACCESS_COOKIE),
     electronSession.cookies.remove(COOKIE_URL, REFRESH_COOKIE),
-    electronSession.cookies.remove(COOKIE_URL, EXPIRES_COOKIE)
+    electronSession.cookies.remove(COOKIE_URL, EXPIRES_COOKIE),
+    electronSession.cookies.remove(COOKIE_URL, SESSION_COOKIE)
   ])
+  try {
+    await electronSession.cookies.flushStore()
+  } catch (error) {
+    log.warn('[session] cookie flush failed', error)
+  }
 }
 
 function writeEncryptedFile(payload: PersistedAuthSession): void {
-  if (!safeStorage.isEncryptionAvailable()) {
-    log.warn('[session] DPAPI/safeStorage unavailable; cookie-only persistence')
-    return
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      log.warn('[session] DPAPI/safeStorage unavailable; cookie persistence only')
+      return
+    }
+    writeFileSync(sessionFilePath(), safeStorage.encryptString(JSON.stringify(payload)))
+  } catch (error) {
+    log.error('[session] failed to write encrypted session', error)
   }
-
-  writeFileSync(sessionFilePath(), safeStorage.encryptString(JSON.stringify(payload)))
 }
 
 function readEncryptedFile(): PersistedAuthSession | null {
   const filePath = sessionFilePath()
-  if (!existsSync(filePath) || !safeStorage.isEncryptionAvailable()) return null
+  if (!existsSync(filePath)) return null
 
   try {
+    if (!safeStorage.isEncryptionAvailable()) return null
     const parsed: unknown = JSON.parse(safeStorage.decryptString(readFileSync(filePath)))
     return isValidSession(parsed) ? parsed : null
   } catch (error) {
@@ -120,13 +156,31 @@ export async function persistAuthSession(payload: PersistedAuthSession): Promise
 
   await writeCookies(payload)
   writeEncryptedFile(payload)
+  remember(payload)
+}
+
+export async function hydrateAuthSession(): Promise<PersistedAuthSession | null> {
+  const payload = readEncryptedFile() ?? (await readCookies())
+  if (payload) log.info('[session] restored from userData')
+  else log.info('[session] no persisted session')
+  return remember(payload)
 }
 
 export async function readAuthSession(): Promise<PersistedAuthSession | null> {
-  return readEncryptedFile() ?? (await readCookies())
+  if (hydrated) return cachedSession
+  return hydrateAuthSession()
+}
+
+export async function flushAuthSession(): Promise<void> {
+  try {
+    await session.defaultSession.cookies.flushStore()
+  } catch (error) {
+    log.warn('[session] cookie flush failed', error)
+  }
 }
 
 export async function clearAuthSession(): Promise<void> {
+  remember(null)
   await clearCookies()
   clearEncryptedFile()
   invalidateMemo()

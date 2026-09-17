@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import log from 'electron-log'
-import { listStoreAccess, upsertStoreAccess, assertAccessUsernameAvailable, listEmployeeDirectory, assertEmployeeDeletable } from './access'
+import { listStoreAccess, upsertStoreAccess, assertAccessUsernameAvailable, listEmployeeDirectory, assertEmployeeDeletable, linkedDeskAccountId, syncDeskAccountName } from './access'
 import {
   assertEmployeeInStore,
   createEmployee,
@@ -14,18 +14,21 @@ import {
 import { getFinanceBoard, upsertFinanceDayExtras } from './finance-days'
 import { assertCardInStore, createCard, deleteCard, getCardsBoard, transferCard, updateCard } from './cards'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
-import { deleteIdentity, getIdentity } from './identities'
+import { deleteIdentity, getIdentity, syncProfileRoleIfSamePerson, upsertIdentity } from './identities'
 import { invalidateMemo, memo } from './memo'
 import { resolveActor, resolveStoreFilter } from './scope'
 import { getScheduleBoard, saveScheduleSlots, resetScheduleSlots, upsertScheduleAssignment, deleteScheduleAssignment } from './schedules'
+import { getAttendanceBoard, upsertTeamHeadcount, upsertAttendanceEvent, deleteAttendanceEvent } from './attendance'
 import { readStorePreference, writeStorePreference } from './store-preference'
 import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
+import { listFlowUsers, upsertFlowUser } from './users'
 import type {
   CardWriteInput,
   CreateEmployeeInput,
   DailySaleWriteInput,
   FinanceDayWriteInput,
   EmployeeWriteInput,
+  FlowLauncherUserWrite,
   StoreAccessWriteInput,
   StoreWriteInput,
   UpdateEmployeeInput
@@ -33,9 +36,18 @@ import type {
 import { CARDPLUS_SUB_ROLES, isManagerLoginSubRole } from '../shared/operations'
 import type {
   ScheduleAssignmentWrite,
-  ScheduleSlotWrite
+  ScheduleSlotWrite,
+  ScheduleTeam
 } from '../shared/schedules'
-import { canCreateStores, canEditStoreDesk, isFlowRole } from '../shared/roles'
+import {
+  isAttendanceKind,
+  isTeamHeadcountRole,
+  type AttendanceEventWrite,
+  type TeamHeadcountRole,
+  type TeamHeadcountWrite
+} from '../shared/attendance'
+import { SCHEDULE_TEAMS } from '../shared/schedules'
+import { canCreateStores, canEditStoreDesk, canManageFlowUsers, isFlowRole } from '../shared/roles'
 import { normalizeStoreId } from '../shared/store-scope'
 
 function asString(value: unknown, field: string): string {
@@ -47,6 +59,11 @@ function asString(value: unknown, field: string): string {
 
 function asOptionalString(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+function asScheduleTeam(value: unknown): ScheduleTeam {
+  const id = typeof value === 'string' ? value : ''
+  return SCHEDULE_TEAMS.some((item) => item.id === id) ? (id as ScheduleTeam) : 'OPERACAO'
 }
 
 function parseWriteInput(payload: unknown): EmployeeWriteInput & {
@@ -111,6 +128,9 @@ function bustOperationsCache(): void {
   invalidateMemo('cards')
   invalidateMemo('access')
   invalidateMemo('schedule')
+  invalidateMemo('attendance')
+  invalidateMemo('actor')
+  invalidateMemo('users')
 }
 
 function parseStoreWrite(payload: unknown, requireId: boolean): StoreWriteInput {
@@ -161,6 +181,27 @@ function assertCardAmounts(input: CardWriteInput): CardWriteInput {
 }
 
 export function registerOperationsIpc(): void {
+  handle('operations:scope', async () => {
+    const actor = await resolveActor()
+    if (!actor.canViewAll && !actor.boundStoreId) {
+      return {
+        role: actor.role,
+        canViewAll: false,
+        storeId: null,
+        blocked: true,
+        message:
+          'Sua conta ainda não tem uma unidade. Peça para um Lider de Operação, Supervisor ou Diretor te vincular em Usuários.'
+      }
+    }
+    return {
+      role: actor.role,
+      canViewAll: actor.canViewAll,
+      storeId: actor.boundStoreId,
+      blocked: false,
+      message: null
+    }
+  })
+
   handle('operations:overview', async (payload) => {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, payload)
@@ -179,6 +220,7 @@ export function registerOperationsIpc(): void {
 
   handle('operations:stores', async () => {
     const actor = await resolveActor()
+    if (!actor.canViewAll && !actor.boundStoreId) return []
     const storeId = actor.canViewAll ? null : actor.boundStoreId
     return memo(cacheKey('stores', storeId), 30_000, () => listStores(storeId))
   })
@@ -205,7 +247,19 @@ export function registerOperationsIpc(): void {
     await resolveActor()
     const collaboratorId =
       typeof payload === 'string' ? asString(payload, 'Funcionário') : asString((payload as { id?: unknown })?.id, 'Funcionário')
-    const identity = await getIdentity(collaboratorId)
+    let identity = await getIdentity(collaboratorId)
+    const deskId = await linkedDeskAccountId('', collaboratorId)
+    if (deskId && deskId !== collaboratorId) {
+      const deskIdentity = await getIdentity(deskId)
+      if (deskIdentity?.flowRole && !identity?.flowRole) identity = deskIdentity
+      if (deskIdentity?.cpfDigits && !identity?.cpfDigits) {
+        identity = {
+          collaboratorId,
+          cpfDigits: deskIdentity.cpfDigits,
+          flowRole: identity?.flowRole ?? deskIdentity.flowRole
+        }
+      }
+    }
     return {
       collaboratorId,
       cpf: identity?.cpfDigits ?? null,
@@ -271,7 +325,16 @@ export function registerOperationsIpc(): void {
       throw new Error('Você só pode editar funcionários da sua unidade.')
     }
     const updated = await updateEmployee(input)
+    const deskId = await linkedDeskAccountId(input.name, input.id)
+    if (deskId) {
+      if (deskId !== updated.id) await upsertIdentity(deskId, input.cpf, input.flowRole)
+      await syncDeskAccountName(deskId, input.name)
+    }
+    await syncProfileRoleIfSamePerson(actor.userId, input.name, input.flowRole, {
+      isGlobalDesk: Boolean(deskId) || Boolean(updated.isGlobalDesk)
+    })
     bustOperationsCache()
+    invalidateMemo('actor')
     return updated
   })
 
@@ -304,7 +367,7 @@ export function registerOperationsIpc(): void {
   handle('operations:store-create', async (payload) => {
     const actor = await resolveActor()
     if (!canCreateStores(actor.role)) {
-      throw new Error('Apenas Supervisor e Diretor podem cadastrar unidades.')
+      throw new Error('Apenas Supervisor, Diretor e Lider de Operação podem cadastrar unidades.')
     }
     const created = await createStoreDesk(parseStoreWrite(payload, false))
     bustOperationsCache()
@@ -463,9 +526,9 @@ export function registerOperationsIpc(): void {
     const storeId = resolveStoreFilter(actor, body)
     if (!storeId) throw new Error('Escolha uma unidade para montar a escala.')
     const weekStart = typeof body.weekStart === 'string' ? body.weekStart : null
-    return memo(cacheKey(`schedule:${weekStart ?? 'now'}`, storeId), 6_000, () =>
-      getScheduleBoard(storeId, weekStart, actor.role)
-    )
+    const board = await getScheduleBoard(storeId, weekStart, actor.role, actor.userId)
+    if (board.actorOperator?.included) bustOperationsCache()
+    return board
   })
 
   handle('operations:schedule-slots', async (payload) => {
@@ -476,13 +539,14 @@ export function registerOperationsIpc(): void {
     const storeId = asString(body.storeId, 'Unidade')
     const scoped = resolveStoreFilter(actor, actor.canViewAll ? storeId : null)
     if (scoped && storeId !== scoped) throw new Error('Você só pode editar a escala da sua unidade.')
+    const team = asScheduleTeam(body.team)
     if (body.action === 'reset') {
-      await resetScheduleSlots(storeId)
+      await resetScheduleSlots(storeId, team)
       bustOperationsCache()
       return
     }
     const slots = Array.isArray(body.slots) ? (body.slots as ScheduleSlotWrite[]) : []
-    await saveScheduleSlots(storeId, slots)
+    await saveScheduleSlots(storeId, slots, team)
     bustOperationsCache()
   })
 
@@ -515,6 +579,81 @@ export function registerOperationsIpc(): void {
     const scoped = resolveStoreFilter(actor, actor.canViewAll ? storeId : null)
     if (scoped && storeId !== scoped) throw new Error('Você só pode montar a escala da sua unidade.')
     await deleteScheduleAssignment(id, storeId)
+    bustOperationsCache()
+  })
+
+  handle('operations:attendance', async (payload) => {
+    const actor = await resolveActor()
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const storeId = resolveStoreFilter(actor, body)
+    if (!storeId) throw new Error('Escolha uma unidade para ver o quadro e os atestados.')
+    const monthKey = typeof body.monthKey === 'string' ? body.monthKey : null
+    return memo(cacheKey(`attendance:${monthKey ?? 'now'}`, storeId), 8_000, () =>
+      getAttendanceBoard(storeId, monthKey, actor.role)
+    )
+  })
+
+  handle('operations:headcount-upsert', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode editar o quadro desta unidade.')
+    if (!payload || typeof payload !== 'object') throw new Error('Quadro inválido.')
+    const body = payload as Record<string, unknown>
+    const storeId = asString(body.storeId, 'Unidade')
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? storeId : null)
+    if (scoped && storeId !== scoped) throw new Error('Você só pode editar o quadro da sua unidade.')
+    const counts = Array.isArray(body.counts)
+      ? body.counts.map((row) => {
+          if (!row || typeof row !== 'object') throw new Error('Cargo do quadro inválido.')
+          const item = row as Record<string, unknown>
+          const roleKey = asString(item.roleKey, 'Cargo')
+          if (!isTeamHeadcountRole(roleKey)) throw new Error('Cargo do quadro inválido.')
+          return { roleKey: roleKey as TeamHeadcountRole, count: Number(item.count) }
+        })
+      : []
+    const input: TeamHeadcountWrite = {
+      storeId,
+      dateKey: asString(body.dateKey, 'Data'),
+      counts
+    }
+    await upsertTeamHeadcount(input)
+    bustOperationsCache()
+  })
+
+  handle('operations:attendance-upsert', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode registrar ocorrência.')
+    if (!payload || typeof payload !== 'object') throw new Error('Registro inválido.')
+    const body = payload as Record<string, unknown>
+    const kindRaw = asString(body.kind, 'Tipo')
+    if (!isAttendanceKind(kindRaw)) throw new Error('Tipo de registro inválido.')
+    const input: AttendanceEventWrite = {
+      id: typeof body.id === 'string' ? body.id : undefined,
+      storeId: asString(body.storeId, 'Unidade'),
+      dateKey: asString(body.dateKey, 'Data'),
+      collaboratorId: asString(body.collaboratorId, 'Colaborador'),
+      kind: kindRaw,
+      justified: typeof body.justified === 'boolean' ? body.justified : undefined,
+      note: typeof body.note === 'string' ? body.note : null
+    }
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
+    if (scoped && input.storeId !== scoped) {
+      throw new Error('Você só pode registrar atestado ou falta da sua unidade.')
+    }
+    const saved = await upsertAttendanceEvent(input, actor.userId)
+    bustOperationsCache()
+    return saved
+  })
+
+  handle('operations:attendance-delete', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode remover atestado ou falta.')
+    if (!payload || typeof payload !== 'object') throw new Error('Registro inválido.')
+    const body = payload as Record<string, unknown>
+    const id = asString(body.id, 'Registro')
+    const storeId = asString(body.storeId, 'Unidade')
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? storeId : null)
+    if (scoped && storeId !== scoped) throw new Error('Você só pode remover registros da sua unidade.')
+    await deleteAttendanceEvent(id, storeId)
     bustOperationsCache()
   })
 
@@ -552,5 +691,31 @@ export function registerOperationsIpc(): void {
       status
     })
     bustOperationsCache()
+  })
+
+  handle('operations:users', async () => {
+    const actor = await resolveActor()
+    if (!canManageFlowUsers(actor.role)) {
+      throw new Error('Só Lider de Operação, Supervisor e Diretor gerenciam acessos do FLOW.')
+    }
+    return memo(cacheKey('users', 'all'), 8_000, () => listFlowUsers())
+  })
+
+  handle('operations:user-upsert', async (payload) => {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Dados do acesso inválidos.')
+    const body = payload as Record<string, unknown>
+    const input: FlowLauncherUserWrite = {
+      id: typeof body.id === 'string' ? body.id : undefined,
+      email: asString(body.email, 'E-mail'),
+      displayName: asString(body.displayName, 'Nome'),
+      role: asString(body.role, 'Cargo'),
+      password: typeof body.password === 'string' ? body.password : undefined,
+      storeId: typeof body.storeId === 'string' ? body.storeId : null,
+      status: body.status === 'inactive' ? 'inactive' : 'active'
+    }
+    const saved = await upsertFlowUser(input, actor.userId, actor.role)
+    bustOperationsCache()
+    return saved
   })
 }

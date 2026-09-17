@@ -107,7 +107,7 @@ function lockoutMessage(lockout: LockoutState | null): string | null {
 export async function signInWithEmailPassword(emailInput: string, passwordInput: string): Promise<AuthUser> {
   const email = validateEmail(emailInput)
   const password = validatePassword(passwordInput)
-  const flow = readFlowApi()
+  readFlowApi()
   const ip = await getPublicIp()
   const userAgent = navigator.userAgent
 
@@ -132,24 +132,9 @@ export async function signInWithEmailPassword(emailInput: string, passwordInput:
   }
 
   const sessionId = createSessionId()
-  const refreshHash = await sha256Hex(data.session.refresh_token)
-  const persisted: PersistedAuthSession = {
-    accessToken: String(data.session.access_token),
-    refreshToken: String(data.session.refresh_token ?? ''),
-    expiresAt: Number(data.session.expires_at ?? Math.floor(Date.now() / 1000) + 3600),
-    sessionId
-  }
-
-  await flow.auth.persistSession(persisted)
-
-  await rpc('flow_auth_register_session', {
-    p_session_id: sessionId,
-    p_refresh_token_hash: refreshHash,
-    p_user_agent: userAgent,
-    p_ip: ip,
-    p_device_label: 'FLOW Launcher',
-    p_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()
-  })
+  await persistLocalSession(sessionId, data.session)
+  await registerFlowSession(sessionId, String(data.session.refresh_token ?? ''), ip, userAgent)
+  startAuthSessionSync()
 
   const profile = await readProfile(data.user.id)
 
@@ -175,6 +160,83 @@ export async function signInWithEmailPassword(emailInput: string, passwordInput:
   }
 }
 
+function persistExpiry(expiresAt: number | undefined): number {
+  return Number(expiresAt ?? Math.floor(Date.now() / 1000) + 3600)
+}
+
+async function persistLocalSession(
+  sessionId: string,
+  session: { access_token: string; refresh_token?: string | null; expires_at?: number }
+): Promise<PersistedAuthSession> {
+  const persisted: PersistedAuthSession = {
+    accessToken: String(session.access_token),
+    refreshToken: String(session.refresh_token ?? ''),
+    expiresAt: persistExpiry(session.expires_at),
+    sessionId
+  }
+  await readFlowApi().auth.persistSession(persisted)
+  return persisted
+}
+
+async function registerFlowSession(
+  sessionId: string,
+  refreshToken: string,
+  ip: string | null,
+  userAgent: string
+): Promise<void> {
+  await rpc('flow_auth_register_session', {
+    p_session_id: sessionId,
+    p_refresh_token_hash: await sha256Hex(refreshToken),
+    p_user_agent: userAgent,
+    p_ip: ip,
+    p_device_label: 'FLOW Launcher',
+    p_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()
+  })
+}
+
+async function clearLocalSession(): Promise<void> {
+  await supabase.auth.signOut({ scope: 'local' })
+  await window.flow?.auth.clearSession()
+}
+
+function isTransientAuthError(error: { message?: string; status?: number } | null): boolean {
+  if (!error) return false
+  if (error.status && error.status >= 500) return true
+  const message = (error.message ?? '').toLowerCase()
+  return /network|fetch|timeout|offline|failed to fetch/i.test(message)
+}
+
+function restoreFailureMessage(reason?: string): string {
+  if (reason === 'inactive') return 'Esta conta está inativa.'
+  if (reason === 'revoked') return 'Sua sessão foi encerrada. Entre novamente.'
+  return 'Sua sessão expirou. Entre novamente.'
+}
+
+let authSyncStarted = false
+let signingOut = false
+let restoring = false
+
+async function syncRefreshedTokens(session: {
+  access_token: string
+  refresh_token?: string | null
+  expires_at?: number
+}): Promise<void> {
+  if (signingOut || restoring || !window.flow || !session.refresh_token) return
+  const existing = await window.flow.auth.readSession()
+  if (!existing) return
+  await registerFlowSession(existing.sessionId, session.refresh_token, null, navigator.userAgent)
+  await persistLocalSession(existing.sessionId, session)
+}
+
+export function startAuthSessionSync(): void {
+  if (authSyncStarted || typeof window === 'undefined' || !window.flow) return
+  authSyncStarted = true
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event !== 'TOKEN_REFRESHED' || !session) return
+    void syncRefreshedTokens(session)
+  })
+}
+
 export async function restoreSession(): Promise<AuthUser | null> {
   const flow = window.flow
   if (!flow) return null
@@ -182,66 +244,91 @@ export async function restoreSession(): Promise<AuthUser | null> {
   const persisted = await flow.auth.readSession()
   if (!persisted) return null
 
-  const { data, error } = await supabase.auth.setSession({
-    access_token: persisted.accessToken,
-    refresh_token: persisted.refreshToken
-  })
+  restoring = true
+  try {
+    const originalRefresh = persisted.refreshToken
+    const originalHash = await sha256Hex(originalRefresh)
+    const { data, error } = await supabase.auth.setSession({
+      access_token: persisted.accessToken,
+      refresh_token: persisted.refreshToken
+    })
 
-  if (error || !data.session || !data.user) {
-    await flow.auth.clearSession()
-    return null
-  }
+    if (error || !data.session || !data.user) {
+      if (isTransientAuthError(error)) {
+        throw new AuthFlowError(
+          'restore_failed',
+          'Não foi possível restaurar a sessão. Verifique a conexão e tente de novo.'
+        )
+      }
+      await clearLocalSession()
+      throw new AuthFlowError('session_expired', 'Sua sessão expirou. Entre novamente.')
+    }
 
-  const sessionId = persisted.sessionId
-  const nextSession: PersistedAuthSession = {
-    accessToken: data.session.access_token,
-    refreshToken: data.session.refresh_token,
-    expiresAt: data.session.expires_at ?? persisted.expiresAt,
-    sessionId
-  }
-  await flow.auth.persistSession(nextSession)
+    const sessionId = persisted.sessionId
+    await persistLocalSession(sessionId, data.session)
 
-  const ip = await getPublicIp()
-  const validation = await rpc<SessionValidation>('flow_auth_validate_session', {
-    p_session_id: sessionId,
-    p_refresh_token_hash: await sha256Hex(data.session.refresh_token),
-    p_ip: ip,
-    p_user_agent: navigator.userAgent
-  })
+    const ip = await getPublicIp()
+    const validation = await rpc<SessionValidation>('flow_auth_validate_session', {
+      p_session_id: sessionId,
+      p_refresh_token_hash: originalHash,
+      p_ip: ip,
+      p_user_agent: navigator.userAgent
+    })
 
-  if (validation && validation.valid === false) {
-    await signOut()
-    return null
-  }
+    if (validation && validation.valid === false) {
+      await clearLocalSession()
+      throw new AuthFlowError('session_invalid', restoreFailureMessage(validation.reason))
+    }
 
-  const role = normalizeRole(validation?.role ?? DEFAULT_LOGIN_ROLE)
-  if (!canLoginWithRole(role)) {
-    await signOut()
-    return null
-  }
+    if (data.session.refresh_token && data.session.refresh_token !== originalRefresh) {
+      await registerFlowSession(sessionId, data.session.refresh_token, ip, navigator.userAgent)
+    }
 
-  const profile = await readProfile(data.user.id)
+    const profile = await readProfile(data.user.id)
+    const role = normalizeRole(profile?.role ?? validation?.role ?? DEFAULT_LOGIN_ROLE)
+    if (!canLoginWithRole(role)) {
+      await clearLocalSession()
+      throw new AuthFlowError('no_access', 'Este cargo não possui acesso ao launcher.')
+    }
 
-  return {
-    id: data.user.id,
-    email: validation?.email ?? data.user.email ?? '',
-    role,
-    displayRole: roleLabel(role),
-    displayName: validation?.display_name ?? 'Usuário',
-    storeId: typeof profile?.cardplus_store_id === 'string' ? profile.cardplus_store_id : null,
-    canFilterStores: canViewAllStores(role)
+    startAuthSessionSync()
+
+    return {
+      id: data.user.id,
+      email: profile?.email ?? validation?.email ?? data.user.email ?? '',
+      role,
+      displayRole: roleLabel(role),
+      displayName: profile?.display_name ?? validation?.display_name ?? 'Usuário',
+      storeId: typeof profile?.cardplus_store_id === 'string' ? profile.cardplus_store_id : null,
+      canFilterStores: canViewAllStores(role)
+    }
+  } finally {
+    restoring = false
   }
 }
 
-export async function signOut(): Promise<void> {
-  const persisted = await window.flow?.auth.readSession()
-  if (persisted?.sessionId) {
-    await rpc('flow_auth_revoke_session', {
-      p_session_id: persisted.sessionId,
-      p_reason: 'logout'
-    })
+export async function refreshAuthUser(): Promise<AuthUser | null> {
+  const user = await restoreSession()
+  if (user) {
+    window.dispatchEvent(new CustomEvent('flow:auth-changed', { detail: user }))
   }
+  return user
+}
 
-  await supabase.auth.signOut()
-  await window.flow?.auth.clearSession()
+export async function signOut(): Promise<void> {
+  signingOut = true
+  try {
+    const persisted = await window.flow?.auth.readSession()
+    if (persisted?.sessionId) {
+      await rpc('flow_auth_revoke_session', {
+        p_session_id: persisted.sessionId,
+        p_reason: 'logout'
+      })
+    }
+
+    await supabase.auth.signOut()
+    await window.flow?.auth.clearSession()
+  } finally {
+    signingOut = false
+  }
 }

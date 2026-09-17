@@ -66,8 +66,8 @@ export async function resolveActor(): Promise<ActorScope> {
 export function resolveStoreFilter(actor: ActorScope, requested: unknown): string | null {
   const requestedId = normalizeStoreId(requested)
   if (actor.canViewAll) return requestedId
-  if (!actor.boundStoreId) {
-    throw new Error('Sua conta não está vinculada a uma unidade.')
-  }
-  return actor.boundStoreId
+  if (actor.boundStoreId) return actor.boundStoreId
+  throw new Error(
+    'Sua conta ainda não tem uma unidade. Peça para um Lider de Operação, Supervisor ou Diretor te vincular em Usuários.'
+  )
 }

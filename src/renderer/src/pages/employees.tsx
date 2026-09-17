@@ -4,6 +4,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { EmployeeDialog } from '@/components/employee-dialog'
 import { Input } from '@/components/ui/input'
 import { initials } from '@/lib/identity'
+import { refreshAuthUser } from '@/lib/auth'
 import { operationError, operations } from '@/lib/operations'
 import { formatCount } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -67,9 +68,14 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
   }
 
   function openEdit(employee: EmployeeListItem): void {
-    if (employee.directorySource === 'app_user') return
     setEditing(employee)
     setDialogOpen(true)
+  }
+
+  async function reloadDirectory(): Promise<void> {
+    const [list, storeList] = await Promise.all([operations().listEmployees(storeId), operations().listStores()])
+    setEmployees(list)
+    setStores(storeList)
   }
 
   async function confirmDelete(): Promise<void> {
@@ -86,12 +92,10 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
     }
   }
 
-  function onSaved(employee: EmployeeListItem): void {
-    setEmployees((current) => {
-      const exists = current.some((item) => item.id === employee.id)
-      if (!exists) return [...current, employee].sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
-      return current.map((item) => (item.id === employee.id ? employee : item))
-    })
+  function onSaved(): void {
+    void Promise.all([reloadDirectory(), refreshAuthUser()]).catch((reloadError) =>
+      setError(operationError(reloadError))
+    )
   }
 
   if (loading) {
@@ -111,7 +115,7 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
           <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
             {storeId
               ? 'Somente funcionários da unidade selecionada.'
-              : 'Cadastro operacional do Card+ com CPF e cargo FLOW neste launcher.'}
+              : 'Um cargo FLOW por pessoa. A função operacional grava no Card+. Conta TI da rede é só o login, não o cargo.'}
           </p>
         </div>
         {employees.length > 0 ? (
@@ -154,7 +158,7 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
                   <th className="px-5 py-2.5 font-medium">Funcionário</th>
                   <th className="px-3 py-2.5 font-medium">CPF</th>
                   <th className="px-3 py-2.5 font-medium">Unidade</th>
-                  <th className="px-3 py-2.5 font-medium">Cargo</th>
+                  <th className="px-3 py-2.5 font-medium">Cargo FLOW</th>
                   <th className="px-3 py-2.5 font-medium">Cartões no mês</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   <th className="w-[112px] px-4 py-2.5 font-medium" />
@@ -173,7 +177,14 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
                         </span>
                         <span>
                           <span className="block text-[#F0EFEC]/82">{employee.name}</span>
-                          <span className="mt-0.5 block text-[11px] text-[#F0EFEC]/32">{employee.cardplusRole}</span>
+                          <span className="mt-0.5 block text-[11px] text-[#F0EFEC]/32">
+                            {employee.cardplusRole}
+                            {employee.globalDeskLabel
+                              ? ` · Conta ${employee.globalDeskLabel} da rede`
+                              : employee.directorySource === 'app_user'
+                                ? ' · Conta da rede'
+                                : ''}
+                          </span>
                         </span>
                       </div>
                     </td>
@@ -197,7 +208,9 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         {employee.directorySource === 'app_user' ? (
-                          <span className="px-1 text-[11px] text-[#F0EFEC]/32">Conta da rede</span>
+                          <IconButton label="Editar" onClick={() => openEdit(employee)}>
+                            <Settings className="size-3.5" strokeWidth={1.7} />
+                          </IconButton>
                         ) : (
                           <>
                             <IconButton label="Editar" onClick={() => openEdit(employee)}>

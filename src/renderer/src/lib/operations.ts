@@ -1,6 +1,25 @@
 import type { OperationsApi } from '../../../shared/operations'
 import { getCurrentStoreId } from '@/lib/store-scope'
 
+function staleLauncher(): Error {
+  return new Error('Feche o FLOW por completo e abra de novo para atualizar o launcher.')
+}
+
+function invokeOperation<T>(name: keyof OperationsApi, channel: string, payload?: unknown): Promise<T> {
+  const api = window.flow?.operations as Record<string, unknown> | undefined
+  const direct = api?.[name]
+  if (typeof direct === 'function') {
+    return payload === undefined
+      ? (direct as () => Promise<T>)()
+      : (direct as (value: unknown) => Promise<T>)(payload)
+  }
+  const invoke = window.flow?.invoke
+  if (typeof invoke === 'function') {
+    return invoke(channel, payload) as Promise<T>
+  }
+  throw staleLauncher()
+}
+
 export function operations(): OperationsApi {
   if (!window.flow?.operations) {
     throw new Error('Operações do launcher indisponíveis.')
@@ -36,16 +55,70 @@ export function operations(): OperationsApi {
     upsertFinanceDay: (input) => api.upsertFinanceDay(input),
     getScheduleBoard: (storeId, weekStart) =>
       api.getScheduleBoard(storeId === undefined ? getCurrentStoreId() : storeId, weekStart),
-    saveScheduleSlots: (storeId, slots) => api.saveScheduleSlots(storeId, slots),
-    resetScheduleSlots: (storeId) => api.resetScheduleSlots(storeId),
+    saveScheduleSlots: (storeId, slots, team) => api.saveScheduleSlots(storeId, slots, team),
+    resetScheduleSlots: (storeId, team) => api.resetScheduleSlots(storeId, team),
     upsertScheduleAssignment: (input) => api.upsertScheduleAssignment(input),
     deleteScheduleAssignment: (id, storeId) => api.deleteScheduleAssignment(id, storeId),
+    getAttendanceBoard: (storeId, monthKey) => {
+      const resolved = storeId === undefined ? getCurrentStoreId() : storeId
+      const api = window.flow?.operations
+      if (typeof api?.getAttendanceBoard === 'function') {
+        return api.getAttendanceBoard(resolved, monthKey)
+      }
+      return invokeOperation('getAttendanceBoard', 'operations:attendance', {
+        storeId: resolved,
+        monthKey: monthKey ?? null
+      })
+    },
+    upsertTeamHeadcount: (input) => {
+      const api = window.flow?.operations
+      if (typeof api?.upsertTeamHeadcount === 'function') {
+        return api.upsertTeamHeadcount(input)
+      }
+      return invokeOperation('upsertTeamHeadcount', 'operations:headcount-upsert', input)
+    },
+    upsertAttendanceEvent: (input) => {
+      const api = window.flow?.operations
+      if (typeof api?.upsertAttendanceEvent === 'function') {
+        return api.upsertAttendanceEvent(input)
+      }
+      return invokeOperation('upsertAttendanceEvent', 'operations:attendance-upsert', input)
+    },
+    deleteAttendanceEvent: (id, storeId) => {
+      const api = window.flow?.operations
+      if (typeof api?.deleteAttendanceEvent === 'function') {
+        return api.deleteAttendanceEvent(id, storeId)
+      }
+      return invokeOperation('deleteAttendanceEvent', 'operations:attendance-delete', { id, storeId })
+    },
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
-    updateVoucher: (input) => api.updateVoucher(input)
+    updateVoucher: (input) => api.updateVoucher(input),
+    listFlowUsers: () => invokeOperation('listFlowUsers', 'operations:users'),
+    upsertFlowUser: (input) => invokeOperation('upsertFlowUser', 'operations:user-upsert', input),
+    getActorScope: () => invokeOperation('getActorScope', 'operations:scope')
   }
 }
 
+export function isMissingStoreScope(error: unknown): boolean {
+  const message = operationError(error)
+  return /ainda não tem uma unidade|não está vinculada a uma unidade/i.test(message)
+}
+
 export function operationError(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message
-  return 'Não foi possível carregar os dados agora.'
+  const raw = error instanceof Error ? error.message : String(error ?? '')
+  const cleaned = raw
+    .replace(/^Error invoking remote method '[^']+':\s*/gi, '')
+    .replace(/^Error:\s*/gi, '')
+    .trim()
+  if (/não está vinculada a uma unidade|ainda não tem uma unidade/i.test(cleaned)) {
+    return 'Sua conta ainda não tem uma unidade. Peça para um Lider de Operação, Supervisor ou Diretor te vincular em Usuários — ou use um cargo com acesso à rede toda.'
+  }
+  if (/sessão inválida/i.test(cleaned)) return 'Sua sessão expirou. Entre de novo no FLOW.'
+  if (/is not a function|feche o flow por completo/i.test(cleaned)) {
+    return 'Feche o FLOW por completo e abra de novo. A aba Usuários precisa desta atualização do launcher.'
+  }
+  if (/fetch failed|network|econnreset|etimedout|enotfound/i.test(cleaned)) {
+    return 'Sem conexão com o banco agora. Tenta de novo em instantes.'
+  }
+  return cleaned || 'Não foi possível carregar os dados agora.'
 }

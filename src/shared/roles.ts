@@ -50,11 +50,19 @@ export function canLoginWithRole(role: string | null | undefined): boolean {
 
 export function canViewAllStores(role: string | null | undefined): boolean {
   const normalized = normalizeRole(role)
-  return normalized === 'SUPERVISOR' || normalized === 'DIRETOR'
+  return normalized === 'SUPERVISOR' || normalized === 'DIRETOR' || normalized === 'LIDER_OPERACAO'
 }
 
 export function canCreateStores(role: string | null | undefined): boolean {
   return canViewAllStores(role)
+}
+
+export function canManageFlowUsers(role: string | null | undefined): boolean {
+  return canViewAllStores(role)
+}
+
+export function needsStoreBinding(role: string | null | undefined): boolean {
+  return canLoginWithRole(role) && !canViewAllStores(role)
 }
 
 export function canEditStoreDesk(role: string | null | undefined): boolean {
@@ -63,7 +71,8 @@ export function canEditStoreDesk(role: string | null | undefined): boolean {
     normalized === 'SUPERVISOR' ||
     normalized === 'DIRETOR' ||
     normalized === 'GERENTE_GERAL' ||
-    normalized === 'GERENTE'
+    normalized === 'GERENTE' ||
+    normalized === 'LIDER_OPERACAO'
   )
 }
 
@@ -125,9 +134,34 @@ export function isSupervisorSeatCandidate(
   return flowRole === 'SUPERVISOR' || isGerenteRegionalRole(cardplusRole)
 }
 
-export function employeeRoleLabel(flowRole: string | null | undefined, cardplusRole: string): string {
-  if (isGerenteRegionalRole(cardplusRole)) return 'Supervisor'
-  if (isTiRole(cardplusRole)) return 'TI'
-  if (flowRole && isFlowRole(flowRole)) return roleLabel(flowRole)
-  return cardplusRole
+export function suggestedFlowRole(
+  flowRole: string | null | undefined,
+  cardplusRole?: string | null,
+  globalDeskLabel?: string | null
+): FlowRoleId {
+  if (flowRole && isFlowRole(flowRole)) return flowRole
+  const desk = globalDeskLabel || cardplusRole || ''
+  if (isTiRole(desk) || isTiAdminAppRole(desk)) return 'LIDER_OPERACAO'
+  if (isGerenteRegionalRole(desk) || isRegionalManagerAppRole(desk)) return 'SUPERVISOR'
+  const card = normalizeCardplusRoleKey(cardplusRole)
+  if (card === 'gerente geral') return 'GERENTE_GERAL'
+  if (card === 'gerente') return 'GERENTE'
+  if (card === 'lider de caixa') return 'LIDER_CAIXA'
+  if (card === 'auxiliar') return 'AUXILIAR'
+  if (card.includes('estoq')) return 'ESTOQUISTA'
+  return DEFAULT_EMPLOYEE_ROLE
+}
+
+export function employeeRoleLabel(
+  flowRole: string | null | undefined,
+  cardplusRole: string,
+  globalDeskLabel?: string | null
+): string {
+  return roleLabel(suggestedFlowRole(flowRole, cardplusRole, globalDeskLabel))
+}
+
+export function floorCardPlusRole(value: string | null | undefined): string {
+  if (isGlobalDeskRole(value)) return 'Funcionario Operacional'
+  const trimmed = (value ?? '').trim()
+  return trimmed || 'Funcionario Operacional'
 }

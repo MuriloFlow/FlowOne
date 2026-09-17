@@ -13,6 +13,7 @@ type SelectProps = {
   value: string
   options: SelectOption[]
   placeholder?: string
+  className?: string
   onChange: (value: string) => void
 }
 
@@ -24,7 +25,7 @@ type MenuCoords = {
   bottom?: number
 }
 
-export function Select({ value, options, placeholder = 'Selecionar', onChange }: SelectProps) {
+export function Select({ value, options, placeholder = 'Selecionar', className, onChange }: SelectProps) {
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState<MenuCoords | null>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -78,7 +79,7 @@ export function Select({ value, options, placeholder = 'Selecionar', onChange }:
   }, [])
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <button
         ref={buttonRef}
         type="button"
@@ -86,7 +87,8 @@ export function Select({ value, options, placeholder = 'Selecionar', onChange }:
         className={cn(
           'flex h-9 w-full items-center justify-between rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 text-left text-[13px] transition-colors',
           open ? 'border-white/16' : 'hover:border-white/12',
-          current ? 'text-[#F0EFEC]/80' : 'text-[#F0EFEC]/32'
+          current ? 'text-[#F0EFEC]/80' : 'text-[#F0EFEC]/32',
+          className
         )}
       >
         <span className="truncate">{current?.label ?? placeholder}</span>

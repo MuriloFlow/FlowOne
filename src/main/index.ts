@@ -1,7 +1,7 @@
 import { app, ipcMain } from 'electron'
 import log from 'electron-log'
 import { createMainWindow, getMainWindow, registerWindowIpc } from './window'
-import { clearAuthSession, persistAuthSession, readAuthSession } from './session-store'
+import { clearAuthSession, flushAuthSession, hydrateAuthSession, persistAuthSession, readAuthSession } from './session-store'
 import { registerUpdater } from './updater'
 import { loadLocalEnv } from './env'
 import { registerKobbiIpc } from './kobbi'
@@ -38,7 +38,7 @@ if (!gotLock) {
     window.focus()
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     loadLocalEnv()
     registerWindowIpc()
     registerOperationsIpc()
@@ -54,6 +54,7 @@ if (!gotLock) {
     ipcMain.handle('auth:read-session', async () => readAuthSession())
     ipcMain.handle('auth:clear-session', async () => clearAuthSession())
 
+    await hydrateAuthSession()
     const window = createMainWindow()
     registerUpdater(window)
 
@@ -70,6 +71,10 @@ if (!gotLock) {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  void flushAuthSession()
 })
 
 process.on('uncaughtException', (error) => {

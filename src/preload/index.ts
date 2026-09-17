@@ -7,6 +7,7 @@ import type {
 } from '../shared/operations'
 
 const flow: FlowApi = {
+  invoke: (channel: string, payload?: unknown) => ipcRenderer.invoke(channel, payload),
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
@@ -69,16 +70,25 @@ const flow: FlowApi = {
     upsertFinanceDay: (input) => ipcRenderer.invoke('operations:finance-day-upsert', input),
     getScheduleBoard: (storeId, weekStart) =>
       ipcRenderer.invoke('operations:schedule', { storeId: storeId ?? null, weekStart: weekStart ?? null }),
-    saveScheduleSlots: (storeId, slots) =>
-      ipcRenderer.invoke('operations:schedule-slots', { storeId, slots }),
-    resetScheduleSlots: (storeId) =>
-      ipcRenderer.invoke('operations:schedule-slots', { storeId, action: 'reset' }),
+    saveScheduleSlots: (storeId, slots, team) =>
+      ipcRenderer.invoke('operations:schedule-slots', { storeId, slots, team: team ?? null }),
+    resetScheduleSlots: (storeId, team) =>
+      ipcRenderer.invoke('operations:schedule-slots', { storeId, action: 'reset', team: team ?? null }),
     upsertScheduleAssignment: (input) => ipcRenderer.invoke('operations:schedule-assign', input),
     deleteScheduleAssignment: (id, storeId) =>
       ipcRenderer.invoke('operations:schedule-unassign', { id, storeId }),
+    getAttendanceBoard: (storeId, monthKey) =>
+      ipcRenderer.invoke('operations:attendance', { storeId: storeId ?? null, monthKey: monthKey ?? null }),
+    upsertTeamHeadcount: (input) => ipcRenderer.invoke('operations:headcount-upsert', input),
+    upsertAttendanceEvent: (input) => ipcRenderer.invoke('operations:attendance-upsert', input),
+    deleteAttendanceEvent: (id, storeId) =>
+      ipcRenderer.invoke('operations:attendance-delete', { id, storeId }),
     listVouchers: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:vouchers', { storeId: storeId ?? null }),
-    updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input)
+    updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input),
+    listFlowUsers: () => ipcRenderer.invoke('operations:users'),
+    upsertFlowUser: (input) => ipcRenderer.invoke('operations:user-upsert', input),
+    getActorScope: () => ipcRenderer.invoke('operations:scope')
   },
   kobbi: {
     send: (input: KobbiSendInput) => ipcRenderer.invoke('kobbi:send', input),

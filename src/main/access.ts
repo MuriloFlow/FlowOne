@@ -1,12 +1,18 @@
 import bcrypt from 'bcryptjs'
-import { getCardplusClient } from './supabase-clients'
+import { getCardplusClient, getFlowAdminClient } from './supabase-clients'
 import { listEmployees, listStores } from './cardplus'
+import { identityMask, listIdentities, syncProfileRoleIfSamePerson, upsertIdentity, type IdentityRecord } from './identities'
+import { resolveActor } from './scope'
+import { scheduleActorMatchScore } from '../shared/schedules'
 import type { EmployeeListItem, StoreAccessAccount, StoreAccessWriteInput } from '../shared/operations'
 import {
   cardplusAccessRoleLabel,
+  employeeRoleLabel,
+  floorCardPlusRole,
   isGlobalDeskAppRole,
-  isRegionalManagerAppRole,
-  normalizePersonName
+  isTiAdminAppRole,
+  normalizePersonName,
+  suggestedFlowRole
 } from '../shared/roles'
 
 const BCRYPT_ROUNDS = 10
@@ -196,36 +202,46 @@ function uniqueCollaboratorByName(list: EmployeeListItem[], name: string): Emplo
 function toGlobalEmployee(
   account: GlobalDeskAccount,
   matched: EmployeeListItem | null,
-  storeNames: Map<string, string>
+  storeNames: Map<string, string>,
+  identities: Map<string, IdentityRecord>
 ): EmployeeListItem {
-  const storeName = account.storeId ? (storeNames.get(account.storeId) ?? 'Unidade') : 'Rede'
-  const regional = isRegionalManagerAppRole(account.role)
+  const accountIdentity = identities.get(account.id)
+  const matchedIdentity = matched ? identities.get(matched.id) : null
+  const flowRole = suggestedFlowRole(
+    matched?.flowRole ?? matchedIdentity?.flowRole ?? accountIdentity?.flowRole,
+    account.roleLabel,
+    account.roleLabel
+  )
   if (matched) {
     return {
       ...matched,
-      cardplusRole: account.roleLabel,
-      flowRole: regional ? 'SUPERVISOR' : matched.flowRole,
-      flowRoleLabel: regional ? 'Supervisor' : 'TI',
-      storeName,
+      flowRole,
+      flowRoleLabel: employeeRoleLabel(flowRole, matched.cardplusRole, account.roleLabel),
+      cardplusRole: floorCardPlusRole(matched.cardplusRole),
+      cpfMasked: matched.cpfMasked ?? identityMask(accountIdentity) ?? identityMask(matchedIdentity),
+      hasCpf: matched.hasCpf || Boolean(accountIdentity?.cpfDigits || matchedIdentity?.cpfDigits),
       isGlobalDesk: true,
+      globalDeskLabel: account.roleLabel,
       directorySource: 'collaborator'
     }
   }
+  const storeName = account.storeId ? (storeNames.get(account.storeId) ?? 'Unidade') : 'Rede'
   return {
     id: account.id,
     name: account.name,
     storeId: account.storeId ?? '',
     storeName,
-    cardplusRole: account.roleLabel,
-    flowRole: regional ? 'SUPERVISOR' : null,
-    flowRoleLabel: regional ? 'Supervisor' : 'TI',
-    cpfMasked: null,
-    hasCpf: false,
+    cardplusRole: 'Funcionario Operacional',
+    flowRole,
+    flowRoleLabel: employeeRoleLabel(flowRole, 'Funcionario Operacional', account.roleLabel),
+    cpfMasked: identityMask(accountIdentity),
+    hasCpf: Boolean(accountIdentity?.cpfDigits),
     isActive: account.isActive,
     cardsThisMonth: 0,
     createdAt: account.createdAt,
     directorySource: 'app_user',
-    isGlobalDesk: true
+    isGlobalDesk: true,
+    globalDeskLabel: account.roleLabel
   }
 }
 
@@ -233,14 +249,15 @@ export function mergeGlobalDeskEmployees(
   local: EmployeeListItem[],
   collaborators: EmployeeListItem[],
   accounts: GlobalDeskAccount[],
-  storeNames: Map<string, string>
+  storeNames: Map<string, string>,
+  identities: Map<string, IdentityRecord> = new Map()
 ): EmployeeListItem[] {
   const byId = new Map<string, EmployeeListItem>(
     local.map((item) => [item.id, { ...item, directorySource: item.directorySource ?? 'collaborator' }])
   )
   for (const account of accounts) {
     const matched = uniqueCollaboratorByName(collaborators, account.name)
-    const next = toGlobalEmployee(account, matched, storeNames)
+    const next = toGlobalEmployee(account, matched, storeNames, identities)
     const current = byId.get(next.id)
     byId.set(next.id, current ? { ...current, ...next } : next)
   }
@@ -248,15 +265,83 @@ export function mergeGlobalDeskEmployees(
 }
 
 export async function listEmployeeDirectory(storeId?: string | null): Promise<EmployeeListItem[]> {
-  const [local, all, accounts, stores] = await Promise.all([
+  const [local, all, accounts, stores, identities] = await Promise.all([
     listEmployees(storeId),
     storeId ? listEmployees() : Promise.resolve(null),
     listGlobalDeskAccounts(),
-    listStores()
+    listStores(),
+    listIdentities()
   ])
   const collaborators = all ?? local
   const storeNames = new Map(stores.map((store) => [store.id, store.name]))
-  return mergeGlobalDeskEmployees(local, collaborators, accounts, storeNames)
+  const merged = mergeGlobalDeskEmployees(local, collaborators, accounts, storeNames, identities)
+  return healActorDirectory(merged, identities)
+}
+
+async function healActorDirectory(
+  directory: EmployeeListItem[],
+  identities: Map<string, IdentityRecord>
+): Promise<EmployeeListItem[]> {
+  let actor: Awaited<ReturnType<typeof resolveActor>> | null = null
+  try {
+    actor = await resolveActor()
+  } catch {
+    return directory
+  }
+  const { data } = await getFlowAdminClient()
+    .from('flow_profiles')
+    .select('display_name, email, role')
+    .eq('user_id', actor.userId)
+    .maybeSingle()
+  const profile = data as { display_name?: string | null; email?: string | null; role?: string | null } | null
+  const actorName = profile?.display_name?.trim() || ''
+  const actorEmail = profile?.email?.trim() || ''
+  if (!actorName && !actorEmail) return directory
+
+  return Promise.all(
+    directory.map(async (item) => {
+      const score = scheduleActorMatchScore(actorName, actorEmail, item.name)
+      const deskTi = item.globalDeskLabel === 'TI' || isTiAdminAppRole(item.cardplusRole)
+      if (score < 40 && !(deskTi && score >= 20)) return item
+      const raw = item.flowRole
+      const healed =
+        deskTi && (!raw || raw === 'SUPERVISOR' || raw === 'OPERADOR') ? 'LIDER_OPERACAO' : raw
+      const nextRole = suggestedFlowRole(healed, item.cardplusRole, item.globalDeskLabel)
+      const identity = identities.get(item.id)
+      if (identity?.flowRole !== nextRole) {
+        await upsertIdentity(item.id, identity?.cpfDigits ?? '', nextRole)
+      }
+      await syncProfileRoleIfSamePerson(actor.userId, item.name, nextRole, {
+        isGlobalDesk: Boolean(item.isGlobalDesk),
+        email: actorEmail
+      })
+      return {
+        ...item,
+        flowRole: nextRole,
+        flowRoleLabel: employeeRoleLabel(nextRole, item.cardplusRole, item.globalDeskLabel),
+        cardplusRole: floorCardPlusRole(item.cardplusRole)
+      }
+    })
+  )
+}
+
+export async function linkedDeskAccountId(name: string, collaboratorId: string): Promise<string | null> {
+  const accounts = await listGlobalDeskAccounts()
+  const key = normalizePersonName(name)
+  const match = accounts.find(
+    (account) => account.id === collaboratorId || (key && normalizePersonName(account.name) === key)
+  )
+  return match?.id ?? null
+}
+
+export async function syncDeskAccountName(accountId: string, name: string): Promise<void> {
+  const displayName = name.trim()
+  if (!accountId || !displayName) return
+  const { error } = await getCardplusClient()
+    .from('app_users')
+    .update({ name: displayName, updated_at: new Date().toISOString() })
+    .eq('id', accountId)
+  if (error) throw new Error(`Erro ao atualizar a conta da rede no Card+: ${error.message}`)
 }
 
 export async function assertEmployeeDeletable(id: string): Promise<void> {

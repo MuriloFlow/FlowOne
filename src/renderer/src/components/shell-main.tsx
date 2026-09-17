@@ -6,8 +6,10 @@ import { FinancePage } from '@/pages/finance'
 import { OverviewPage } from '@/pages/overview'
 import { CardsPage } from '@/pages/cards'
 import { PlaceholderPage } from '@/pages/placeholder'
+import { AttendancePage } from '@/pages/attendance'
 import { SchedulesPage } from '@/pages/schedules'
 import { StoresPage } from '@/pages/stores'
+import { UsersPage } from '@/pages/users'
 import { VouchersPage } from '@/pages/vouchers'
 import type { AuthUser } from '@/lib/auth'
 import { DEFAULT_NAV_ID, getNavItem, type NavId } from '@/lib/navigation'
@@ -67,6 +69,8 @@ export function ShellMain({
     activeId !== 'cards' &&
     activeId !== 'stores' &&
     activeId !== 'schedules' &&
+    activeId !== 'attendance' &&
+    activeId !== 'users' &&
     !(activeId === 'employees' && !employeeId)
 
   return (
@@ -129,6 +133,8 @@ export function ShellMain({
                 />
               ) : null}
               {activeId === 'schedules' ? <SchedulesPage storeId={storeId} /> : null}
+              {activeId === 'attendance' ? <AttendancePage storeId={storeId} /> : null}
+              {activeId === 'users' ? <UsersPage /> : null}
               {activeId === 'reports' ? <PlaceholderPage title="Relatório e projeções" /> : null}
             </motion.div>
           </AnimatePresence>

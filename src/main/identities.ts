@@ -1,6 +1,7 @@
 import log from 'electron-log'
 import { isValidCpf, maskCpf, onlyCpfDigits } from '../shared/cpf'
-import { isFlowRole, type FlowRoleId } from '../shared/roles'
+import { isFlowRole, normalizePersonName, type FlowRoleId } from '../shared/roles'
+import { compactScheduleKey, scheduleActorMatchScore } from '../shared/schedules'
 import { getFlowAdminClient } from './supabase-clients'
 
 type IdentityRow = {
@@ -146,6 +147,62 @@ export async function deleteIdentity(collaboratorId: string): Promise<void> {
   if (error && !isMissingTable(error)) {
     log.warn('[identities] delete', error.message)
   }
+}
+
+export async function syncProfileRoleIfSamePerson(
+  userId: string,
+  employeeName: string,
+  flowRole: string,
+  options?: { isGlobalDesk?: boolean; email?: string }
+): Promise<boolean> {
+  if (!isFlowRole(flowRole)) return false
+  const { data, error } = await getFlowAdminClient()
+    .from('flow_profiles')
+    .select('display_name, email, role')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error || !data) {
+    if (error) log.warn('[identities] sync profile', error.message)
+    return false
+  }
+  const row = data as { display_name?: string | null; email?: string | null; role?: string | null }
+  let email = (options?.email || row.email || '').trim().toLowerCase()
+  if (!email) {
+    try {
+      const authUser = await getFlowAdminClient().auth.admin.getUserById(userId)
+      email = authUser.data.user?.email?.trim().toLowerCase() ?? ''
+    } catch (authError) {
+      log.warn('[identities] email do login', authError)
+    }
+  }
+  const displayName = row.display_name ?? ''
+  const score = Math.max(
+    scheduleActorMatchScore(displayName, email, employeeName),
+    scheduleActorMatchScore(employeeName, email, displayName)
+  )
+  const exact = normalizePersonName(displayName) === normalizePersonName(employeeName)
+  const compact = compactScheduleKey(employeeName)
+  const allowed =
+    exact ||
+    (options?.isGlobalDesk && score >= 20) ||
+    (compact.length >= 8 && score >= 40)
+  if (!allowed) return false
+
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (row.role !== flowRole) patch.role = flowRole
+  if (employeeName.trim().length > displayName.trim().length) patch.display_name = employeeName.trim()
+  if (email && email !== (row.email ?? '').trim().toLowerCase()) patch.email = email
+  if (Object.keys(patch).length === 1) return true
+
+  const { error: updateError } = await getFlowAdminClient()
+    .from('flow_profiles')
+    .update(patch)
+    .eq('user_id', userId)
+  if (updateError) {
+    log.warn('[identities] sync profile role', updateError.message)
+    return false
+  }
+  return true
 }
 
 export function identityMask(record: IdentityRecord | null | undefined): string | null {

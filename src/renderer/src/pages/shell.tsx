@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { KobbiDock, KobbiFab } from '@/components/kobbi-dock'
+import { ScopeLock } from '@/components/scope-lock'
 import { ShellMain } from '@/components/shell-main'
 import type { AuthUser } from '@/lib/auth'
-import { DEFAULT_NAV_ID, type NavId } from '@/lib/navigation'
+import {
+  clearSessionNavId,
+  readSessionNavId,
+  writeSessionNavId,
+  type NavId
+} from '@/lib/navigation'
 import { operations } from '@/lib/operations'
 import { setCurrentStoreId } from '@/lib/store-scope'
-import type { StoreOption } from '../../../shared/operations'
+import type { ActorScopeView, StoreOption } from '../../../shared/operations'
 
 type ShellPageProps = {
   user: AuthUser
@@ -14,7 +20,7 @@ type ShellPageProps = {
 }
 
 export function ShellPage({ user, onSignOut }: ShellPageProps) {
-  const [activeId, setActiveId] = useState<NavId>(DEFAULT_NAV_ID)
+  const [activeId, setActiveId] = useState<NavId>(() => readSessionNavId(user.role))
   const [employeeId, setEmployeeId] = useState<string | null>(null)
   const [storeId, setStoreId] = useState<string | null>(() => {
     const initial = user.canFilterStores ? null : user.storeId
@@ -22,6 +28,7 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
     return initial
   })
   const [stores, setStores] = useState<StoreOption[]>([])
+  const [scope, setScope] = useState<ActorScopeView | null>(null)
   const [booting, setBooting] = useState(true)
   const [switching, setSwitching] = useState(false)
   const [compact, setCompact] = useState(false)
@@ -30,6 +37,31 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
   useEffect(() => {
     let active = true
     const boot = async () => {
+      try {
+        const next = await operations().getActorScope()
+        if (!active) return
+        setScope(next)
+        if (next.blocked) {
+          setCurrentStoreId(null)
+          setStoreId(null)
+          setBooting(false)
+          return
+        }
+      } catch {
+        if (!active) return
+        if (!user.canFilterStores && !user.storeId) {
+          setScope({
+            role: user.role,
+            canViewAll: false,
+            storeId: null,
+            blocked: true,
+            message:
+              'Sua conta ainda não tem uma unidade. Peça para um Lider de Operação, Supervisor ou Diretor te vincular em Usuários.'
+          })
+          setBooting(false)
+          return
+        }
+      }
       if (user.canFilterStores) {
         try {
           const saved = await operations().getStorePreference()
@@ -40,15 +72,13 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
           /* mantém o padrão */
         }
       }
-      window.setTimeout(() => {
-        if (active) setBooting(false)
-      }, 420)
+      if (active) setBooting(false)
     }
     void boot()
     return () => {
       active = false
     }
-  }, [user.canFilterStores])
+  }, [user.canFilterStores, user.role, user.storeId])
 
   useEffect(() => {
     const frame = window.matchMedia('(max-width: 1240px)')
@@ -63,7 +93,11 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
   }, [storeId])
 
   useEffect(() => {
-    if (!user.canFilterStores) return
+    writeSessionNavId(activeId)
+  }, [activeId])
+
+  useEffect(() => {
+    if (scope?.blocked || !user.canFilterStores) return
     void operations()
       .listStores()
       .then((list) => {
@@ -76,7 +110,32 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
         })
       })
       .catch(() => setStores([]))
-  }, [user.canFilterStores])
+  }, [scope?.blocked, user.canFilterStores])
+
+  function handleSignOut(): void {
+    clearSessionNavId()
+    onSignOut()
+  }
+
+  if (scope?.blocked) {
+    return (
+      <ScopeLock
+        message={
+          scope.message ??
+          'Sua conta ainda não tem uma unidade. Peça para um Lider de Operação, Supervisor ou Diretor te vincular em Usuários.'
+        }
+        onSignOut={handleSignOut}
+      />
+    )
+  }
+
+  if (booting) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-[#111111]">
+        <div className="h-8 w-28 animate-pulse rounded-md bg-white/6" />
+      </div>
+    )
+  }
 
   function navigate(id: NavId): void {
     if (id === activeId && !employeeId) return
@@ -100,10 +159,10 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
         activeId={activeId}
         stores={stores}
         storeId={storeId}
-        loading={booting}
+        loading={false}
         compact={compact}
         onNavigate={navigate}
-        onSignOut={onSignOut}
+        onSignOut={handleSignOut}
         onStoreChange={(next) => {
           setCurrentStoreId(next)
           setStoreId(next)
@@ -117,7 +176,7 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
           activeId={activeId}
           employeeId={employeeId}
           storeId={storeId}
-          loading={booting || switching}
+          loading={switching}
           fab={
             kobbiOpen ? null : (
               <KobbiFab onOpen={() => setKobbiOpen(true)} />

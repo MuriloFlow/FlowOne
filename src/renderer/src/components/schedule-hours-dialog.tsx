@@ -1,12 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { formatClock, parseClock, weekdayName, type ScheduleBand, type ScheduleSlot, type ScheduleSlotWrite, type ScheduleWeekday } from '../../../shared/schedules'
+import { Select } from '@/components/ui/select'
+import {
+  formatClock,
+  parseClockOrNull,
+  scheduleSlotBaseCode,
+  weekdayName,
+  withTeamSlotCode,
+  type ScheduleBand,
+  type ScheduleSlot,
+  type ScheduleSlotWrite,
+  type ScheduleTeam,
+  type ScheduleWeekday
+} from '../../../shared/schedules'
 import { SCHEDULE_BANDS, SCHEDULE_WEEKDAYS, bandLabel } from '../../../shared/schedules'
 
 type HoursDialogProps = {
   open: boolean
   storeId: string
+  team: ScheduleTeam
+  teamLabel: string
   slots: ScheduleSlot[]
   saving: boolean
   onClose: () => void
@@ -14,18 +28,68 @@ type HoursDialogProps = {
   onReset: () => Promise<void>
 }
 
-function clockInput(minutes: number): string {
-  return formatClock(minutes)
-}
-
-export function ScheduleHoursDialog({ open, slots, saving, onClose, onSave, onReset }: HoursDialogProps) {
-  const [weekday, setWeekday] = useState<ScheduleWeekday>(1)
-  const [draft, setDraft] = useState<ScheduleSlotWrite[]>([])
+function ClockField({
+  minutes,
+  onCommit,
+  className
+}: {
+  minutes: number
+  onCommit: (minutes: number) => void
+  className?: string
+}) {
+  const [text, setText] = useState(() => formatClock(minutes))
+  const focusedRef = useRef(false)
 
   useEffect(() => {
-    if (!open) return
-    setDraft(slots.map((slot) => ({ ...slot })))
-    setWeekday(1)
+    if (!focusedRef.current) setText(formatClock(minutes))
+  }, [minutes])
+
+  function commit(raw: string): void {
+    const next = parseClockOrNull(raw)
+    if (next == null) {
+      setText(formatClock(minutes))
+      return
+    }
+    onCommit(next)
+    setText(formatClock(next))
+  }
+
+  return (
+    <Input
+      inputMode="numeric"
+      autoComplete="off"
+      spellCheck={false}
+      maxLength={5}
+      placeholder="8:30"
+      value={text}
+      onFocus={(event) => {
+        focusedRef.current = true
+        event.target.select()
+      }}
+      onChange={(event) => setText(event.target.value.replace(/[^\d:hH.,]/g, '').slice(0, 5))}
+      onBlur={() => {
+        focusedRef.current = false
+        commit(text)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+      }}
+      className={className}
+    />
+  )
+}
+
+export function ScheduleHoursDialog({ open, team, teamLabel, slots, saving, onClose, onSave, onReset }: HoursDialogProps) {
+  const [weekday, setWeekday] = useState<ScheduleWeekday>(1)
+  const [draft, setDraft] = useState<ScheduleSlotWrite[]>([])
+  const wasOpen = useRef(false)
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setDraft(slots.map((slot) => ({ ...slot })))
+      setWeekday(1)
+    }
+    wasOpen.current = open
   }, [open, slots])
 
   const all = draft
@@ -38,21 +102,35 @@ export function ScheduleHoursDialog({ open, slots, saving, onClose, onSave, onRe
   }
 
   function update(index: number, patch: Partial<ScheduleSlotWrite>): void {
-    const list = all.map((slot) => ({ ...slot }))
-    const focused = list.filter((slot) => slot.weekday === weekday)
-    const target = focused[index]
-    if (!target) return
-    Object.assign(target, patch)
-    mutate(list)
+    const focused = current[index]
+    if (!focused) return
+    mutate(
+      all.map((slot) =>
+        slot === focused ||
+        (slot.weekday === focused.weekday &&
+          slot.code === focused.code &&
+          slot.sortOrder === focused.sortOrder &&
+          slot.id === focused.id)
+          ? { ...slot, ...patch }
+          : slot
+      )
+    )
   }
 
   function addSlot(): void {
     const list = [...all]
     const same = list.filter((slot) => slot.weekday === weekday)
+    const used = new Set(same.map((slot) => slot.code))
+    let n = same.length + 1
+    let code = withTeamSlotCode(team, `H${n}`)
+    while (used.has(code)) {
+      n += 1
+      code = withTeamSlotCode(team, `H${n}`)
+    }
     list.push({
       weekday,
       band: 'ABERTURA',
-      code: `ABT${same.length + 1}`,
+      code,
       label: 'Abertura',
       startMinutes: 500,
       endMinutes: 960,
@@ -71,8 +149,8 @@ export function ScheduleHoursDialog({ open, slots, saving, onClose, onSave, onRe
     <Dialog
       open={open}
       wide
-      title="Horários da escala"
-      description="Segunda a domingo. Sexta e sábado já vêm com abertura e fechamento em dois turnos — ajuste o que a loja precisa."
+      title={`Horários · ${teamLabel}`}
+      description="Só este cargo. Mudar aqui não altera os horários das outras escalas."
       onClose={onClose}
     >
       <div className="px-5 pb-5">
@@ -81,7 +159,11 @@ export function ScheduleHoursDialog({ open, slots, saving, onClose, onSave, onRe
             <button
               key={day}
               type="button"
-              onClick={() => setWeekday(day)}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setWeekday(day)
+              }}
               className={
                 day === weekday
                   ? 'h-8 rounded-[8px] bg-white/[0.1] px-2.5 text-[12px] text-[#F0EFEC]/85'
@@ -93,28 +175,23 @@ export function ScheduleHoursDialog({ open, slots, saving, onClose, onSave, onRe
           ))}
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-2 overflow-x-auto">
           {current.map((slot, index) => (
-            <div key={`${slot.id ?? slot.code}-${index}`} className="grid grid-cols-[132px_88px_1fr_88px_88px_32px] items-center gap-2">
-              <select
+            <div key={`${slot.id ?? slot.code}-${index}`} className="grid min-w-[620px] grid-cols-[minmax(148px,1.2fr)_80px_minmax(100px,1fr)_80px_80px_28px] items-center gap-2">
+              <Select
                 value={slot.band}
-                onChange={(event) =>
+                options={SCHEDULE_BANDS.map((band) => ({ value: band, label: bandLabel(band) }))}
+                className="h-8 rounded-[8px] px-2 text-[12px]"
+                onChange={(value) =>
                   update(index, {
-                    band: event.target.value as ScheduleBand,
-                    label: bandLabel(event.target.value as ScheduleBand)
+                    band: value as ScheduleBand,
+                    label: bandLabel(value as ScheduleBand)
                   })
                 }
-                className="h-8 rounded-[8px] border border-white/[0.08] bg-transparent px-2 text-[12px] text-[#F0EFEC]/80"
-              >
-                {SCHEDULE_BANDS.map((band) => (
-                  <option key={band} value={band}>
-                    {bandLabel(band)}
-                  </option>
-                ))}
-              </select>
+              />
               <Input
-                value={slot.code}
-                onChange={(event) => update(index, { code: event.target.value.toUpperCase() })}
+                value={scheduleSlotBaseCode(slot.code)}
+                onChange={(event) => update(index, { code: withTeamSlotCode(team, event.target.value) })}
                 className="h-8 text-[12px]"
               />
               <Input
@@ -122,14 +199,14 @@ export function ScheduleHoursDialog({ open, slots, saving, onClose, onSave, onRe
                 onChange={(event) => update(index, { label: event.target.value })}
                 className="h-8 text-[12px]"
               />
-              <Input
-                value={clockInput(slot.startMinutes)}
-                onChange={(event) => update(index, { startMinutes: parseClock(event.target.value) })}
+              <ClockField
+                minutes={slot.startMinutes}
+                onCommit={(startMinutes) => update(index, { startMinutes })}
                 className="h-8 text-[12px]"
               />
-              <Input
-                value={clockInput(slot.endMinutes)}
-                onChange={(event) => update(index, { endMinutes: parseClock(event.target.value) })}
+              <ClockField
+                minutes={slot.endMinutes}
+                onCommit={(endMinutes) => update(index, { endMinutes })}
                 className="h-8 text-[12px]"
               />
               <button

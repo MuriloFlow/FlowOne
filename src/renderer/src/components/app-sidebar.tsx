@@ -3,7 +3,7 @@ import logo from '@/assets/logo.png'
 import { StoreSwitcher } from '@/components/store-switcher'
 import { UserMenu } from '@/components/user-menu'
 import type { AuthUser } from '@/lib/auth'
-import { NAV_ITEMS, type NavId } from '@/lib/navigation'
+import { NAV_ITEMS, visibleNavItems, type NavId } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import type { StoreOption } from '../../../shared/operations'
 
@@ -32,6 +32,7 @@ export function AppSidebar({
   onSignOut,
   onStoreChange
 }: AppSidebarProps) {
+  const items = visibleNavItems(user.role)
   return (
     <aside
       className={cn(
@@ -62,7 +63,7 @@ export function AppSidebar({
                 {compact ? null : <div className="h-2.5 w-28 animate-pulse rounded-full bg-white/6" />}
               </div>
             ))
-          : NAV_ITEMS.map((item, index) => {
+          : items.map((item, index) => {
               const active = item.id === activeId
 
               return (

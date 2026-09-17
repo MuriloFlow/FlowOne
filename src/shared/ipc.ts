@@ -20,6 +20,7 @@ export type WindowState = {
 export type { OperationsApi } from './operations'
 
 export type FlowApi = {
+  invoke: (channel: string, payload?: unknown) => Promise<unknown>
   window: {
     minimize: () => Promise<void>
     toggleMaximize: () => Promise<WindowState>

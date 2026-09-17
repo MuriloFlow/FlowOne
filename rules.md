@@ -668,7 +668,7 @@ Perfis de cargo:
 
 - Operador — sem login no launcher
 - Estoquista — sem login no launcher
-- Lider de Operação
+- Lider de Operação — acesso total ao painel (todas as unidades) e entra na escala como operador
 - Lider de Estoque
 - Lider de Caixa
 - Gerente
@@ -866,7 +866,7 @@ Cadastro de unidade no FLOW: grava `stores.name` no Card+, cria colaborador `CAI
 
 Aproveitamento = cartões / (digitações + cartões) da unidade e do mês. Tx. aprovação = cartões / digitações. Clientes do mês = soma de `daily_metrics.total_customers` de todos os dias do mês na unidade filtrada. Digitações = soma de `digitacoes.quantity` no mês da unidade. Linhas sem `store_id` não entram no recorte da loja. Ritmo = cartões que faltam para a meta do mês / dias úteis restantes (a partir de hoje, sem domingo, incluindo hoje), arredondado.
 
-`app_users.role` `REGIONAL_MANAGER` (Gerente regional) mapeia para o cargo FLOW `SUPERVISOR`. `TI_ADMIN` aparece como TI. Ambos entram na mesa de qualquer unidade: Supervisor, Gerentes da unidade e Gerente geral — mesmo com `store_id` null ou de outra loja. Se existir colaborador com o mesmo nome, o assento grava `collaborators.id`; senão grava o `app_users.id` em `flow_store_leadership.cardplus_collaborator_id` (tabela FLOW, sem coluna nova no Card+). Funcionários lista essas contas em todas as unidades; exclusão no FLOW só vale para colaborador da loja, não apaga a conta admin do Card+. Cadastro de Gerente ou Gerente Geral pelo Supervisor/Diretor cria o login `app_users` (role `MANAGER`) no mesmo modal.
+Um cargo por pessoa: a coluna Cargo e o menu usam só o cargo FLOW (`flow_employee_identities` + `flow_profiles`). A função operacional (`collaborators.sub_role`) grava e volta do Card+ quando o Supervisor/Diretor/Lider de Operação edita no FLOW. `app_users.role` `TI_ADMIN` / `REGIONAL_MANAGER` é conta da rede — aparece como selo, nunca como cargo. TI no FLOW vira `LIDER_OPERACAO` (painel inteiro + Time operacional). Sem colaborador na loja, a edição cria um com `Funcionario Operacional`. A conta TI do Card+ não é apagada. Cadastro de Gerente ou Gerente Geral cria login `app_users` `MANAGER`. SQL do Murilo: `0010_flow_murilo_lider_operacao.sql` no FLOW e `cardplus_0010_murilo_operacional.sql` no Card+.
 
 Financeiro replica a mesa de Cartões: todos os dias do mês, clique no dia para registrar. A venda do dia continua em `daily_goals` com `date_key` `daily-sale:YYYY-MM-DD` (centavos), recortada pela unidade. Meta do dia, last year e PU **não existem** no Card+ — ficam na tabela FLOW `flow_finance_days` (`cardplus_store_id`, `date_key` `YYYY-MM-DD`, `goal_cents`, `last_year_cents`, `pu`). SQL: `supabase/migrations/0007_flow_finance_days.sql`. Média do PU do mês = média dos dias que têm PU preenchido (zero explícito entra; dia vazio não puxa a média). Exibição do PU no mesmo padrão de aproveitamento (`30%`), com hint de mix de peças no caixa.
 
@@ -885,7 +885,9 @@ Tabela: `public.flow_employee_identities`
 
 Projeção do perfil do funcionário: `(cartões do mês / dia atual) * dias do mês`. É estimativa do FLOW, não um campo do Card+.
 
-Escopo por unidade: apenas Supervisor e Diretor veem todas as lojas, com filtro no launcher. A última unidade escolhida é gravada no launcher e volta no próximo start.
+Escopo por unidade: Supervisor, Diretor e Lider de Operação veem todas as lojas, com filtro no launcher. A última unidade escolhida é gravada no launcher e volta no próximo start. Conta de loja sem unidade não abre sidebar nem dados: tela central pedindo vínculo em Usuários.
+
+Aba Usuários: cria e edita acessos do launcher (`auth.users` + `flow_profiles`). E-mail, senha, cargo FLOW e unidade. Separado do login do Card+. Só Lider de Operação, Supervisor e Diretor gerenciam.
 
 Cargo novo do FLOW: `AUXILIAR` (sem login). Não altera o `sub_role` do Card+.
 
@@ -899,7 +901,9 @@ Tabela `flow_store_leadership`: assentos `GERENTE` (vários), `GERENTE_GERAL`, `
 
 Tabela `flow_finance_days`: meta diária de valor, last year e PU por unidade/data. Sem coluna nova no Card+. Venda do dia permanece em `daily-sale`. Auditoria `finance.day.upsert`. SQL: `supabase/migrations/0007_flow_finance_days.sql` no **Supabase do FLOW** (não no Card+). Se a tabela ainda não existir, o backend não quebra: PU/meta/last year ficam `null` (não lançado) e o erro de tabela ausente só aparece quando o `select` realmente falha.
 
-Escalas: tabela no FLOW (`0009_flow_schedules.sql`). Horários padrão no SQL (seg–qui abertura 8:20–16 / inter 10:10–19 / fechamento 12:25–21; sexta e sábado com ABT1/ABT2 e FECH1/FECH2). Cada unidade copia esses defaults e pode personalizar. Atribuições usam `collaborators.id` do Card+. Semana nova copia a anterior automaticamente na primeira abertura. Exportação PNG no estilo planilha para o grupo do Zap. Sem tabela nova no Card+.
+Escalas: tabela no FLOW (`0009_flow_schedules.sql`). Horários padrão no SQL (seg–qui abertura 8:20–16 / inter 10:10–19 / fechamento 12:25–21; sexta e sábado com ABT1/ABT2 e FECH1/FECH2). Cada cargo (Operação, Caixa, Auxiliar, Vendedor, Estoquista) tem a própria grade de horários; editar na aba do cargo não muda as outras. Atribuições usam `collaborators.id` do Card+. Gerente / Gerente Geral / Supervisor / Diretor não entram no pool. TI da rede logado no FLOW vira Funcionario Operacional da loja aberta (cria o colaborador se faltar) e entra no Time operacional, inclusive no fim de semana. Lider de Operação tem o mesmo acesso de Supervisor/Diretor no painel. Semana nova copia a anterior automaticamente na primeira abertura. Exportação PNG dark por time para o grupo do Zap. Sem tabela nova no Card+.
+
+Atestados e Equipe: aba ao lado de Escalas. Mesa no mesmo esquema de Cartões/Financeiro (lista do mês, clique no dia). Quadro numérico **do dia** (`flow_attendance_days`: uma linha por loja/data com OP DE LOJA / VENDEDORES / CAIXA / ESTOQUISTA / AUXILIAR DE LIMPEZA). Ocorrência por colaborador e dia (`flow_attendance_events`: ATESTADO, FALTA, FALTA_JUSTIFICADA, BANCO_HORAS). Na Escala, o chip já encaixado mostra `!` azul (Atestado), vermelho (Falta / Falta justificada) ou amarelo (Banco de horas) depois do horário. SQL: `0012_flow_attendance.sql`; se o 0012 antigo (`flow_team_headcount` global) já rodou, `0013_flow_attendance_daily_headcount.sql`. Sem tabela nova no Card+.
 
 Kobbi: copiloto operacional no launcher. A chave OpenAI (`OPENAI_*`) fica só no processo principal. O recorte JSON é o painel completo no filtro da loja: cadastros/unidades (liderança, código, atenção), equipe (incluindo Gerente Regional e TI globais), acessos do Card+ sem senha, financeiro do mês (venda, meta do dia, last year, PU por dia, `puOntem` / `puHoje` / `puMediaMes`), cartões registrados (cliente, operador, limite, gasto, status), clientes, ranking, vales e visão geral. PU = produto único / mix de peças no caixa, lançado no Financeiro FLOW. `null` no recorte = não lançado; o modelo não deve dizer que o KPI “não existe neste recorte” se o campo estiver no JSON. Gráfico mini só quando a pergunta for visual; as séries vêm dos números reais, não do modelo. Histórico: últimas 5 conversas por usuário FLOW em `flow_kobbi_threads` (SQL `0008_flow_kobbi.sql`); o dock reabre vazio no restart e o histórico é manual. Avaliação: Copiar + Avaliar (boa/ruim) em `flow_kobbi_ratings`. Rodar `0007` e `0008` no SQL Editor do FLOW.
 

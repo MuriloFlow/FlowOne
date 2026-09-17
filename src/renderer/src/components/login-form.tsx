@@ -31,12 +31,16 @@ function LoginSkeleton() {
   )
 }
 
-export function LoginForm({ className, ...props }: ComponentProps<'div'>) {
+export function LoginForm({
+  className,
+  initialError,
+  ...props
+}: ComponentProps<'div'> & { initialError?: string | null }) {
   const [step, setStep] = useState<Step>('email')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(initialError ?? null)
   const [pending, setPending] = useState(false)
   const [switching, setSwitching] = useState(false)
   const passwordRef = useRef<HTMLInputElement>(null)

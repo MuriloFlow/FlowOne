@@ -54,12 +54,11 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
       </header>
 
       {error ? (
-        <div className="rounded-[16px] border border-red-500/15 bg-red-500/8 px-4 py-3 text-[13px] text-red-300/80">
-          {error}
+        <div className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] px-5 py-5">
+          <p className="text-[14px] text-[#F0EFEC]/78">Não deu para abrir o recorte agora</p>
+          <p className="mt-1.5 text-[13px] text-[#F0EFEC]/46">{error}</p>
         </div>
-      ) : null}
-
-      {loading || !data ? (
+      ) : loading || !data ? (
         <OverviewSkeleton />
       ) : (
         <>

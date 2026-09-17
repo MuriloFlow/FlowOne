@@ -10,6 +10,10 @@ export {
   canViewAllStores,
   canCreateStores,
   canEditStoreDesk,
+  canManageFlowUsers,
+  needsStoreBinding,
   employeeRoleLabel,
+  isGlobalDeskRole,
+  suggestedFlowRole,
   type FlowRoleId
 } from '../../../shared/roles'

@@ -1,5 +1,5 @@
 import { CARDPLUS_SUB_ROLES, type CardPlusSubRole } from '../shared/operations'
-import { employeeRoleLabel } from '../shared/roles'
+import { employeeRoleLabel, floorCardPlusRole, isFlowRole, isGlobalDeskRole, normalizePersonName, suggestedFlowRole } from '../shared/roles'
 import {
   dateKeyInSaoPaulo,
   dayBounds,
@@ -83,6 +83,10 @@ function normalizeName(value: string): string {
 function normalizeCardPlusRole(value: string): CardPlusSubRole {
   const match = CARDPLUS_SUB_ROLES.find((role) => role.toLowerCase() === value.trim().toLowerCase())
   return match ?? 'Funcionario Operacional'
+}
+
+function collaboratorFloorRole(value: string): CardPlusSubRole {
+  return normalizeCardPlusRole(floorCardPlusRole(value))
 }
 
 function belongsToStore(rowStoreId: string | null | undefined, storeId?: string | null): boolean {
@@ -209,7 +213,7 @@ async function listCollaborators(storeId?: string | null): Promise<CollaboratorR
   return rows.filter((row) => !row.merged_into_id && belongsToStore(row.store_id, storeId))
 }
 
-async function getCollaborator(id: string): Promise<CollaboratorRow> {
+async function getCollaboratorOrNull(id: string): Promise<CollaboratorRow | null> {
   const data = await throwIfError(
     await getCardplusClient()
       .from('collaborators')
@@ -218,8 +222,22 @@ async function getCollaborator(id: string): Promise<CollaboratorRow> {
       .maybeSingle(),
     'Erro ao carregar funcionário'
   )
+  return (data as CollaboratorRow | null) ?? null
+}
+
+async function getCollaborator(id: string): Promise<CollaboratorRow> {
+  const data = await getCollaboratorOrNull(id)
   if (!data) throw new Error('Funcionário não encontrado.')
-  return data as CollaboratorRow
+  return data
+}
+
+async function findCollaboratorByName(name: string, storeId?: string): Promise<CollaboratorRow | null> {
+  const rows = await listCollaborators(storeId)
+  const key = normalizePersonName(name)
+  if (!key) return null
+  const matches = rows.filter((row) => normalizePersonName(row.name) === key)
+  if (storeId) return matches.find((row) => row.store_id === storeId) ?? null
+  return matches.length === 1 ? matches[0] : null
 }
 
 async function monthCardCounts(monthKey: string, storeId?: string | null): Promise<Map<string, number>> {
@@ -365,13 +383,13 @@ function toEmployeeItem(
   identity: IdentityRecord | null | undefined,
   cardsThisMonth: number
 ): EmployeeListItem {
-  const flowRole = identity?.flowRole ?? null
+  const flowRole = suggestedFlowRole(identity?.flowRole, row.sub_role)
   return {
     id: row.id,
     name: row.name,
     storeId: row.store_id,
     storeName: stores.get(row.store_id) ?? 'Unidade',
-    cardplusRole: row.sub_role,
+    cardplusRole: floorCardPlusRole(row.sub_role),
     flowRole,
     flowRoleLabel: employeeRoleLabel(flowRole, row.sub_role),
     cpfMasked: identityMask(identity),
@@ -771,7 +789,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<Employ
     .insert({
       name,
       store_id: input.storeId,
-      sub_role: normalizeCardPlusRole(input.cardplusRole),
+      sub_role: collaboratorFloorRole(input.cardplusRole),
       is_active: true
     })
     .select('id, name, store_id, sub_role, is_active, merged_into_id, created_at')
@@ -788,13 +806,31 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<Employ
 }
 
 export async function updateEmployee(input: UpdateEmployeeInput): Promise<EmployeeListItem> {
-  const current = await getCollaborator(input.id)
   const name = normalizeName(input.name)
   if (!name) throw new Error('Nome é obrigatório.')
   if (!input.storeId) throw new Error('Unidade é obrigatória.')
   parseIdentityInput(input.cpf, input.flowRole)
 
-  const nextRole = normalizeCardPlusRole(input.cardplusRole)
+  const current = await getCollaboratorOrNull(input.id)
+  if (!current) {
+    const existing = await findCollaboratorByName(name, input.storeId)
+    if (existing) {
+      const existingIdentity = await getIdentity(existing.id)
+      const cpf = input.cpf.trim() || existingIdentity?.cpfDigits || ''
+      await upsertIdentity(input.id, cpf, input.flowRole)
+      return updateEmployee({ ...input, id: existing.id, cpf })
+    }
+    await upsertIdentity(input.id, input.cpf, input.flowRole)
+    return createEmployee({
+      name,
+      storeId: input.storeId,
+      cardplusRole: collaboratorFloorRole(input.cardplusRole),
+      flowRole: input.flowRole,
+      cpf: input.cpf
+    })
+  }
+
+  const nextRole = collaboratorFloorRole(input.cardplusRole)
   const { error } = await getCardplusClient()
     .from('collaborators')
     .update({
@@ -839,6 +875,55 @@ export async function updateEmployee(input: UpdateEmployeeInput): Promise<Employ
     is_active: input.isActive
   }
   return toEmployeeItem(updated, storeMap, identity, monthCounts.get(input.id) ?? 0)
+}
+
+export async function ensureOperationalCollaborator(input: {
+  storeId: string
+  name: string
+  flowRole?: string | null
+  sourceId?: string | null
+}): Promise<EmployeeListItem> {
+  const name = normalizeName(input.name)
+  if (!name) throw new Error('Nome é obrigatório.')
+  if (!input.storeId) throw new Error('Unidade é obrigatória.')
+  const wantedRole =
+    input.flowRole && isFlowRole(input.flowRole) && input.flowRole !== 'SUPERVISOR'
+      ? input.flowRole
+      : 'LIDER_OPERACAO'
+
+  const existing = await findCollaboratorByName(name, input.storeId)
+  if (existing) {
+    const identity = await getIdentity(existing.id)
+    const nextFlow = identity?.flowRole && identity.flowRole !== 'SUPERVISOR' ? identity.flowRole : wantedRole
+    if (isGlobalDeskRole(existing.sub_role)) {
+      const { error } = await getCardplusClient()
+        .from('collaborators')
+        .update({ sub_role: 'Funcionario Operacional', merged_into_id: null, is_active: true })
+        .eq('id', existing.id)
+      if (error) throw new Error(`Erro ao tornar o TI operacional na loja: ${error.message}`)
+      existing.sub_role = 'Funcionario Operacional'
+    }
+    const cpf = identity?.cpfDigits ?? ''
+    await upsertIdentity(existing.id, cpf, nextFlow)
+    if (input.sourceId && input.sourceId !== existing.id) {
+      await upsertIdentity(input.sourceId, cpf, nextFlow)
+    }
+    const stores = await listStores()
+    const storeMap = new Map(stores.map((store) => [store.id, store.name]))
+    return toEmployeeItem({ ...existing, is_active: true }, storeMap, await getIdentity(existing.id), 0)
+  }
+
+  const created = await createEmployee({
+    name,
+    storeId: input.storeId,
+    cardplusRole: 'Funcionario Operacional',
+    flowRole: wantedRole,
+    cpf: ''
+  })
+  if (input.sourceId && input.sourceId !== created.id) {
+    await upsertIdentity(input.sourceId, '', wantedRole)
+  }
+  return created
 }
 
 export async function ensureCaixaCollaborator(storeId: string): Promise<string> {

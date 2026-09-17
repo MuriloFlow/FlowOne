@@ -38,7 +38,7 @@ export function Dialog({ open, title, description, wide = false, children, onClo
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             className={cn(
               'relative z-10 w-full overflow-hidden rounded-[16px] border border-white/[0.07] bg-[#171717] shadow-[0_24px_80px_rgba(0,0,0,0.55)]',
-              wide ? 'max-w-[560px]' : 'max-w-[460px]'
+              wide ? 'max-w-[720px]' : 'max-w-[460px]'
             )}
           >
             <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3">

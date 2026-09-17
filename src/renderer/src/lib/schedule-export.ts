@@ -1,88 +1,291 @@
-import { formatClock, bandLabel, type ScheduleBand, type ScheduleBoard } from '../../../shared/schedules'
+import {
+  SCHEDULE_BANDS,
+  formatClock,
+  bandLabel,
+  resolveSchedulePersonTeam,
+  scheduleExportLabel,
+  scheduleSlotBaseCode,
+  scheduleSlotsForTeam,
+  weekdayName,
+  weekdayShort,
+  type ScheduleAssignment,
+  type ScheduleBand,
+  type ScheduleBoard,
+  type ScheduleDay,
+  type ScheduleSlot,
+  type ScheduleTeam
+} from '../../../shared/schedules'
 import { formatDateKey } from '@/lib/format'
 
-const BANDS: ScheduleBand[] = ['ABERTURA', 'INTERMEDIARIO', 'FECHAMENTO']
+type ExportSlot = ScheduleSlot & { assignments: ScheduleAssignment[] }
+type ExportDay = Omit<ScheduleDay, 'slots'> & { slots: ExportSlot[] }
 
-function cellText(name: string, extra?: string | null): string {
-  return extra ? `${name} ${extra}` : name
+export type ScheduleExportScope = {
+  dateKey?: string | null
 }
 
-export async function exportScheduleImage(board: ScheduleBoard): Promise<void> {
-  const days = board.days
-  const colW = 148
-  const labelW = 132
-  const rowH = 28
-  const headerH = 36
-  const pad = 20
-  const sections = BANDS.map((band) => {
-    const depth = Math.max(
-      1,
-      ...days.map((day) =>
-        day.slots.filter((slot) => slot.band === band).reduce((sum, slot) => sum + Math.max(1, slot.assignments.length), 0)
-      )
+type Period = {
+  id: string
+  band: ScheduleBand
+  label: string
+  sortOrder: number
+  startMinutes: number
+  endMinutes: number
+  timesVary: boolean
+}
+
+const BAND_RANK: Record<ScheduleBand, number> = {
+  ABERTURA: 0,
+  INTERMEDIARIO: 1,
+  FECHAMENTO: 2
+}
+
+function periodId(slot: Pick<ScheduleSlot, 'band' | 'code' | 'label'>): string {
+  return `${slot.band}|${scheduleSlotBaseCode(slot.code)}|${slot.label.trim().toLowerCase()}`
+}
+
+function cellText(name: string, extra?: string | null): string {
+  return extra ? `${name}  ${extra}` : name
+}
+
+function collectPeriods(days: ExportDay[]): Period[] {
+  const map = new Map<string, Period & { times: Set<string> }>()
+  for (const day of days) {
+    for (const slot of day.slots) {
+      const id = periodId(slot)
+      const timeKey = `${slot.startMinutes}-${slot.endMinutes}`
+      const existing = map.get(id)
+      if (!existing) {
+        map.set(id, {
+          id,
+          band: slot.band,
+          label: slot.label,
+          sortOrder: slot.sortOrder,
+          startMinutes: slot.startMinutes,
+          endMinutes: slot.endMinutes,
+          timesVary: false,
+          times: new Set([timeKey])
+        })
+        continue
+      }
+      existing.times.add(timeKey)
+      existing.sortOrder = Math.min(existing.sortOrder, slot.sortOrder)
+      existing.timesVary = existing.times.size > 1
+    }
+  }
+  return [...map.values()]
+    .map((row) => ({
+      id: row.id,
+      band: row.band,
+      label: row.label,
+      sortOrder: row.sortOrder,
+      startMinutes: row.startMinutes,
+      endMinutes: row.endMinutes,
+      timesVary: row.timesVary
+    }))
+    .sort((left, right) => {
+      const band = BAND_RANK[left.band] - BAND_RANK[right.band]
+      if (band) return band
+      if (left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder
+      if (left.startMinutes !== right.startMinutes) return left.startMinutes - right.startMinutes
+      return left.label.localeCompare(right.label, 'pt-BR')
+    })
+}
+
+function slotForPeriod(day: ExportDay, period: Period): ExportSlot | undefined {
+  return day.slots.find((slot) => periodId(slot) === period.id)
+}
+
+function peopleForPeriod(day: ExportDay, period: Period): string[] {
+  const slot = slotForPeriod(day, period)
+  if (!slot) return []
+  return slot.assignments.map((item) =>
+    cellText(
+      item.shortName,
+      item.note ||
+        (period.timesVary ? `${formatClock(slot.startMinutes)}–${formatClock(slot.endMinutes)}` : null)
     )
-    return { band, depth }
-  })
+  )
+}
+
+function fitText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number
+): void {
+  if (!text) return
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x - 2, y - 16, maxWidth + 2, 22)
+  ctx.clip()
+  ctx.fillText(text, x, y)
+  ctx.restore()
+}
+
+export async function exportScheduleImage(
+  board: ScheduleBoard,
+  team: ScheduleTeam,
+  scope: ScheduleExportScope = {}
+): Promise<void> {
+  const allowed = new Set(
+    board.people.filter((person) => resolveSchedulePersonTeam(person) === team).map((person) => person.id)
+  )
+  const days = board.days
+    .filter((day) => !scope.dateKey || day.dateKey === scope.dateKey)
+    .map((day) => ({
+      ...day,
+      slots: scheduleSlotsForTeam(day.slots, team).map((slot) => ({
+        ...slot,
+        assignments: slot.assignments.filter((item) => allowed.has(item.collaboratorId))
+      }))
+    }))
+  if (days.length === 0) return
+
+  const periods = collectPeriods(days)
+  const sections = SCHEDULE_BANDS.map((band) => ({
+    band,
+    periods: periods.filter((period) => period.band === band)
+  })).filter((section) => section.periods.length > 0)
+
+  const colW = days.length === 1 ? 280 : 148
+  const labelW = 168
+  const rowH = 32
+  const headerH = 34
+  const bandH = 28
+  const pad = 20
+  const titleH = 36
+  const depths = periods.map((period) =>
+    Math.max(1, ...days.map((day) => peopleForPeriod(day, period).length))
+  )
   const width = pad * 2 + labelW + days.length * colW
   const height =
-    pad * 2 + 28 + sections.reduce((sum, section) => sum + headerH + section.depth * rowH, 0) + 16
+    pad * 2 +
+    titleH +
+    headerH +
+    sections.reduce((sum, section) => {
+      const sectionDepth = section.periods.reduce((total, period) => {
+        const index = periods.indexOf(period)
+        return total + (depths[index] ?? 1)
+      }, 0)
+      return sum + bandH + sectionDepth * rowH
+    }, 0) +
+    8
+
   const canvas = document.createElement('canvas')
   canvas.width = width * 2
   canvas.height = height * 2
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   ctx.scale(2, 2)
-  ctx.fillStyle = '#F4F4F5'
+
+  const tableLeft = pad
+  const tableRight = width - pad
+  const tableWidth = tableRight - tableLeft
+
+  ctx.fillStyle = '#FFFFFF'
   ctx.fillRect(0, 0, width, height)
+
+  const single = days[0]
+  const title =
+    days.length === 1 && single
+      ? `${board.storeName}  ·  ${scheduleExportLabel(team)}  ·  ${weekdayName(single.weekday)} ${formatDateKey(single.dateKey)}`
+      : `${board.storeName}  ·  ${scheduleExportLabel(team)}  ·  Semana ${formatDateKey(board.weekStart)}`
+
   ctx.font = '600 13px Inter, Segoe UI, sans-serif'
   ctx.fillStyle = '#111111'
-  ctx.fillText(`${board.storeName}  ·  escala ${formatDateKey(board.weekStart)}`, pad, pad + 14)
+  ctx.fillText(title, pad, pad + 16)
 
-  let y = pad + 28
+  let y = pad + titleH
+  ctx.fillStyle = '#F3F3F0'
+  ctx.fillRect(tableLeft, y, tableWidth, headerH)
+  ctx.strokeStyle = '#C4C4BE'
+  ctx.lineWidth = 1
+  ctx.strokeRect(tableLeft, y, tableWidth, headerH)
+
+  ctx.font = '700 11px Inter, Segoe UI, sans-serif'
+  ctx.fillStyle = '#33332F'
+  ctx.fillText('Período', tableLeft + 10, y + 21)
+  ctx.font = '600 11px Inter, Segoe UI, sans-serif'
+  days.forEach((day, index) => {
+    const x = tableLeft + labelW + index * colW
+    ctx.fillText(`${day.shortLabel}. ${formatDateKey(day.dateKey).slice(0, 5)}`, x + 10, y + 21)
+  })
+  y += headerH
+
   for (const section of sections) {
-    ctx.fillStyle = '#E8E8EA'
-    ctx.fillRect(pad, y, width - pad * 2, headerH)
-    ctx.fillStyle = '#111111'
-    ctx.font = '700 12px Inter, Segoe UI, sans-serif'
-    ctx.fillText(bandLabel(section.band).toUpperCase(), pad + 12, y + 23)
-    ctx.font = '600 11px Inter, Segoe UI, sans-serif'
-    days.forEach((day, index) => {
-      const x = pad + labelW + index * colW
-      ctx.fillText(`${day.shortLabel}. ${formatDateKey(day.dateKey).slice(0, 5)}`, x + 10, y + 23)
-    })
-    y += headerH
-    for (let row = 0; row < section.depth; row += 1) {
-      ctx.fillStyle = row % 2 === 0 ? '#FFFFFF' : '#F7F7F8'
-      ctx.fillRect(pad, y, width - pad * 2, rowH)
-      ctx.strokeStyle = 'rgba(0,0,0,0.06)'
-      ctx.beginPath()
-      ctx.moveTo(pad, y + rowH)
-      ctx.lineTo(width - pad, y + rowH)
-      ctx.stroke()
-      days.forEach((day, index) => {
-        const people = day.slots
-          .filter((slot) => slot.band === section.band)
-          .flatMap((slot) =>
-            slot.assignments.map((item) =>
-              cellText(item.shortName, item.note || (day.slots.filter((s) => s.band === section.band).length > 1 ? formatClock(slot.startMinutes) : null))
-            )
-          )
-        const text = people[row] ?? ''
-        if (!text) return
-        ctx.fillStyle = '#1A1A1A'
-        ctx.font = '500 12px Inter, Segoe UI, sans-serif'
-        ctx.fillText(text, pad + labelW + index * colW + 10, y + 19)
-      })
-      y += rowH
+    ctx.fillStyle = '#E8E8E3'
+    ctx.fillRect(tableLeft, y, tableWidth, bandH)
+    ctx.strokeStyle = '#C4C4BE'
+    ctx.strokeRect(tableLeft, y, tableWidth, bandH)
+    ctx.font = '700 11px Inter, Segoe UI, sans-serif'
+    ctx.fillStyle = '#1A1A1A'
+    ctx.fillText(bandLabel(section.band).toUpperCase(), tableLeft + 10, y + 18)
+    y += bandH
+
+    for (const period of section.periods) {
+      const depth = Math.max(1, ...days.map((day) => peopleForPeriod(day, period).length))
+      const timeLabel = period.timesVary
+        ? 'Horários no dia'
+        : `${formatClock(period.startMinutes)} – ${formatClock(period.endMinutes)}`
+
+      for (let row = 0; row < depth; row += 1) {
+        ctx.fillStyle = row % 2 === 0 ? '#FFFFFF' : '#F6F6F3'
+        ctx.fillRect(tableLeft, y, tableWidth, rowH)
+        ctx.strokeStyle = '#D0D0CA'
+        ctx.beginPath()
+        ctx.moveTo(tableLeft, y + rowH)
+        ctx.lineTo(tableRight, y + rowH)
+        ctx.stroke()
+
+        if (row === 0) {
+          ctx.fillStyle = '#1A1A1A'
+          ctx.font = '600 12px Inter, Segoe UI, sans-serif'
+          fitText(ctx, period.label, tableLeft + 10, y + 13, labelW - 16)
+          ctx.fillStyle = '#5C5C56'
+          ctx.font = '500 10px Inter, Segoe UI, sans-serif'
+          fitText(ctx, timeLabel, tableLeft + 10, y + 26, labelW - 16)
+        }
+
+        days.forEach((day, index) => {
+          const people = peopleForPeriod(day, period)
+          const text = people[row] ?? ''
+          if (!text) return
+          ctx.fillStyle = '#1A1A1A'
+          ctx.font = '500 12px Inter, Segoe UI, sans-serif'
+          fitText(ctx, text, tableLeft + labelW + index * colW + 10, y + 20, colW - 18)
+        })
+        y += rowH
+      }
     }
   }
+
+  ctx.strokeStyle = '#C4C4BE'
+  ctx.strokeRect(tableLeft, pad + titleH, tableWidth, y - (pad + titleH))
+  ctx.beginPath()
+  ctx.moveTo(tableLeft + labelW, pad + titleH)
+  ctx.lineTo(tableLeft + labelW, y)
+  ctx.stroke()
+  days.forEach((_, index) => {
+    if (index === 0) return
+    const x = tableLeft + labelW + index * colW
+    ctx.beginPath()
+    ctx.moveTo(x, pad + titleH)
+    ctx.lineTo(x, y)
+    ctx.stroke()
+  })
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
   if (!blob) return
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
+  const scopeName =
+    days.length === 1 && single
+      ? `${single.dateKey}-${weekdayShort(single.weekday)}`
+      : board.weekStart
   link.href = url
-  link.download = `escala-${board.storeName.replace(/\s+/g, '-').toLowerCase()}-${board.weekStart}.png`
+  link.download = `escala-${scheduleExportLabel(team).replace(/\s+/g, '-').toLowerCase()}-${scopeName}.png`
   link.click()
   URL.revokeObjectURL(url)
   if (navigator.clipboard && 'write' in navigator.clipboard && typeof ClipboardItem !== 'undefined') {
