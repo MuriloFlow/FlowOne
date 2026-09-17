@@ -6,6 +6,7 @@ import { FinancePage } from '@/pages/finance'
 import { OverviewPage } from '@/pages/overview'
 import { CardsPage } from '@/pages/cards'
 import { PlaceholderPage } from '@/pages/placeholder'
+import { SchedulesPage } from '@/pages/schedules'
 import { StoresPage } from '@/pages/stores'
 import { VouchersPage } from '@/pages/vouchers'
 import type { AuthUser } from '@/lib/auth'
@@ -65,6 +66,7 @@ export function ShellMain({
     activeId !== 'finance' &&
     activeId !== 'cards' &&
     activeId !== 'stores' &&
+    activeId !== 'schedules' &&
     !(activeId === 'employees' && !employeeId)
 
   return (
@@ -126,7 +128,7 @@ export function ShellMain({
                   onDeskChanged={onStoresChanged}
                 />
               ) : null}
-              {activeId === 'schedules' ? <PlaceholderPage title="Escalas e horários" /> : null}
+              {activeId === 'schedules' ? <SchedulesPage storeId={storeId} /> : null}
               {activeId === 'reports' ? <PlaceholderPage title="Relatório e projeções" /> : null}
             </motion.div>
           </AnimatePresence>

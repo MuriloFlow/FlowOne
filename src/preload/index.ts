@@ -67,6 +67,15 @@ const flow: FlowApi = {
     deleteCard: (id) => ipcRenderer.invoke('operations:card-delete', { id }),
     upsertDailySale: (input) => ipcRenderer.invoke('operations:daily-sale-upsert', input),
     upsertFinanceDay: (input) => ipcRenderer.invoke('operations:finance-day-upsert', input),
+    getScheduleBoard: (storeId, weekStart) =>
+      ipcRenderer.invoke('operations:schedule', { storeId: storeId ?? null, weekStart: weekStart ?? null }),
+    saveScheduleSlots: (storeId, slots) =>
+      ipcRenderer.invoke('operations:schedule-slots', { storeId, slots }),
+    resetScheduleSlots: (storeId) =>
+      ipcRenderer.invoke('operations:schedule-slots', { storeId, action: 'reset' }),
+    upsertScheduleAssignment: (input) => ipcRenderer.invoke('operations:schedule-assign', input),
+    deleteScheduleAssignment: (id, storeId) =>
+      ipcRenderer.invoke('operations:schedule-unassign', { id, storeId }),
     listVouchers: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:vouchers', { storeId: storeId ?? null }),
     updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input)

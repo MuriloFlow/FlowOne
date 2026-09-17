@@ -17,6 +17,7 @@ import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
 import { deleteIdentity, getIdentity } from './identities'
 import { invalidateMemo, memo } from './memo'
 import { resolveActor, resolveStoreFilter } from './scope'
+import { getScheduleBoard, saveScheduleSlots, resetScheduleSlots, upsertScheduleAssignment, deleteScheduleAssignment } from './schedules'
 import { readStorePreference, writeStorePreference } from './store-preference'
 import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
 import type {
@@ -30,6 +31,10 @@ import type {
   UpdateEmployeeInput
 } from '../shared/operations'
 import { CARDPLUS_SUB_ROLES, isManagerLoginSubRole } from '../shared/operations'
+import type {
+  ScheduleAssignmentWrite,
+  ScheduleSlotWrite
+} from '../shared/schedules'
 import { canCreateStores, canEditStoreDesk, isFlowRole } from '../shared/roles'
 import { normalizeStoreId } from '../shared/store-scope'
 
@@ -105,6 +110,7 @@ function bustOperationsCache(): void {
   invalidateMemo('employee')
   invalidateMemo('cards')
   invalidateMemo('access')
+  invalidateMemo('schedule')
 }
 
 function parseStoreWrite(payload: unknown, requireId: boolean): StoreWriteInput {
@@ -449,6 +455,67 @@ export function registerOperationsIpc(): void {
     })
     bustOperationsCache()
     return saved
+  })
+
+  handle('operations:schedule', async (payload) => {
+    const actor = await resolveActor()
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const storeId = resolveStoreFilter(actor, body)
+    if (!storeId) throw new Error('Escolha uma unidade para montar a escala.')
+    const weekStart = typeof body.weekStart === 'string' ? body.weekStart : null
+    return memo(cacheKey(`schedule:${weekStart ?? 'now'}`, storeId), 6_000, () =>
+      getScheduleBoard(storeId, weekStart, actor.role)
+    )
+  })
+
+  handle('operations:schedule-slots', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode alterar os horários da escala.')
+    if (!payload || typeof payload !== 'object') throw new Error('Horários inválidos.')
+    const body = payload as Record<string, unknown>
+    const storeId = asString(body.storeId, 'Unidade')
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? storeId : null)
+    if (scoped && storeId !== scoped) throw new Error('Você só pode editar a escala da sua unidade.')
+    if (body.action === 'reset') {
+      await resetScheduleSlots(storeId)
+      bustOperationsCache()
+      return
+    }
+    const slots = Array.isArray(body.slots) ? (body.slots as ScheduleSlotWrite[]) : []
+    await saveScheduleSlots(storeId, slots)
+    bustOperationsCache()
+  })
+
+  handle('operations:schedule-assign', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode montar a escala.')
+    if (!payload || typeof payload !== 'object') throw new Error('Encaixe inválido.')
+    const body = payload as Record<string, unknown>
+    const input: ScheduleAssignmentWrite = {
+      id: typeof body.id === 'string' ? body.id : undefined,
+      storeId: asString(body.storeId, 'Unidade'),
+      weekStart: asString(body.weekStart, 'Semana'),
+      slotId: asString(body.slotId, 'Horário'),
+      collaboratorId: asString(body.collaboratorId, 'Funcionário'),
+      note: typeof body.note === 'string' ? body.note : null
+    }
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
+    if (scoped && input.storeId !== scoped) throw new Error('Você só pode montar a escala da sua unidade.')
+    await upsertScheduleAssignment(input)
+    bustOperationsCache()
+  })
+
+  handle('operations:schedule-unassign', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode montar a escala.')
+    if (!payload || typeof payload !== 'object') throw new Error('Registro inválido.')
+    const body = payload as Record<string, unknown>
+    const id = asString(body.id, 'Escala')
+    const storeId = asString(body.storeId, 'Unidade')
+    const scoped = resolveStoreFilter(actor, actor.canViewAll ? storeId : null)
+    if (scoped && storeId !== scoped) throw new Error('Você só pode montar a escala da sua unidade.')
+    await deleteScheduleAssignment(id, storeId)
+    bustOperationsCache()
   })
 
   handle('operations:store-preference', async (payload) => {

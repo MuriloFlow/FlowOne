@@ -34,6 +34,12 @@ export function operations(): OperationsApi {
     deleteCard: (id) => api.deleteCard(id),
     upsertDailySale: (input) => api.upsertDailySale(input),
     upsertFinanceDay: (input) => api.upsertFinanceDay(input),
+    getScheduleBoard: (storeId, weekStart) =>
+      api.getScheduleBoard(storeId === undefined ? getCurrentStoreId() : storeId, weekStart),
+    saveScheduleSlots: (storeId, slots) => api.saveScheduleSlots(storeId, slots),
+    resetScheduleSlots: (storeId) => api.resetScheduleSlots(storeId),
+    upsertScheduleAssignment: (input) => api.upsertScheduleAssignment(input),
+    deleteScheduleAssignment: (id, storeId) => api.deleteScheduleAssignment(id, storeId),
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
     updateVoucher: (input) => api.updateVoucher(input)
   }

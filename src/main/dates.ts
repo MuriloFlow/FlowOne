@@ -88,4 +88,24 @@ export function workingDaysInMonth(monthKey: string, fromDateKey?: string): numb
   return count
 }
 
+export function mondayOf(dateKey: string): string {
+  const dow = weekdayInSaoPaulo(dateKey)
+  const offset = dow === 0 ? -6 : 1 - dow
+  return shiftDateKey(dateKey, offset)
+}
+
+export function shiftWeek(weekStart: string, offset: number): string {
+  return shiftDateKey(mondayOf(weekStart), offset * 7)
+}
+
+export function weekDateKeys(weekStart: string): string[] {
+  const monday = mondayOf(weekStart)
+  return Array.from({ length: 7 }, (_, index) => shiftDateKey(monday, index))
+}
+
+export function isoWeekday(dateKey: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  const dow = weekdayInSaoPaulo(dateKey)
+  return (dow === 0 ? 7 : dow) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+}
+
 export { voucherPeriodKey } from '../shared/vouchers'

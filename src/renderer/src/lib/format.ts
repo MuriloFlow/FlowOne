@@ -139,3 +139,31 @@ export function monthLongLabel(monthKey: string): string {
     timeZone: 'UTC'
   }).format(new Date(Date.UTC(year, month - 1, 1)))
 }
+
+export function mondayOf(dateKey: string): string {
+  const dow = new Date(`${dateKey}T12:00:00-03:00`).getDay()
+  const offset = dow === 0 ? -6 : 1 - dow
+  return shiftDateKey(dateKey, offset)
+}
+
+export function shiftDateKey(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T12:00:00-03:00`)
+  date.setDate(date.getDate() + days)
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date)
+}
+
+export function shiftWeek(weekStart: string, offset: number): string {
+  return shiftDateKey(mondayOf(weekStart), offset * 7)
+}
+
+export function weekRangeLabel(weekStart: string): string {
+  const start = mondayOf(weekStart)
+  const end = shiftDateKey(start, 6)
+  const startLabel = formatDateKey(start).slice(0, 5)
+  return `${startLabel} – ${formatDateKey(end)}`
+}

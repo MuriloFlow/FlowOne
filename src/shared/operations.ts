@@ -353,6 +353,11 @@ export type OperationsApi = {
   deleteCard: (id: string) => Promise<void>
   upsertDailySale: (input: DailySaleWriteInput) => Promise<DailySaleRow>
   upsertFinanceDay: (input: FinanceDayWriteInput) => Promise<DailySaleRow>
+  getScheduleBoard: (storeId?: string | null, weekStart?: string | null) => Promise<import('./schedules').ScheduleBoard>
+  saveScheduleSlots: (storeId: string, slots: import('./schedules').ScheduleSlotWrite[]) => Promise<void>
+  resetScheduleSlots: (storeId: string) => Promise<void>
+  upsertScheduleAssignment: (input: import('./schedules').ScheduleAssignmentWrite) => Promise<void>
+  deleteScheduleAssignment: (id: string, storeId: string) => Promise<void>
   listVouchers: (storeId?: string | null) => Promise<import('./vouchers').VoucherBoard>
   updateVoucher: (input: {
     collaboratorId: string
