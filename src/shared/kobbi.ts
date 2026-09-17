@@ -11,6 +11,30 @@ export type KobbiHistoryMessage = {
   content: string
 }
 
+export type KobbiChartUnit = 'count' | 'brl' | 'pu'
+
+export type KobbiChartSpec = {
+  type: 'bar' | 'line'
+  title: string
+  unit?: KobbiChartUnit
+  series: Array<{ label: string; value: number }>
+}
+
+export type KobbiRatingValue = 'good' | 'bad'
+
+export type KobbiStoredMessage = {
+  role: KobbiRole
+  content: string
+}
+
+export type KobbiThread = {
+  id: string
+  title: string
+  messages: KobbiStoredMessage[]
+  createdAt: string
+  updatedAt: string
+}
+
 export type KobbiSendInput = {
   id: string
   storeId?: string | null
@@ -28,6 +52,7 @@ export type KobbiDeltaEvent = {
 export type KobbiDoneEvent = {
   id: string
   model: string
+  chart?: KobbiChartSpec | null
 }
 
 export type KobbiErrorEvent = {
@@ -35,11 +60,26 @@ export type KobbiErrorEvent = {
   message: string
 }
 
+export type KobbiThreadSaveInput = {
+  id?: string
+  title: string
+  messages: KobbiStoredMessage[]
+}
+
+export type KobbiRateInput = {
+  threadId?: string | null
+  content: string
+  rating: KobbiRatingValue
+}
+
 export type KobbiApi = {
   send: (input: KobbiSendInput) => Promise<void>
   abort: (id: string) => Promise<void>
   getWidth: () => Promise<number>
   setWidth: (width: number) => Promise<number>
+  listThreads: () => Promise<KobbiThread[]>
+  saveThread: (input: KobbiThreadSaveInput) => Promise<KobbiThread>
+  rate: (input: KobbiRateInput) => Promise<void>
   onDelta: (listener: (event: KobbiDeltaEvent) => void) => () => void
   onDone: (listener: (event: KobbiDoneEvent) => void) => () => void
   onError: (listener: (event: KobbiErrorEvent) => void) => () => void
@@ -48,3 +88,4 @@ export type KobbiApi = {
 export const KOBBI_WIDTH_MIN = 380
 export const KOBBI_WIDTH_MAX = 920
 export const KOBBI_WIDTH_DEFAULT = 480
+export const KOBBI_THREAD_LIMIT = 5

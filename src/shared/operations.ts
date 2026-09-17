@@ -250,6 +250,7 @@ export type FinanceMetrics = {
   remainingToMonthSalesGoalCents: number | null
   puAverage: number | null
   puRegisteredDays: number
+  financeDaysTableMissing?: boolean
   storeCount: number
   registeredDaysThisMonth: number
   months: FinanceMonthPoint[]

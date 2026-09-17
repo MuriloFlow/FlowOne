@@ -13,6 +13,12 @@ export function monthKeyFromDateKey(dateKey: string): string {
   return dateKey.slice(0, 7)
 }
 
+export function shiftDateKey(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T12:00:00-03:00`)
+  date.setDate(date.getDate() + days)
+  return dateKeyInSaoPaulo(date)
+}
+
 export function lastDayOfMonth(monthKey: string): number {
   const [year, month] = monthKey.split('-').map(Number)
   return new Date(Date.UTC(year, month, 0)).getUTCDate()

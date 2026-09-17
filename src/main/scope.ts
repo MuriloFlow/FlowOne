@@ -5,6 +5,7 @@ import { readAuthSession } from './session-store'
 import { getFlowAdminClient } from './supabase-clients'
 
 export type ActorScope = {
+  userId: string
   role: FlowRoleId
   canViewAll: boolean
   boundStoreId: string | null
@@ -41,6 +42,7 @@ export async function resolveActor(): Promise<ActorScope> {
         .maybeSingle()
       const role = normalizeRole(fallback.data?.role)
       return {
+        userId: sessionRow.user_id,
         role,
         canViewAll: canViewAllStores(role),
         boundStoreId: null
@@ -53,6 +55,7 @@ export async function resolveActor(): Promise<ActorScope> {
 
     const role = normalizeRole(profile?.role)
     return {
+      userId: sessionRow.user_id,
       role,
       canViewAll: canViewAllStores(role),
       boundStoreId: typeof profile?.cardplus_store_id === 'string' ? profile.cardplus_store_id : null

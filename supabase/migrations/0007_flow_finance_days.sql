@@ -1,14 +1,14 @@
--- FLOW — Mesa financeira do dia
--- Rodar no Supabase do FLOW (não no Card+).
+-- FLOW -- Mesa financeira do dia
+-- Rodar no Supabase do FLOW (nao no Card+).
 --
--- O Card+ daily_goals só tem prefixos confirmados:
---   YYYY-MM-DD          = meta diária de CARTÕES
---   month-cards:YYYY-MM = meta mensal de cartões
---   month-sales:YYYY-MM = meta mensal de valor (centavos)
+-- O Card+ daily_goals so tem prefixos confirmados:
+--   YYYY-MM-DD            = meta diaria de CARTOES
+--   month-cards:YYYY-MM   = meta mensal de cartoes
+--   month-sales:YYYY-MM   = meta mensal de valor (centavos)
 --   daily-sale:YYYY-MM-DD = venda do dia (centavos)
--- Não há prefixo de meta diária de valor, last year nem PU.
--- daily_metrics tem total_customers / total_trocas / total_caixa — não é PU.
--- viradas_pu é log por colaborador, não o KPI digitado na mesa.
+-- Nao ha prefixo de meta diaria de valor, last year nem PU.
+-- daily_metrics tem total_customers / total_trocas / total_caixa -- nao e PU.
+-- viradas_pu e log por colaborador, nao o KPI digitado na mesa.
 --
 -- Venda do dia continua no Card+ (daily-sale). Meta do dia, last year e PU
 -- ficam nesta tabela, por unidade e data.

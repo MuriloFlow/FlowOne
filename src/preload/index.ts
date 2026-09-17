@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { FlowApi, PersistedAuthSession, UpdateStatus, WindowState } from '../shared/ipc'
-import type { KobbiSendInput } from '../shared/kobbi'
+import type { KobbiSendInput, KobbiThreadSaveInput, KobbiRateInput } from '../shared/kobbi'
 import type {
   CreateEmployeeInput,
   UpdateEmployeeInput
@@ -76,6 +76,9 @@ const flow: FlowApi = {
     abort: (id: string) => ipcRenderer.invoke('kobbi:abort', id),
     getWidth: () => ipcRenderer.invoke('kobbi:width', { action: 'read' }),
     setWidth: (width: number) => ipcRenderer.invoke('kobbi:width', { action: 'write', width }),
+    listThreads: () => ipcRenderer.invoke('kobbi:threads', { action: 'list' }),
+    saveThread: (input: KobbiThreadSaveInput) => ipcRenderer.invoke('kobbi:threads', { action: 'save', ...input }),
+    rate: (input: KobbiRateInput) => ipcRenderer.invoke('kobbi:rate', input),
     onDelta: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { id: string; text: string }) =>
         listener(payload)
@@ -83,8 +86,10 @@ const flow: FlowApi = {
       return () => ipcRenderer.removeListener('kobbi:delta', handler)
     },
     onDone: (listener) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: { id: string; model: string }) =>
-        listener(payload)
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: { id: string; model: string; chart?: import('../shared/kobbi').KobbiChartSpec | null }
+      ) => listener(payload)
       ipcRenderer.on('kobbi:done', handler)
       return () => ipcRenderer.removeListener('kobbi:done', handler)
     },

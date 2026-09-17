@@ -70,15 +70,26 @@ function resolveMonthKey(monthKey?: string | null): string {
 }
 
 export async function getFinanceBoard(storeId?: string | null, monthKey?: string | null): Promise<FinanceMetrics> {
-  const [finance, flowRows, stores] = await Promise.all([
+  const [finance, queried, stores] = await Promise.all([
     getFinance(storeId, monthKey),
-    listFinanceDays(monthKey, storeId),
+    queryFinanceDays(monthKey, storeId),
     listStores(storeId)
   ])
-  return mergeFinanceDays(finance, flowRows, new Map(stores.map((store) => [store.id, store.name])))
+  return {
+    ...mergeFinanceDays(finance, queried.rows, new Map(stores.map((store) => [store.id, store.name]))),
+    financeDaysTableMissing: queried.tableMissing
+  }
 }
 
 export async function listFinanceDays(monthKey?: string | null, storeId?: string | null): Promise<FlowFinanceDay[]> {
+  const queried = await queryFinanceDays(monthKey, storeId)
+  return queried.rows
+}
+
+async function queryFinanceDays(
+  monthKey?: string | null,
+  storeId?: string | null
+): Promise<{ rows: FlowFinanceDay[]; tableMissing: boolean }> {
   const key = resolveMonthKey(monthKey)
   const last = String(lastDayOfMonth(key)).padStart(2, '0')
   let query = getFlowAdminClient()
@@ -93,12 +104,12 @@ export async function listFinanceDays(monthKey?: string | null, storeId?: string
   if (error) {
     if (isMissingTable(error)) {
       log.warn('[finance-days] tabela flow_finance_days ainda não existe')
-      return []
+      return { rows: [], tableMissing: true }
     }
     throw new Error(`Erro ao carregar o dia financeiro: ${error.message}`)
   }
 
-  return ((data ?? []) as FlowFinanceDayRow[]).map(toFlowDay)
+  return { rows: ((data ?? []) as FlowFinanceDayRow[]).map(toFlowDay), tableMissing: false }
 }
 
 export function mergeFinanceDays(

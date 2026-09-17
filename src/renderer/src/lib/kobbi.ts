@@ -1,10 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
-import type { KobbiAttachment, KobbiDeltaEvent, KobbiDoneEvent, KobbiErrorEvent, KobbiHistoryMessage } from '../../../shared/kobbi'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type {
+  KobbiAttachment,
+  KobbiChartSpec,
+  KobbiDeltaEvent,
+  KobbiDoneEvent,
+  KobbiErrorEvent,
+  KobbiHistoryMessage,
+  KobbiRatingValue,
+  KobbiThread
+} from '../../../shared/kobbi'
 
 export type ChatMessage = KobbiHistoryMessage & {
   id: string
   generating?: boolean
   attachments?: KobbiAttachment[]
+  chart?: KobbiChartSpec | null
+  rating?: KobbiRatingValue | null
 }
 
 function newId(): string {
@@ -16,13 +27,60 @@ function kobbi() {
   return window.flow.kobbi
 }
 
+function hasExchange(messages: ChatMessage[]): boolean {
+  return (
+    messages.some((item) => item.role === 'user' && item.content.trim()) &&
+    messages.some((item) => item.role === 'assistant' && item.content.trim() && !item.generating)
+  )
+}
+
+function threadTitle(messages: ChatMessage[]): string {
+  const first = messages.find((item) => item.role === 'user' && item.content.trim())
+  return (first?.content ?? 'Conversa').replace(/\s+/g, ' ').trim().slice(0, 72)
+}
+
+function toStored(messages: ChatMessage[]) {
+  return messages
+    .filter((item) => !item.generating && item.content.trim())
+    .map((item) => ({ role: item.role, content: item.content }))
+}
+
 export function useKobbi(storeId: string | null, userName: string, userRole: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<KobbiAttachment[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [threads, setThreads] = useState<KobbiThread[]>([])
   const pendingId = useRef<string | null>(null)
+  const threadId = useRef<string | null>(null)
+  const messagesRef = useRef<ChatMessage[]>([])
+  messagesRef.current = messages
+
+  const refreshThreads = useCallback(async () => {
+    try {
+      const list = await kobbi().listThreads()
+      setThreads(list)
+    } catch {
+      /* histórico opcional até o SQL 0008 */
+    }
+  }, [])
+
+  const archiveIfNeeded = useCallback(async (): Promise<void> => {
+    const current = messagesRef.current
+    if (!hasExchange(current)) return
+    try {
+      const saved = await kobbi().saveThread({
+        id: threadId.current ?? undefined,
+        title: threadTitle(current),
+        messages: toStored(current)
+      })
+      threadId.current = saved.id
+      await refreshThreads()
+    } catch (archiveError) {
+      logArchive(archiveError)
+    }
+  }, [refreshThreads])
 
   useEffect(() => {
     const api = window.flow?.kobbi
@@ -42,7 +100,9 @@ export function useKobbi(storeId: string | null, userName: string, userRole: str
         setBusy(false)
       }
       setMessages((current) =>
-        current.map((item) => (item.id === event.id ? { ...item, generating: false } : item))
+        current.map((item) =>
+          item.id === event.id ? { ...item, generating: false, chart: event.chart ?? item.chart ?? null } : item
+        )
       )
     })
     const offError = api.onError((event: KobbiErrorEvent) => {
@@ -125,6 +185,53 @@ export function useKobbi(storeId: string | null, userName: string, userRole: str
     setAttachments((current) => current.filter((item) => item.name !== name))
   }
 
+  async function newChat(): Promise<void> {
+    await archiveIfNeeded()
+    threadId.current = null
+    pendingId.current = null
+    setBusy(false)
+    setError(null)
+    setDraft('')
+    setAttachments([])
+    setMessages([])
+  }
+
+  async function openHistory(): Promise<void> {
+    await archiveIfNeeded()
+    await refreshThreads()
+  }
+
+  async function loadThread(thread: KobbiThread): Promise<void> {
+    await archiveIfNeeded()
+    threadId.current = thread.id
+    setBusy(false)
+    setError(null)
+    setDraft('')
+    setAttachments([])
+    setMessages(
+      thread.messages.map((item) => ({
+        id: newId(),
+        role: item.role,
+        content: item.content
+      }))
+    )
+  }
+
+  async function rate(messageId: string, rating: KobbiRatingValue): Promise<void> {
+    const target = messagesRef.current.find((item) => item.id === messageId)
+    if (!target || target.role !== 'assistant' || !target.content.trim()) return
+    setMessages((current) => current.map((item) => (item.id === messageId ? { ...item, rating } : item)))
+    try {
+      await kobbi().rate({
+        threadId: threadId.current,
+        content: target.content,
+        rating
+      })
+    } catch {
+      /* avaliação segue no estado local */
+    }
+  }
+
   return {
     messages,
     draft,
@@ -132,11 +239,21 @@ export function useKobbi(storeId: string | null, userName: string, userRole: str
     attachments,
     busy,
     error,
+    threads,
     send,
     fill,
     addFiles,
-    removeAttachment
+    removeAttachment,
+    newChat,
+    openHistory,
+    loadThread,
+    archiveIfNeeded,
+    rate
   }
+}
+
+function logArchive(error: unknown): void {
+  console.warn('[kobbi] histórico', error instanceof Error ? error.message : error)
 }
 
 function readFile(file: File): Promise<string> {
