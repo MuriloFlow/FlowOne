@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ChevronRight, Settings, Trash2, UserPlus, UserRound } from 'lucide-react'
 import { isMobileShell } from '@/lib/is-mobile-shell'
+import { DangerConfirmButton } from '@/components/ui/danger-confirm-button'
 import { Dialog } from '@/components/ui/dialog'
 import { EmployeeDialog } from '@/components/employee-dialog'
 import { Input } from '@/components/ui/input'
@@ -80,7 +81,7 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
   }
 
   async function confirmDelete(): Promise<void> {
-    if (!removing) return
+    if (!removing || deleting) return
     setDeleting(true)
     try {
       await operations().deleteEmployee(removing.id, storeId)
@@ -319,14 +320,9 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
             >
               Cancelar
             </button>
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={() => void confirmDelete()}
-              className="h-8 rounded-[8px] bg-red-500/90 px-3.5 text-[13px] text-white disabled:opacity-40"
-            >
-              {deleting ? 'Excluindo…' : 'Excluir'}
-            </button>
+            <DangerConfirmButton loading={deleting} onClick={() => void confirmDelete()}>
+              Excluir
+            </DangerConfirmButton>
           </div>
         </div>
       </Dialog>

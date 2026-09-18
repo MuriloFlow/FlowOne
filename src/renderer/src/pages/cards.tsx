@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, ArrowRightLeft, ChevronDown, ChevronRight, CreditCard, Pencil, Trash2 } from 'lucide-react'
 import { CardDialog } from '@/components/card-dialog'
 import { EmptyState } from '@/components/empty-state'
+import { DangerConfirmButton } from '@/components/ui/danger-confirm-button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -97,7 +98,7 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
   }
 
   async function confirmDelete(): Promise<void> {
-    if (!removing) return
+    if (!removing || deleting) return
     setDeleting(true)
     try {
       await operations().deleteCard(removing.id)
@@ -241,7 +242,9 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
         open={Boolean(removing)}
         title="Excluir cartão"
         description="O registro some do Card+. Essa ação não dá para desfazer por aqui."
-        onClose={() => setRemoving(null)}
+        onClose={() => {
+          if (!deleting) setRemoving(null)
+        }}
       >
         <div className="px-5 pb-5">
           <p className="text-[13px] text-[#F0EFEC]/55">
@@ -250,19 +253,15 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
           <div className="mt-4 flex justify-end gap-2">
             <button
               type="button"
+              disabled={deleting}
               onClick={() => setRemoving(null)}
-              className="h-8 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/45"
+              className="h-8 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/45 disabled:opacity-40"
             >
               Cancelar
             </button>
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={() => void confirmDelete()}
-              className="h-8 rounded-[8px] bg-red-400/90 px-3.5 text-[13px] text-[#111111]"
-            >
+            <DangerConfirmButton loading={deleting} onClick={() => void confirmDelete()}>
               Excluir
-            </button>
+            </DangerConfirmButton>
           </div>
         </div>
       </Dialog>

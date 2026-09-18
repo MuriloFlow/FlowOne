@@ -5,6 +5,7 @@ import { ArrowLeft, Check, ChevronDown, ChevronRight, ClipboardPlus, MapPin, Pap
 import { EmptyState } from '@/components/empty-state'
 import { MetricCard } from '@/components/metric-card'
 import { MonthSwitcher } from '@/components/month-switcher'
+import { DangerConfirmButton } from '@/components/ui/danger-confirm-button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -126,7 +127,7 @@ export function AttendancePage({ storeId = null }: AttendancePageProps) {
   }
 
   async function confirmDelete(): Promise<void> {
-    if (!removing || !board) return
+    if (!removing || !board || deleting) return
     setDeleting(true)
     try {
       await operations().deleteAttendanceEvent(removing.id, board.storeId)
@@ -257,7 +258,9 @@ export function AttendancePage({ storeId = null }: AttendancePageProps) {
         open={Boolean(removing)}
         title="Remover registro"
         description="A ocorrência some deste dia. Dá para lançar de novo depois."
-        onClose={() => setRemoving(null)}
+        onClose={() => {
+          if (!deleting) setRemoving(null)
+        }}
       >
         <div className="px-5 pb-5">
           <p className="text-[13px] text-[#F0EFEC]/55">
@@ -266,19 +269,15 @@ export function AttendancePage({ storeId = null }: AttendancePageProps) {
           <div className="mt-4 flex justify-end gap-2">
             <button
               type="button"
+              disabled={deleting}
               onClick={() => setRemoving(null)}
-              className="h-8 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/45"
+              className="h-8 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/45 disabled:opacity-40"
             >
               Cancelar
             </button>
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={() => void confirmDelete()}
-              className="h-8 rounded-[8px] bg-red-400/90 px-3.5 text-[13px] text-[#111111]"
-            >
+            <DangerConfirmButton loading={deleting} onClick={() => void confirmDelete()}>
               Remover
-            </button>
+            </DangerConfirmButton>
           </div>
         </div>
       </Dialog>
@@ -428,38 +427,51 @@ function DayDesk({
   onRemove: (event: AttendanceEvent) => void
 }) {
   const [previewPhotos, setPreviewPhotos] = useState<string[]>([])
+  const mobile = isMobileShell()
 
   return (
     <>
       <button
         type="button"
         onClick={onBack}
-        className="mb-4 flex items-center gap-2 text-[13px] text-[#F0EFEC]/40 hover:text-[#F0EFEC]/70"
+        className="mb-4 flex min-h-10 items-center gap-2 text-[13px] text-[#F0EFEC]/40 hover:text-[#F0EFEC]/70"
       >
         <ArrowLeft className="size-3.5" />
         Dias do mês
       </button>
 
-      <header className="mb-5 flex items-end justify-between gap-4">
-        <div>
+      <header
+        className={mobile ? 'mb-4 flex flex-col gap-3' : 'mb-5 flex items-end justify-between gap-4'}
+      >
+        <div className="min-w-0">
           <p className="text-[12px] text-[#F0EFEC]/35">
             Atestados e Equipe · {formatDateKey(day.dateKey)}
           </p>
-          <h1 className="mt-1 text-[22px] capitalize text-[#F0EFEC]/88">{weekdayLong(day.dateKey)}</h1>
+          <h1 className={cn('mt-1 capitalize text-[#F0EFEC]/88', mobile ? 'text-[20px] leading-tight' : 'text-[22px]')}>
+            {mobile ? `${weekdayLabel(day.dateKey)} · ${formatDateKey(day.dateKey)}` : weekdayLong(day.dateKey)}
+          </h1>
         </div>
         {board.canEdit ? (
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <div className={mobile ? 'grid w-full grid-cols-1 gap-2' : 'flex shrink-0 flex-wrap justify-end gap-2'}>
             <button
               type="button"
               onClick={onOpenQuadro}
-              className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+              className={
+                mobile
+                  ? 'flex h-11 w-full items-center justify-center rounded-[10px] bg-[#F0EFEC] text-[14px] text-[#111111]'
+                  : 'h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]'
+              }
             >
               {day.headcountFilled ? 'Atualizar quadro' : 'Registrar quadro'}
             </button>
             <button
               type="button"
               onClick={onCreateEvent}
-              className="h-8 rounded-[8px] border border-white/[0.08] bg-white/[0.05] px-3.5 text-[13px] text-[#F0EFEC]/82"
+              className={
+                mobile
+                  ? 'flex h-11 w-full items-center justify-center rounded-[10px] border border-white/[0.08] bg-white/[0.05] text-[14px] text-[#F0EFEC]/82'
+                  : 'h-8 rounded-[8px] border border-white/[0.08] bg-white/[0.05] px-3.5 text-[13px] text-[#F0EFEC]/82'
+              }
             >
               Registrar ocorrência
             </button>
@@ -469,7 +481,12 @@ function DayDesk({
 
       <QuadroReadout rows={day.headcount} filled={day.headcountFilled} />
 
-      <section className="mt-3 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
+      <section
+        className={cn(
+          'mt-3 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
+          mobile ? 'mb-16' : undefined
+        )}
+      >
         {events.length === 0 ? (
           <EmptyState
             icon={<ClipboardPlus className="size-6" strokeWidth={1.6} />}
@@ -478,6 +495,56 @@ function DayDesk({
             actionLabel={board.canEdit ? 'Registrar ocorrência' : 'Voltar aos dias'}
             onAction={board.canEdit ? onCreateEvent : onBack}
           />
+        ) : mobile ? (
+          <div className="pb-1">
+            {events.map((event) => (
+              <div key={event.id} className="border-t border-white/[0.03] px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] text-[#F0EFEC]/85">{event.name}</p>
+                    <p className="mt-0.5 truncate text-[12px] text-[#F0EFEC]/38">
+                      {event.createdByName || '—'}
+                    </p>
+                  </div>
+                  <KindChip kind={event.kind} justified={event.justified} />
+                </div>
+                <p className="mt-2 text-[12px] leading-snug text-[#F0EFEC]/42">{event.note || '—'}</p>
+                {event.photos.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewPhotos(event.photos)}
+                    className="mt-2 inline-flex items-center gap-1 rounded-[6px] bg-white/[0.05] px-1.5 py-0.5 text-[11px] text-[#F0EFEC]/55"
+                  >
+                    {event.photos.slice(0, 2).map((src, index) => (
+                      <img key={index} src={src} alt="" className="size-5 rounded-[4px] object-cover" />
+                    ))}
+                    <Paperclip className="size-3" strokeWidth={1.7} />
+                    <span>{event.photos.length}</span>
+                  </button>
+                ) : null}
+                {board.canEdit ? (
+                  <div className="mt-2 flex justify-end gap-1">
+                    <button
+                      type="button"
+                      aria-label="Editar"
+                      onClick={() => onEdit(event)}
+                      className="flex size-9 items-center justify-center rounded-[8px] text-[#F0EFEC]/35 hover:bg-white/[0.05] hover:text-[#F0EFEC]/70"
+                    >
+                      <Pencil className="size-3.5" strokeWidth={1.7} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Remover"
+                      onClick={() => onRemove(event)}
+                      className="flex size-9 items-center justify-center rounded-[8px] text-[#F0EFEC]/35 hover:bg-white/[0.05] hover:text-red-300/80"
+                    >
+                      <Trash2 className="size-3.5" strokeWidth={1.7} />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
         ) : (
           <table className="w-full text-left text-[13px]">
             <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
