@@ -3,6 +3,8 @@ import { UpdateLock } from '@/components/update-lock'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/use-auth'
 import { useUpdater } from '@/hooks/use-updater'
+import { isMobileShell } from '@/lib/is-mobile-shell'
+import { cn } from '@/lib/utils'
 import { LoginPage } from '@/pages/login'
 import { ShellPage } from '@/pages/shell'
 
@@ -25,14 +27,31 @@ function BootSkeleton() {
 export function App() {
   const { user, booting, restoreError, logout } = useAuth()
   const updateStatus = useUpdater()
+  const mobile = isMobileShell()
   const updateVisible =
-    updateStatus.state === 'ready' ||
-    updateStatus.state === 'downloading' ||
-    updateStatus.state === 'available'
+    !mobile &&
+    (updateStatus.state === 'ready' ||
+      updateStatus.state === 'downloading' ||
+      updateStatus.state === 'available')
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-[#111111] text-foreground">
-      <Titlebar branded={!user} />
+    <div
+      className={cn(
+        'relative flex flex-col overflow-hidden bg-[#111111] text-foreground',
+        mobile ? 'h-dvh' : 'h-screen'
+      )}
+      style={
+        mobile
+          ? {
+              paddingTop: 'var(--flow-safe-top)',
+              paddingBottom: 'var(--flow-safe-bottom)',
+              paddingLeft: 'var(--flow-safe-left)',
+              paddingRight: 'var(--flow-safe-right)'
+            }
+          : undefined
+      }
+    >
+      {mobile ? null : <Titlebar branded={!user} />}
       <main className={updateVisible ? 'flex min-h-0 flex-1 pb-14' : 'flex min-h-0 flex-1'}>
         {booting ? (
           <BootSkeleton />
@@ -42,7 +61,7 @@ export function App() {
           <LoginPage restoreError={restoreError} />
         )}
       </main>
-      <UpdateLock status={updateStatus} />
+      {mobile ? null : <UpdateLock status={updateStatus} />}
     </div>
   )
 }

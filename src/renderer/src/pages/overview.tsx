@@ -4,6 +4,7 @@ import { CardsChart } from '@/components/cards-chart'
 import { MetricCard } from '@/components/metric-card'
 import { ValuePending } from '@/components/value-pending'
 import { formatBRLFromCents, formatCount, formatDateTime, formatPercent, greetingFor } from '@/lib/format'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import type { AuthUser } from '@/lib/auth'
 import type { OverviewMetrics } from '../../../shared/operations'
@@ -62,7 +63,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
         <OverviewSkeleton />
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className={isMobileShell() ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-3 gap-3'}>
             <MetricCard
               label="Cartões do dia"
               value={data.cardsToday}
@@ -99,7 +100,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
             />
           </div>
 
-          <div className="mt-3 grid grid-cols-4 gap-3">
+          <div className={isMobileShell() ? 'mt-3 grid grid-cols-2 gap-3' : 'mt-3 grid grid-cols-4 gap-3'}>
             <MetricCard
               compact
               percent
@@ -162,7 +163,13 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
             </p>
           ) : null}
 
-          <div className="mt-3 grid shrink-0 grid-cols-[minmax(0,1fr)_280px] items-stretch gap-3">
+          <div
+            className={
+              isMobileShell()
+                ? 'mt-3 grid shrink-0 grid-cols-1 items-stretch gap-3'
+                : 'mt-3 grid shrink-0 grid-cols-[minmax(0,1fr)_280px] items-stretch gap-3'
+            }
+          >
             <section className="overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
@@ -205,7 +212,8 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
             {data.recentCards.length === 0 ? (
               <p className="px-5 pb-5 text-[13px] text-[#F0EFEC]/35">Nenhum cartão registrado ainda.</p>
             ) : (
-              <table className="w-full text-left text-[13px]">
+              <div className={isMobileShell() ? 'overflow-x-auto' : undefined}>
+              <table className="w-full min-w-[560px] text-left text-[13px]">
                 <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
                   <tr className="border-t border-white/[0.04]">
                     <th className="px-5 py-2.5 font-medium">Funcionário</th>
@@ -227,6 +235,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </section>
         </>
@@ -251,12 +260,12 @@ function AsideRow({ label, value }: { label: string; value: string | null }) {
 function OverviewSkeleton() {
   return (
     <div className="grid flex-1 grid-rows-[auto_1fr] gap-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className={isMobileShell() ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-3 gap-3'}>
         <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className={isMobileShell() ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-4 gap-3'}>
         <div className="h-[96px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[96px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[96px] animate-pulse rounded-[16px] bg-white/4" />

@@ -14,6 +14,7 @@ type AppSidebarProps = {
   storeId: string | null
   loading?: boolean
   compact?: boolean
+  className?: string
   onNavigate: (id: NavId) => void
   onSignOut: () => void
   onStoreChange: (storeId: string | null) => void
@@ -28,6 +29,7 @@ export function AppSidebar({
   storeId,
   loading = false,
   compact = false,
+  className,
   onNavigate,
   onSignOut,
   onStoreChange
@@ -36,26 +38,34 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        'flex h-full min-h-0 shrink-0 flex-col bg-transparent px-3 pt-0 pb-3',
-        compact ? 'w-[76px]' : 'w-[284px]'
+        'flex h-full min-h-0 shrink-0 flex-col overflow-visible bg-transparent px-3 pb-3',
+        compact ? 'w-[76px] pt-3' : 'w-[284px] pt-4',
+        className
       )}
     >
-      <div className={cn('mb-7 flex h-[18px] items-center', compact ? 'justify-center px-0' : 'px-3')}>
+      <div
+        className={cn(
+          'mb-4 flex h-12 shrink-0 items-center overflow-visible',
+          compact ? 'justify-center px-0' : 'px-2'
+        )}
+      >
         {loading ? (
-          <div className="h-[18px] w-20 animate-pulse rounded-md bg-white/6" />
+          <div className="h-5 w-[5.5rem] animate-pulse rounded-md bg-white/6" />
         ) : (
-          <motion.img
-            src={logo}
-            alt="FLOW"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease }}
-            className="h-[18px] w-auto object-contain"
-          />
+          <div className="flex h-8 items-center overflow-visible py-1.5">
+            <motion.img
+              src={logo}
+              alt="FLOW"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease }}
+              className="h-5 w-auto max-w-[132px] origin-left object-contain object-left"
+            />
+          </div>
         )}
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
         {loading
           ? Array.from({ length: NAV_ITEMS.length }).map((_, index) => (
               <div key={index} className="flex h-9 items-center gap-3 px-3">
@@ -107,7 +117,7 @@ export function AppSidebar({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, delay: 0.28, ease }}
-        className="mt-4"
+        className="mt-3 shrink-0 pb-1"
       >
         {user.canFilterStores ? (
           <StoreSwitcher

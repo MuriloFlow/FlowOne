@@ -10,6 +10,7 @@ import globoIcon from '@/assets/chat/Globo.svg'
 import userIcon from '@/assets/chat/User.svg'
 import { ChatMarkdown } from '@/components/chat-markdown'
 import { KobbiMiniChart } from '@/components/kobbi-mini-chart'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { useKobbi, type ChatMessage } from '@/lib/kobbi'
 import { cn } from '@/lib/utils'
 import { KOBBI_WIDTH_DEFAULT, KOBBI_WIDTH_MAX, KOBBI_WIDTH_MIN, type KobbiAttachment, type KobbiRatingValue, type KobbiThread } from '../../../shared/kobbi'
@@ -57,6 +58,7 @@ export function KobbiFab({ onOpen }: { onOpen: () => void }) {
 
 export function KobbiDock({ open, storeId, userName, userRole, onClose }: KobbiDockProps) {
   const chat = useKobbi(storeId, userName, userRole)
+  const mobile = isMobileShell()
   const [width, setWidth] = useState(KOBBI_WIDTH_DEFAULT)
   const drag = useRef<{ startX: number; startWidth: number } | null>(null)
   const widthRef = useRef(width)
@@ -124,14 +126,23 @@ export function KobbiDock({ open, storeId, userName, userRole, onClose }: KobbiD
       <motion.aside
         ref={frame}
         initial={false}
-        animate={{ width: open ? width : 0, opacity: open ? 1 : 0 }}
+        animate={
+          mobile
+            ? { width: open ? '100%' : 0, opacity: open ? 1 : 0 }
+            : { width: open ? width : 0, opacity: open ? 1 : 0 }
+        }
         transition={{ type: 'spring', stiffness: 340, damping: 36, mass: 0.72 }}
-        className={cn('relative h-full shrink-0 overflow-hidden', open && 'ml-1')}
+        className={cn(
+          'relative h-full shrink-0 overflow-hidden',
+          open && !mobile && 'ml-1',
+          mobile && open && 'absolute inset-0 z-30'
+        )}
       >
           <div
-            style={{ width }}
+            style={{ width: mobile ? '100%' : width }}
             className="absolute inset-y-0 right-0 flex h-full flex-col overflow-hidden rounded-[18px] bg-[#111111]"
           >
+          {mobile ? null : (
           <button
             type="button"
             aria-label="Redimensionar Kobbi"
@@ -142,6 +153,7 @@ export function KobbiDock({ open, storeId, userName, userRole, onClose }: KobbiD
             }}
             className="absolute inset-y-0 left-0 z-20 w-2 cursor-col-resize"
           />
+          )}
 
           <div className="absolute top-4 right-4 z-10 flex items-center gap-0.5">
             <button

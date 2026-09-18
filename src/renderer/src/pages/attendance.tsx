@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, ChevronDown, ChevronRight, ClipboardPlus, MapPin, Pencil, Trash2, UsersRound } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ChevronRight, ClipboardPlus, MapPin, Paperclip, Pencil, Trash2, UsersRound, X } from 'lucide-react'
 import { EmptyState } from '@/components/empty-state'
 import { MetricCard } from '@/components/metric-card'
 import { MonthSwitcher } from '@/components/month-switcher'
@@ -18,9 +18,12 @@ import {
   weekdayLabel,
   weekdayLong
 } from '@/lib/format'
+import { compressAttendancePhoto } from '@/lib/attendance-photo'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
 import {
+  ATTENDANCE_PHOTO_MAX,
   TEAM_HEADCOUNT_ROLES,
   attendanceKindLabel,
   attendanceKindTone,
@@ -152,7 +155,7 @@ export function AttendancePage({ storeId = null }: AttendancePageProps) {
     return (
       <div className="flex flex-col">
         <div className="mb-6 h-8 w-52 animate-pulse rounded-full bg-white/5" />
-        <div className="grid grid-cols-3 gap-3">
+        <div className={isMobileShell() ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-3 gap-3'}>
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
@@ -301,6 +304,7 @@ function MonthDesk({
   const faltas = board.events.filter(
     (event) => event.kind === 'FALTA' || event.kind === 'FALTA_JUSTIFICADA'
   ).length
+  const mobile = isMobileShell()
 
   return (
     <>
@@ -311,20 +315,23 @@ function MonthDesk({
         </p>
       </header>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-3 gap-3'}>
         <MetricCard
+          compact={mobile}
           label="Dias com quadro"
           value={filledDays}
           hint="Quantos dias deste mês já têm o quadro preenchido"
           icon={<UsersRound className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
+          compact={mobile}
           label="Atestados no mês"
           value={atestados}
           hint="Lançados neste mês nesta unidade"
           icon={<ClipboardPlus className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
+          compact={mobile}
           label="Faltas no mês"
           value={faltas}
           hint="Justificadas ou não"
@@ -333,13 +340,20 @@ function MonthDesk({
       </div>
 
       <section className="mt-3 mb-8 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-        <div className="flex items-center justify-between px-5 py-4">
+        <div
+          className={
+            mobile
+              ? 'flex flex-col gap-3 px-5 py-4'
+              : 'flex items-center justify-between px-5 py-4'
+          }
+        >
           <div>
             <h2 className="text-[15px] text-[#F0EFEC]/82">Dias do mês</h2>
             <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Todos os dias. Clique para abrir o dia.</p>
           </div>
           <MonthSwitcher value={monthKey} onChange={onMonthKey} />
         </div>
+        <div className={mobile ? 'overflow-x-auto' : undefined}>
         <table className="w-full text-left text-[13px]">
           <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
             <tr className="border-t border-white/[0.04]">
@@ -388,6 +402,7 @@ function MonthDesk({
             })}
           </tbody>
         </table>
+        </div>
       </section>
     </>
   )
@@ -412,6 +427,8 @@ function DayDesk({
   onEdit: (event: AttendanceEvent) => void
   onRemove: (event: AttendanceEvent) => void
 }) {
+  const [previewPhotos, setPreviewPhotos] = useState<string[]>([])
+
   return (
     <>
       <button
@@ -479,7 +496,29 @@ function DayDesk({
                   <td className="px-3 py-3">
                     <KindChip kind={event.kind} justified={event.justified} />
                   </td>
-                  <td className="px-3 py-3 text-[#F0EFEC]/48">{event.note || '—'}</td>
+                  <td className="px-3 py-3 text-[#F0EFEC]/48">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 truncate">{event.note || '—'}</span>
+                      {event.photos.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewPhotos(event.photos)}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-white/[0.05] px-1.5 py-0.5 text-[11px] text-[#F0EFEC]/55 hover:bg-white/[0.08] hover:text-[#F0EFEC]/75"
+                        >
+                          {event.photos.slice(0, 2).map((src, index) => (
+                            <img
+                              key={index}
+                              src={src}
+                              alt=""
+                              className="size-5 rounded-[4px] object-cover"
+                            />
+                          ))}
+                          <Paperclip className="size-3" strokeWidth={1.7} />
+                          <span>{event.photos.length}</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
                   <td className="px-3 py-3 text-[#F0EFEC]/48">{event.createdByName || '—'}</td>
                   <td className="px-5 py-3">
                     {board.canEdit ? (
@@ -509,6 +548,24 @@ function DayDesk({
           </table>
         )}
       </section>
+
+      <Dialog
+        open={previewPhotos.length > 0}
+        title="Fotos do atestado"
+        wide
+        onClose={() => setPreviewPhotos([])}
+      >
+        <div className="space-y-3 px-5 pb-5">
+          {previewPhotos.map((src, index) => (
+            <img
+              key={index}
+              src={src}
+              alt={`Foto ${index + 1}`}
+              className="max-h-[70vh] w-full rounded-[10px] object-contain"
+            />
+          ))}
+        </div>
+      </Dialog>
     </>
   )
 }
@@ -522,7 +579,7 @@ function QuadroReadout({ rows, filled }: { rows: TeamHeadcountRow[]; filled: boo
       {!filled ? (
         <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Nenhum quadro neste dia. Os números ficam zerados até você registrar.</p>
       ) : null}
-      <div className="mt-3 grid grid-cols-5 gap-3">
+      <div className={isMobileShell() ? 'mt-3 grid grid-cols-2 gap-2' : 'mt-3 grid grid-cols-5 gap-3'}>
         {rows.map((row) => (
           <article key={row.roleKey} className="rounded-[12px] border border-white/[0.05] bg-white/[0.02] px-3 py-3">
             <p className="text-[10px] tracking-wide text-[#F0EFEC]/38 uppercase">{row.label}</p>
@@ -889,16 +946,40 @@ function EventDialog({
   const [collaboratorId, setCollaboratorId] = useState('')
   const [formKind, setFormKind] = useState<AttendanceKind>('ATESTADO')
   const [note, setNote] = useState('')
+  const [photos, setPhotos] = useState<string[]>([])
+  const [reading, setReading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
     setCollaboratorId(event?.collaboratorId ?? '')
     setFormKind(event?.kind ?? 'ATESTADO')
     setNote(event?.note ?? '')
+    setPhotos(event?.photos ?? [])
     setError(null)
   }, [open, event])
+
+  async function addPhotos(files: FileList | File[]): Promise<void> {
+    const remaining = ATTENDANCE_PHOTO_MAX - photos.length
+    const picked = Array.from(files)
+      .filter((file) => file.type.startsWith('image/'))
+      .slice(0, remaining)
+    if (picked.length === 0) return
+    setReading(true)
+    try {
+      const next: string[] = []
+      for (const file of picked) {
+        next.push(await compressAttendancePhoto(file))
+      }
+      setPhotos((current) => [...current, ...next].slice(0, ATTENDANCE_PHOTO_MAX))
+    } catch (readError) {
+      setError(readError instanceof Error ? readError.message : 'Não foi possível ler a foto.')
+    } finally {
+      setReading(false)
+    }
+  }
 
   async function save(): Promise<void> {
     if (!dateKey) return
@@ -914,7 +995,8 @@ function EventDialog({
         dateKey,
         collaboratorId,
         kind: formKind,
-        note
+        note,
+        photos
       })
       onClose()
       onSaved()
@@ -969,6 +1051,54 @@ function EventDialog({
             onChange={(event) => setNote(event.target.value)}
             className="w-full resize-none rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[13px] text-[#F0EFEC]/80 outline-none placeholder:text-[#F0EFEC]/28 focus:border-white/16"
           />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-[12px] text-[#F0EFEC]/45">Fotos do atestado</Label>
+          {photos.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {photos.map((src, index) => (
+                <div key={`${index}:${src.slice(32, 48)}`} className="relative">
+                  <img
+                    src={src}
+                    alt={`Foto ${index + 1}`}
+                    className="size-16 rounded-[8px] border border-white/[0.08] object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remover foto"
+                    onClick={() => setPhotos((current) => current.filter((_, item) => item !== index))}
+                    className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-[#111111] text-[#F0EFEC]/70 hover:text-[#F0EFEC]"
+                  >
+                    <X className="size-3" strokeWidth={1.8} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12px] text-[#F0EFEC]/28">Até 3 fotos do atestado.</p>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(change) => {
+              const files = change.target.files
+              if (files?.length) void addPhotos(files)
+              change.target.value = ''
+            }}
+          />
+          {photos.length < ATTENDANCE_PHOTO_MAX ? (
+            <button
+              type="button"
+              disabled={reading}
+              onClick={() => fileRef.current?.click()}
+              className="h-8 rounded-[8px] border border-white/[0.08] bg-white/[0.05] px-3.5 text-[13px] text-[#F0EFEC]/82 disabled:opacity-50"
+            >
+              {reading ? 'Lendo foto…' : 'Adicionar foto'}
+            </button>
+          ) : null}
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="h-8 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/45">

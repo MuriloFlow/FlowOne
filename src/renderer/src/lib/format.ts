@@ -167,3 +167,9 @@ export function weekRangeLabel(weekStart: string): string {
   const startLabel = formatDateKey(start).slice(0, 5)
   return `${startLabel} – ${formatDateKey(end)}`
 }
+
+export function weekRangeLabelCompact(weekStart: string): string {
+  const start = mondayOf(weekStart)
+  const end = shiftDateKey(start, 6)
+  return `${formatDateKey(start).slice(0, 5)} – ${formatDateKey(end).slice(0, 5)}`
+}

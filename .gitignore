@@ -15,4 +15,13 @@ Thumbs.db
 .idea
 *.exe
 *.blockmap
+*.apk
+*.ipa
 tsconfig.tsbuildinfo
+mobile/android/.gradle
+mobile/android/app/build
+mobile/android/app/.cxx
+mobile/android/local.properties
+mobile/ios/App/Pods
+mobile/ios/App/build
+.tools/

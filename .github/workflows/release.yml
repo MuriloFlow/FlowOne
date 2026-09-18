@@ -45,6 +45,44 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           OPENAI_FALLBACK: ${{ secrets.OPENAI_FALLBACK }}
+      - name: Build mobile web bundle
+        working-directory: mobile
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_FLOW_OPS_URL: ${{ secrets.VITE_FLOW_OPS_URL }}
+        shell: pwsh
+        run: |
+          if (-not $env:VITE_FLOW_OPS_URL) {
+            $env:VITE_FLOW_OPS_URL = "$($env:VITE_SUPABASE_URL.TrimEnd('/'))/functions/v1/flow-ops"
+          }
+          npm ci
+          npm run build
+      - name: Package mobile OTA assets
+        shell: pwsh
+        run: |
+          $version = $env:VERSION
+          if (-not $version) { throw 'VERSION ausente' }
+          $dist = "mobile/dist"
+          if (-not (Test-Path $dist)) { throw 'mobile/dist ausente' }
+          if (Test-Path mobile-www.zip) { Remove-Item mobile-www.zip }
+          Compress-Archive -Path "$dist\*" -DestinationPath mobile-www.zip -Force
+          $sha = (Get-FileHash mobile-www.zip -Algorithm SHA512).Hash
+          $bytes = [byte[]]::new($sha.Length / 2)
+          for ($i = 0; $i -lt $bytes.Length; $i++) {
+            $bytes[$i] = [Convert]::ToByte($sha.Substring($i * 2, 2), 16)
+          }
+          $b64 = [Convert]::ToBase64String($bytes)
+          @(
+            "version: $version"
+            "path: mobile-www.zip"
+            "sha512: $b64"
+            "url: https://github.com/MuriloFlow/FlowOne/releases/download/v$version/mobile-www.zip"
+            "releaseDate: $([DateTime]::UtcNow.ToString('o'))"
+          ) | Set-Content -Path latest-mobile.yml -Encoding utf8
+          gh release upload "v$version" mobile-www.zip latest-mobile.yml --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify release assets
         shell: pwsh
         run: |
@@ -53,7 +91,9 @@ jobs:
           $files = @(
             "latest.yml",
             "FLOW-Setup-$version.exe",
-            "FLOW-Setup-$version.exe.blockmap"
+            "FLOW-Setup-$version.exe.blockmap",
+            "latest-mobile.yml",
+            "mobile-www.zip"
           )
           $ok = $false
           for ($i = 0; $i -lt 10; $i++) {
@@ -75,5 +115,5 @@ jobs:
             }
             Write-Output "Aguardando assets ($($missing -join ', ')) tentativa $($i + 1)"
           }
-          if (-not $ok) { throw "Release v$version incompleto. Faltam instalador ou latest.yml." }
+          if (-not $ok) { throw "Release v$version incompleto. Faltam instalador, latest.yml ou o bundle mobile." }
 

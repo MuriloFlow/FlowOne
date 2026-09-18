@@ -18,6 +18,8 @@
     "pack": "npm run build && electron-builder --dir",
     "dist": "node scripts/make-installer.mjs",
     "dist:publish": "node scripts/make-installer.mjs --publish",
+    "dist:mobile": "node scripts/build-installers.mjs --mobile",
+    "dist:installers": "node scripts/build-installers.mjs",
     "bootstrap:auth": "node scripts/bootstrap-first-user.mjs",
     "icons": "node scripts/build-icon.mjs"
   },

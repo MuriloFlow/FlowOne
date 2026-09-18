@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Eye, EyeOff, Loader2, Settings } from 'lucide-react'
+import { ChevronRight, Eye, EyeOff, Loader2, Settings } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { initials } from '@/lib/identity'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { canLoginWithRole, FLOW_ROLES, isFlowRole, needsStoreBinding, type FlowRoleId } from '@/lib/roles'
 import { formatCount } from '@/lib/format'
@@ -59,6 +60,18 @@ export function UsersPage() {
     )
   }, [users, query])
 
+  const mobile = isMobileShell()
+
+  function openCreate(): void {
+    setEditing(null)
+    setDialogOpen(true)
+  }
+
+  function openEdit(user: FlowLauncherUser): void {
+    setEditing(user)
+    setDialogOpen(true)
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -70,20 +83,27 @@ export function UsersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="mb-5 flex items-end justify-between gap-4">
-        <div>
+      <header
+        className={
+          mobile ? 'mb-4 flex flex-col gap-3' : 'mb-5 flex items-end justify-between gap-4'
+        }
+      >
+        <div className="min-w-0">
           <h1 className="text-[22px] text-[#F0EFEC]/88">Usuários</h1>
           <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
-            Acessos do launcher FLOW: e-mail, senha, cargo e unidade. Não mistura com login do Card+.
+            {mobile
+              ? 'Toque na pessoa para editar o acesso.'
+              : 'Acessos do launcher FLOW: e-mail, senha, cargo e unidade. Não mistura com login do Card+.'}
           </p>
         </div>
         <button
           type="button"
-          onClick={() => {
-            setEditing(null)
-            setDialogOpen(true)
-          }}
-          className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+          onClick={openCreate}
+          className={
+            mobile
+              ? 'flex h-11 w-full shrink-0 items-center justify-center rounded-[10px] bg-[#F0EFEC] text-[14px] text-[#111111]'
+              : 'h-8 shrink-0 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]'
+          }
         >
           Novo acesso
         </button>
@@ -95,18 +115,44 @@ export function UsersPage() {
         </div>
       ) : null}
 
-      <section className="mb-[4.5rem] flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <section
+        className={cn(
+          'flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
+          !mobile && 'mb-[4.5rem]'
+        )}
+      >
+        <div className={mobile ? 'flex items-center gap-3 px-3 py-3' : 'flex items-center justify-between gap-3 px-4 py-3'}>
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar por nome, e-mail ou cargo"
-            className="h-8 max-w-sm rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
+            placeholder={mobile ? 'Buscar usuário' : 'Buscar por nome, e-mail ou cargo'}
+            className="h-8 min-w-0 flex-1 rounded-[8px] border-white/[0.06] bg-transparent text-[13px] max-w-sm"
           />
-          <span className="text-[12px] text-[#F0EFEC]/32">
+          <span className="shrink-0 text-[12px] text-[#F0EFEC]/32">
             {formatCount(filtered.length)} {filtered.length === 1 ? 'acesso' : 'acessos'}
           </span>
         </div>
+        {mobile ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {filtered.map((user) => (
+              <button
+                key={user.id}
+                type="button"
+                onClick={() => openEdit(user)}
+                className="flex min-h-14 w-full items-center gap-3 border-t border-white/[0.03] px-3 py-2.5 text-left"
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[12px] text-[#F0EFEC]/55">
+                  {initials(user.displayName)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] text-[#F0EFEC]/85">{user.displayName}</span>
+                  <span className="mt-0.5 block truncate text-[12px] text-[#F0EFEC]/38">{user.email}</span>
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-[#F0EFEC]/28" strokeWidth={1.8} />
+              </button>
+            ))}
+          </div>
+        ) : (
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-left">
             <thead className="sticky top-0 bg-[#1A1A1A] text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
@@ -148,10 +194,7 @@ export function UsersPage() {
                   <td className="px-4 py-3">
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditing(user)
-                        setDialogOpen(true)
-                      }}
+                      onClick={() => openEdit(user)}
                       className="flex size-7 items-center justify-center rounded-[8px] text-[#F0EFEC]/35 hover:bg-white/[0.04] hover:text-[#F0EFEC]/70"
                       aria-label="Editar"
                     >
@@ -163,6 +206,7 @@ export function UsersPage() {
             </tbody>
           </table>
         </div>
+        )}
       </section>
 
       <UserDialog

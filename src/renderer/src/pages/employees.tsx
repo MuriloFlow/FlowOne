@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Settings, Trash2, UserRound } from 'lucide-react'
+import { ChevronRight, Settings, Trash2, UserPlus, UserRound } from 'lucide-react'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { Dialog } from '@/components/ui/dialog'
 import { EmployeeDialog } from '@/components/employee-dialog'
 import { Input } from '@/components/ui/input'
@@ -98,6 +99,16 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
     )
   }
 
+  const mobile = isMobileShell()
+
+  function openEmployee(employee: EmployeeListItem): void {
+    if (employee.directorySource === 'app_user') {
+      openEdit(employee)
+      return
+    }
+    onOpenProfile(employee.id)
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -109,21 +120,37 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="mb-5 flex items-end justify-between gap-4">
-        <div>
+      <header
+        className={
+          mobile ? 'mb-4 flex flex-col gap-3' : 'mb-5 flex items-end justify-between gap-4'
+        }
+      >
+        <div className="min-w-0">
           <h1 className="text-[22px] text-[#F0EFEC]/88">Funcionários</h1>
-          <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
+          <p className={mobile ? 'mt-1 text-[13px] text-[#F0EFEC]/38' : 'mt-1 text-[13px] text-[#F0EFEC]/38'}>
             {storeId
               ? 'Somente funcionários da unidade selecionada.'
-              : 'Um cargo FLOW por pessoa. A função operacional grava no Card+. Conta TI da rede é só o login, não o cargo.'}
+              : mobile
+                ? 'Toque na pessoa para abrir o perfil.'
+                : 'Um cargo FLOW por pessoa. A função operacional grava no Card+. Conta TI da rede é só o login, não o cargo.'}
           </p>
         </div>
-        {employees.length > 0 ? (
+        {employees.length > 0 && !mobile ? (
           <button
             type="button"
             onClick={openCreate}
-            className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+            className="h-8 shrink-0 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
           >
+            Cadastrar funcionário
+          </button>
+        ) : null}
+        {employees.length > 0 && mobile ? (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-[10px] bg-[#F0EFEC] text-[14px] text-[#111111]"
+          >
+            <UserPlus className="size-4" strokeWidth={1.8} />
             Cadastrar funcionário
           </button>
         ) : null}
@@ -138,19 +165,43 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
       {employees.length === 0 ? (
         <EmptyEmployees onCreate={openCreate} />
       ) : (
-        <section className="mb-[4.5rem] flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <section className={cn('flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]', !mobile && 'mb-[4.5rem]')}>
+          <div className={mobile ? 'flex items-center gap-3 px-3 py-3' : 'flex items-center justify-between gap-3 px-4 py-3'}>
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar por nome, unidade ou cargo"
+              placeholder={mobile ? 'Buscar funcionário' : 'Buscar por nome, unidade ou cargo'}
               className="h-8 max-w-sm rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
             />
-            <span className="text-[12px] text-[#F0EFEC]/32">
+            <span className="shrink-0 text-[12px] text-[#F0EFEC]/32">
               {formatCount(filtered.length)} {filtered.length === 1 ? 'registro' : 'registros'}
             </span>
           </div>
 
+          {mobile ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {filtered.map((employee) => (
+                <button
+                  key={employee.id}
+                  type="button"
+                  onClick={() => openEmployee(employee)}
+                  className="flex min-h-14 w-full items-center gap-3 border-t border-white/[0.03] px-3 py-2.5 text-left"
+                >
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[12px] text-[#F0EFEC]/55">
+                    {initials(employee.name)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] text-[#F0EFEC]/85">{employee.name}</span>
+                    <span className="mt-0.5 block truncate text-[12px] text-[#F0EFEC]/38">
+                      {employee.cardplusRole}
+                      {employee.storeName ? ` · ${employee.storeName}` : ''}
+                    </span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-[#F0EFEC]/28" strokeWidth={1.8} />
+                </button>
+              ))}
+            </div>
+          ) : (
           <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full text-left">
               <thead className="sticky top-0 bg-[#1A1A1A] text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
@@ -227,6 +278,7 @@ export function EmployeesPage({ storeId = null, onOpenProfile }: EmployeesPagePr
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
 
@@ -321,7 +373,7 @@ function EmptyEmployees({ onCreate }: { onCreate: () => void }) {
       <button
         type="button"
         onClick={onCreate}
-        className="mt-5 h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+        className="mt-5 h-11 rounded-[10px] bg-[#F0EFEC] px-4 text-[14px] text-[#111111]"
       >
         Cadastrar funcionário
       </button>

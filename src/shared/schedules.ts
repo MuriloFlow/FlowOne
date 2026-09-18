@@ -20,7 +20,7 @@ export type ScheduleSlot = {
 }
 
 export const SCHEDULE_TEAMS = [
-  { id: 'OPERACAO', label: 'Time operacional', exportLabel: 'Operação' },
+  { id: 'OPERACAO', label: 'Operação', exportLabel: 'Operação' },
   { id: 'CAIXA', label: 'Caixa', exportLabel: 'Caixa' },
   { id: 'AUXILIAR', label: 'Auxiliar', exportLabel: 'Auxiliar' },
   { id: 'VENDEDOR', label: 'Vendedor', exportLabel: 'Vendas' },

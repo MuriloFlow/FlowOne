@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Clock3, GripVertical, ImageDown, MapPin, UserRound } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Clock3, GripVertical, ImageDown, MapPin, Plus, UserRound, X } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { ScheduleHoursDialog } from '@/components/schedule-hours-dialog'
 import { WeekSwitcher } from '@/components/week-switcher'
@@ -8,6 +10,7 @@ import { refreshAuthUser } from '@/lib/auth'
 import { currentDateKey, formatDateKey, mondayOf } from '@/lib/format'
 import { operationError, operations } from '@/lib/operations'
 import { exportScheduleImage } from '@/lib/schedule-export'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { cn } from '@/lib/utils'
 import {
   SCHEDULE_TEAMS,
@@ -48,6 +51,9 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
   const [saving, setSaving] = useState(false)
   const [overSlot, setOverSlot] = useState<string | null>(null)
   const [overPool, setOverPool] = useState(false)
+  const [dayKey, setDayKey] = useState<string | null>(null)
+  const [pickerSlot, setPickerSlot] = useState<{ id: string; title: string; assignedIds: string[] } | null>(null)
+  const mobile = isMobileShell()
 
   useEffect(() => {
     if (!storeId) {
@@ -78,6 +84,16 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
     }
   }, [storeId, weekStart])
 
+  useEffect(() => {
+    if (!board) return
+    const today = currentDateKey()
+    setDayKey((current) => {
+      if (current && board.days.some((day) => day.dateKey === current)) return current
+      if (board.days.some((day) => day.dateKey === today)) return today
+      return board.days[0]?.dateKey ?? null
+    })
+  }, [board])
+
   const classifiedPeople = useMemo(
     () =>
       (board?.people ?? [])
@@ -89,16 +105,21 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
     [board]
   )
 
+  const teamRoster = useMemo(
+    () =>
+      classifiedPeople
+        .filter((person) => person.team === team)
+        .sort((left, right) => Number(Boolean(right.isSelf)) - Number(Boolean(left.isSelf))),
+    [classifiedPeople, team]
+  )
+
   const teamPeople = useMemo(() => {
     const term = query.trim().toLowerCase()
-    return classifiedPeople
-      .filter((person) => {
-        if (person.team !== team) return false
-        if (!term) return true
-        return `${person.name} ${person.cardplusRole} ${person.roleLabel}`.toLowerCase().includes(term)
-      })
-      .sort((left, right) => Number(Boolean(right.isSelf)) - Number(Boolean(left.isSelf)))
-  }, [classifiedPeople, query, team])
+    if (!term) return teamRoster
+    return teamRoster.filter((person) =>
+      `${person.name} ${person.cardplusRole} ${person.roleLabel}`.toLowerCase().includes(term)
+    )
+  }, [query, teamRoster])
 
   const teamIds = useMemo(
     () => new Set(classifiedPeople.filter((person) => person.team === team).map((person) => person.id)),
@@ -177,39 +198,67 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
         </div>
       ) : null}
 
-      <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <header className={mobile ? 'mb-4' : 'mb-4 flex flex-wrap items-end justify-between gap-3'}>
+        <div className={mobile ? 'mb-3' : undefined}>
           <h1 className="text-[22px] text-[#F0EFEC]/88">Escalas</h1>
           <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
-            {board?.storeName ?? 'Unidade'} · {scheduleExportLabel(team)}. Arraste a equipe; a próxima semana copia sozinha.
+            {mobile
+              ? board?.storeName ?? 'Unidade'
+              : `${board?.storeName ?? 'Unidade'} · ${scheduleExportLabel(team)}. Arraste a equipe; a próxima semana copia sozinha.`}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <WeekSwitcher value={weekStart} onChange={setWeekStart} />
-          <button
-            type="button"
-            onClick={() => setHoursOpen(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-white/[0.07] px-2.5 text-[12px] text-[#F0EFEC]/55"
-          >
-            <Clock3 className="size-3.5" />
-            Horários
-          </button>
-          <button
-            type="button"
-            disabled={!board}
-            onClick={() => {
-              setExportDateKey(null)
-              setExportOpen(true)
-            }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#F0EFEC] px-2.5 text-[12px] text-[#111111]"
-          >
-            <ImageDown className="size-3.5" />
-            Exportar planilha
-          </button>
-        </div>
+        {mobile ? (
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1.5">
+            <WeekSwitcher compact value={weekStart} onChange={setWeekStart} />
+            <button
+              type="button"
+              onClick={() => setHoursOpen(true)}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-[8px] border border-white/[0.07] px-2.5 text-[12px] text-[#F0EFEC]/70"
+            >
+              <Clock3 className="size-3.5 shrink-0" />
+              Horários
+            </button>
+            <button
+              type="button"
+              disabled={!board}
+              onClick={() => {
+                setExportDateKey(null)
+                setExportOpen(true)
+              }}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-[8px] bg-[#F0EFEC] px-2.5 text-[12px] text-[#111111] disabled:opacity-40"
+            >
+              <ImageDown className="size-3.5 shrink-0" />
+              Exportar
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <WeekSwitcher value={weekStart} onChange={setWeekStart} />
+            <button
+              type="button"
+              onClick={() => setHoursOpen(true)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-white/[0.07] px-2.5 text-[12px] text-[#F0EFEC]/55"
+            >
+              <Clock3 className="size-3.5" />
+              Horários
+            </button>
+            <button
+              type="button"
+              disabled={!board}
+              onClick={() => {
+                setExportDateKey(null)
+                setExportOpen(true)
+              }}
+              className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#F0EFEC] px-2.5 text-[12px] text-[#111111]"
+            >
+              <ImageDown className="size-3.5" />
+              Exportar
+            </button>
+          </div>
+        )}
       </header>
 
-      <div className="mb-3 flex flex-wrap gap-1">
+      <div className={mobile ? 'mb-3 flex gap-1 overflow-x-auto pb-0.5' : 'mb-3 flex flex-wrap gap-1'}>
         {SCHEDULE_TEAMS.map((item) => (
           <button
             key={item.id}
@@ -219,7 +268,7 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
               setQuery('')
             }}
             className={cn(
-              'h-8 rounded-[8px] px-3 text-[12px]',
+              'h-8 shrink-0 rounded-[8px] px-3 text-[12px]',
               team === item.id
                 ? 'bg-white/[0.1] text-[#F0EFEC]/85'
                 : 'text-[#F0EFEC]/40 hover:bg-white/[0.04]'
@@ -231,15 +280,7 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
         ))}
       </div>
 
-      {board?.actorOperator ? (
-        <p className="mb-3 text-[12px] text-[#F0EFEC]/36">
-          {board.actorOperator.included
-            ? `${board.actorOperator.name} entra no Time operacional desta loja, inclusive no fim de semana. TI da rede vira Funcionario Operacional aqui sem perder o acesso do painel.`
-            : `Logado como ${board.actorOperator.email || board.actorOperator.name}. Não achei um colaborador correspondente na rede para entrar na operação.`}
-        </p>
-      ) : null}
-
-      {board?.rolledFromWeek ? (
+      {board?.rolledFromWeek && !mobile ? (
         <p className="mb-3 text-[12px] text-[#F0EFEC]/36">
           Semana montada automaticamente a partir de {formatDateKey(board.rolledFromWeek)}. Arraste para ajustar.
         </p>
@@ -247,6 +288,7 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
 
       {board ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
+          {mobile ? null : (
           <div
             onDragOver={(event) => {
               event.preventDefault()
@@ -265,7 +307,7 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
             )}
           >
             <div className="mb-2 flex items-center justify-between gap-3">
-              <p className="text-[12px] text-[#F0EFEC]/40">Equipe desta escala</p>
+              <p className="shrink-0 text-[12px] text-[#F0EFEC]/40">Equipe desta escala</p>
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -285,10 +327,42 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
               Solte um nome aqui para tirar da escala. A grade embaixo fica inteira, sem esmagar os dias.
             </p>
           </div>
+          )}
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-            <div className="grid min-w-[980px] grid-cols-7">
-              {board.days.map((day) => {
+          <div
+            className={cn(
+              'min-h-0 min-w-0 flex-1 overflow-auto rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
+              mobile && 'min-h-[360px]'
+            )}
+          >
+            {mobile ? (
+              <div className="flex gap-1 overflow-x-auto border-b border-white/[0.045] px-2 py-2">
+                {board.days.map((day) => {
+                  const active = (dayKey ?? board.days[0]?.dateKey) === day.dateKey
+                  const today = day.dateKey === currentDateKey()
+                  return (
+                    <button
+                      key={day.dateKey}
+                      type="button"
+                      onClick={() => setDayKey(day.dateKey)}
+                      className={cn(
+                        'flex min-w-[44px] flex-1 flex-col items-center rounded-[10px] px-1 py-1.5',
+                        active ? 'bg-white/[0.1] text-[#F0EFEC]/85' : 'text-[#F0EFEC]/40'
+                      )}
+                    >
+                      <span className="text-[10px] tracking-wide uppercase">{day.shortLabel}</span>
+                      <span className="mt-0.5 text-[13px]">{formatDateKey(day.dateKey).slice(0, 5)}</span>
+                      {today ? <span className="mt-0.5 size-1 rounded-full bg-[#F0EFEC]/50" /> : null}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
+            <div className={mobile ? 'grid grid-cols-1' : 'grid min-w-[980px] grid-cols-7'}>
+              {(mobile
+                ? board.days.filter((day) => day.dateKey === (dayKey ?? board.days[0]?.dateKey))
+                : board.days
+              ).map((day) => {
                 const daySlots = scheduleSlotsForTeam(day.slots, team)
                 const overlaps = overlappingAssignmentIds(
                   daySlots.map((slot) => ({
@@ -298,21 +372,46 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
                 )
                 return (
                 <section key={day.dateKey} className="border-l border-white/[0.04] first:border-l-0">
-                  <header className="border-b border-white/[0.045] px-3 py-3">
-                    <p className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">{day.shortLabel}</p>
-                    <p className="mt-0.5 text-[14px] text-[#F0EFEC]/78">{formatDateKey(day.dateKey).slice(0, 5)}</p>
-                  </header>
-                  <div className="space-y-2 p-2">
-                    {daySlots.map((slot) => (
+                  {mobile ? null : (
+                    <header className="border-b border-white/[0.045] px-3 py-3">
+                      <p className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">{day.shortLabel}</p>
+                      <p className="mt-0.5 text-[14px] text-[#F0EFEC]/78">{formatDateKey(day.dateKey).slice(0, 5)}</p>
+                    </header>
+                  )}
+                  <div className={mobile ? 'space-y-2 p-3' : 'space-y-2 p-2'}>
+                    {daySlots.map((slot) => {
+                      const slotAssignments = slot.assignments.filter((item) => teamIds.has(item.collaboratorId))
+                      return (
                       <DropSlot
                         key={slot.id}
                         title={slot.label}
                         hint={`${formatClock(slot.startMinutes)} – ${formatClock(slot.endMinutes)}`}
                         band={bandLabel(slot.band)}
-                        assignments={slot.assignments.filter((item) => teamIds.has(item.collaboratorId))}
+                        assignments={slotAssignments}
                         overlapIds={overlaps}
                         active={overSlot === slot.id}
                         disabled={!board.canEdit}
+                        compact={mobile}
+                        onAdd={
+                          mobile && board.canEdit
+                            ? () =>
+                                setPickerSlot({
+                                  id: slot.id,
+                                  title: slot.label,
+                                  assignedIds: slotAssignments.map((item) => item.collaboratorId)
+                                })
+                            : undefined
+                        }
+                        onRemove={
+                          mobile && board.canEdit
+                            ? (assignment) =>
+                                void dropOnPool({
+                                  kind: 'shift',
+                                  assignmentId: assignment.id,
+                                  collaboratorId: assignment.collaboratorId
+                                })
+                            : undefined
+                        }
                         onDragOver={() => setOverSlot(slot.id)}
                         onDragLeave={() => setOverSlot((current) => (current === slot.id ? null : current))}
                         onDrop={(payload) => {
@@ -320,7 +419,8 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
                           void dropOnSlot(slot.id, payload)
                         }}
                       />
-                    ))}
+                      )
+                    })}
                     {daySlots.length === 0 ? (
                       <p className="px-2 py-6 text-center text-[12px] text-[#F0EFEC]/28">Sem horário neste dia.</p>
                     ) : null}
@@ -331,6 +431,19 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {mobile && pickerSlot && board ? (
+        <PersonPickerSheet
+          slotTitle={pickerSlot.title}
+          people={teamRoster}
+          assignedIds={new Set(pickerSlot.assignedIds)}
+          onClose={() => setPickerSlot(null)}
+          onPick={(person) => {
+            void dropOnSlot(pickerSlot.id, { kind: 'person', id: person.id })
+            setPickerSlot(null)
+          }}
+        />
       ) : null}
 
       {board ? (
@@ -371,7 +484,7 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
 
       <Dialog
         open={exportOpen}
-        title="Exportar planilha"
+        title="Exportar"
         description="Imagem clara para imprimir. Semana inteira ou só um dia. Cada horário fica na própria linha."
         onClose={() => setExportOpen(false)}
       >
@@ -451,7 +564,15 @@ function readDrag(event: React.DragEvent): DragPayload | null {
   return null
 }
 
-function PersonChip({ person, disabled }: { person: SchedulePerson; disabled: boolean }) {
+function PersonChip({
+  person,
+  disabled,
+  compact = false
+}: {
+  person: SchedulePerson
+  disabled: boolean
+  compact?: boolean
+}) {
   return (
     <div
       draggable={!disabled}
@@ -461,11 +582,12 @@ function PersonChip({ person, disabled }: { person: SchedulePerson; disabled: bo
         event.dataTransfer.effectAllowed = 'copyMove'
       }}
       className={cn(
-        'flex min-w-[148px] items-center gap-2 rounded-[10px] border border-white/[0.05] bg-white/[0.03] px-2 py-1.5',
+        'flex items-center gap-2 rounded-[10px] border border-white/[0.05] bg-white/[0.03] px-2 py-1.5',
+        compact ? 'min-w-[136px] flex-1' : 'min-w-[148px]',
         disabled ? 'opacity-50' : 'cursor-grab active:cursor-grabbing hover:bg-white/[0.05]'
       )}
     >
-      <GripVertical className="size-3 shrink-0 text-[#F0EFEC]/22" />
+      {compact ? null : <GripVertical className="size-3 shrink-0 text-[#F0EFEC]/22" />}
       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[10px] text-[#F0EFEC]/50">
         {person.shortName.slice(0, 1).toUpperCase()}
       </span>
@@ -487,6 +609,9 @@ function DropSlot({
   overlapIds,
   active,
   disabled,
+  compact = false,
+  onAdd,
+  onRemove,
   onDragOver,
   onDragLeave,
   onDrop
@@ -498,6 +623,9 @@ function DropSlot({
   overlapIds: Set<string>
   active: boolean
   disabled: boolean
+  compact?: boolean
+  onAdd?: () => void
+  onRemove?: (assignment: ScheduleAssignment) => void
   onDragOver: () => void
   onDragLeave: () => void
   onDrop: (payload: DragPayload) => void
@@ -515,7 +643,8 @@ function DropSlot({
         if (payload) onDrop(payload)
       }}
       className={cn(
-        'min-h-[92px] rounded-[12px] border px-2 py-2 transition-colors',
+        'rounded-[12px] border px-2 py-2 transition-colors',
+        compact ? 'min-h-[72px]' : 'min-h-[92px]',
         active ? 'border-[#8B8DFF]/45 bg-[#8B8DFF]/8' : 'border-white/[0.05] bg-white/[0.02]'
       )}
     >
@@ -526,7 +655,7 @@ function DropSlot({
         {assignments.map((item) => (
           <div
             key={item.id}
-            draggable={!disabled}
+            draggable={!disabled && !onRemove}
             onDragStart={(event) => {
               const payload: DragPayload = {
                 kind: 'shift',
@@ -538,20 +667,39 @@ function DropSlot({
               event.dataTransfer.effectAllowed = 'move'
             }}
             className={cn(
-              'flex items-center justify-between rounded-[8px] px-2 py-1',
+              'flex items-center justify-between rounded-[8px] px-2 py-1.5',
               overlapIds.has(item.id) ? 'bg-amber-500/16' : 'bg-[#F0EFEC]/8'
             )}
           >
             <span className="truncate text-[12px] text-[#F0EFEC]/82">{item.shortName}</span>
-              <span className="flex shrink-0 items-center gap-1.5 pl-2">
+            <span className="flex shrink-0 items-center gap-1.5 pl-2">
               <span className="text-[10px] text-[#F0EFEC]/32">
                 {overlapIds.has(item.id) ? 'Divergência' : (item.note ?? hint.split(' – ')[0])}
               </span>
               {item.absenceKind ? <AbsenceDot kind={item.absenceKind} /> : null}
+              {onRemove ? (
+                <button
+                  type="button"
+                  aria-label={`Remover ${item.shortName}`}
+                  onClick={() => onRemove(item)}
+                  className="flex size-6 items-center justify-center rounded-[6px] text-[#F0EFEC]/30 hover:bg-white/[0.06] hover:text-[#F0EFEC]/70"
+                >
+                  <X className="size-3.5" strokeWidth={1.8} />
+                </button>
+              ) : null}
             </span>
           </div>
         ))}
-        {assignments.length === 0 ? (
+        {onAdd ? (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[8px] border border-dashed border-white/[0.08] text-[12px] text-[#F0EFEC]/45"
+          >
+            <Plus className="size-3.5" strokeWidth={1.8} />
+            Adicionar
+          </button>
+        ) : assignments.length === 0 ? (
           <p className="flex items-center gap-1 pt-1 text-[11px] text-[#F0EFEC]/22">
             <UserRound className="size-3" />
             Solte aqui
@@ -559,6 +707,102 @@ function DropSlot({
         ) : null}
       </div>
     </div>
+  )
+}
+
+function PersonPickerSheet({
+  slotTitle,
+  people,
+  assignedIds,
+  onClose,
+  onPick
+}: {
+  slotTitle: string
+  people: SchedulePerson[]
+  assignedIds: Set<string>
+  onClose: () => void
+  onPick: (person: SchedulePerson) => void
+}) {
+  const [term, setTerm] = useState('')
+  const filtered = people.filter((person) => {
+    if (assignedIds.has(person.id)) return false
+    const needle = term.trim().toLowerCase()
+    if (!needle) return true
+    return `${person.name} ${person.cardplusRole} ${person.roleLabel}`.toLowerCase().includes(needle)
+  })
+
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[380]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        <button type="button" aria-label="Fechar equipe" className="absolute inset-0 bg-black/55" onClick={onClose} />
+        <motion.div
+          initial={{ y: 48 }}
+          animate={{ y: 0 }}
+          exit={{ y: 48 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+          className="absolute inset-x-0 bottom-0 flex max-h-[78vh] flex-col rounded-t-[20px] bg-[#151515] px-3 pt-3 pb-[var(--flow-safe-bottom)]"
+        >
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/12" />
+          <div className="mb-3 flex items-center justify-between px-1">
+            <div className="min-w-0">
+              <p className="text-[14px] text-[#F0EFEC]/80">Adicionar</p>
+              <p className="mt-0.5 truncate text-[12px] text-[#F0EFEC]/38">{slotTitle}</p>
+            </div>
+            <button
+              type="button"
+              aria-label="Fechar"
+              onClick={onClose}
+              className="flex size-9 items-center justify-center text-[#F0EFEC]/50"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          <label className="mb-2 flex h-10 items-center gap-2 rounded-[10px] bg-[#111111] px-3">
+            <input
+              value={term}
+              onChange={(event) => setTerm(event.target.value)}
+              placeholder="Buscar funcionário"
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-[#F0EFEC]/80 outline-none placeholder:text-[#F0EFEC]/28"
+            />
+          </label>
+          <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+            {filtered.map((person) => (
+              <button
+                key={person.id}
+                type="button"
+                onClick={() => onPick(person)}
+                className="flex min-h-14 w-full items-center gap-3 border-t border-white/[0.04] px-1 py-2.5 text-left"
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[12px] text-[#F0EFEC]/55">
+                  {person.shortName.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] text-[#F0EFEC]/85">{person.name}</span>
+                  <span className="mt-0.5 block truncate text-[12px] text-[#F0EFEC]/38">
+                    {person.isSelf ? 'Você' : person.cardplusRole.trim() || person.roleLabel}
+                  </span>
+                </span>
+              </button>
+            ))}
+            {filtered.length === 0 ? (
+              <p className="px-2 py-6 text-center text-[13px] text-[#F0EFEC]/38">
+                {people.length === 0
+                  ? 'Ninguém neste time.'
+                  : assignedIds.size === people.length
+                    ? 'Todo mundo já está neste horário.'
+                    : 'Ninguém com esse nome.'}
+              </p>
+            ) : null}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
   )
 }
 

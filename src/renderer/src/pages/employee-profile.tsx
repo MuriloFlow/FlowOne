@@ -5,7 +5,9 @@ import { EmployeeDialog } from '@/components/employee-dialog'
 import { MetricCard } from '@/components/metric-card'
 import { initials } from '@/lib/identity'
 import { formatBRLFromCents, formatCount, formatDate, formatDateTime } from '@/lib/format'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
+import { cn } from '@/lib/utils'
 import type { EmployeeProfile, StoreOption } from '../../../shared/operations'
 
 type EmployeeProfilePageProps = {
@@ -14,12 +16,23 @@ type EmployeeProfilePageProps = {
   onBack: () => void
 }
 
+function shortDateTime(value: string): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(value))
+}
+
 export function EmployeeProfilePage({ employeeId, storeId = null, onBack }: EmployeeProfilePageProps) {
   const [data, setData] = useState<EmployeeProfile | null>(null)
   const [stores, setStores] = useState<StoreOption[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
+  const mobile = isMobileShell()
 
   useEffect(() => {
     let active = true
@@ -47,7 +60,7 @@ export function EmployeeProfilePage({ employeeId, storeId = null, onBack }: Empl
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="mb-6 h-8 w-40 animate-pulse rounded-full bg-white/5" />
-        <div className="grid grid-cols-4 gap-3">
+        <div className={mobile ? 'grid grid-cols-2 gap-2.5' : 'grid grid-cols-4 gap-3'}>
           <div className="h-28 animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-28 animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-28 animate-pulse rounded-[16px] bg-white/4" />
@@ -73,88 +86,141 @@ export function EmployeeProfilePage({ employeeId, storeId = null, onBack }: Empl
   }
 
   const { employee, metrics } = data
+  const lastHint = metrics.lastCardAt
+    ? mobile
+      ? `Último ${shortDateTime(metrics.lastCardAt)}`
+      : `Último em ${formatDateTime(metrics.lastCardAt)}`
+    : 'Sem cartão hoje'
+  const monthHint = mobile
+    ? `Histórico ${formatCount(metrics.cardsTotal)}`
+    : `Total histórico: ${formatCount(metrics.cardsTotal)}`
+  const projectionHint = mobile ? 'Ritmo do mês' : metrics.projectionLabel
+  const goalHint = metrics.firstCardAt
+    ? mobile
+      ? `Desde ${formatDate(metrics.firstCardAt)}`
+      : `Primeiro cartão em ${formatDate(metrics.firstCardAt)}`
+    : 'Sem histórico de cartões'
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className={cn('flex min-h-0 flex-1 flex-col', mobile && 'pb-16')}>
       <button
         type="button"
         onClick={onBack}
-        className="mb-4 flex items-center gap-2 text-[13px] text-[#F0EFEC]/38 transition-colors hover:text-[#F0EFEC]/60"
+        className="mb-4 flex min-h-10 items-center gap-2 text-[13px] text-[#F0EFEC]/38 transition-colors hover:text-[#F0EFEC]/60"
       >
         <ArrowLeft className="size-3.5" />
         Funcionários
       </button>
 
-      <header className="mb-6 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <span className="flex size-12 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[15px] text-[#F0EFEC]/60">
+      <header className={mobile ? 'mb-4 flex items-start gap-3' : 'mb-6 flex items-start justify-between gap-4'}>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span
+            className={cn(
+              'flex shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[#F0EFEC]/60',
+              mobile ? 'size-11 text-[14px]' : 'size-12 text-[15px]'
+            )}
+          >
             {initials(employee.name)}
           </span>
-          <div>
-            <h1 className="text-[22px] text-[#F0EFEC]/90">{employee.name}</h1>
-            <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
-              {employee.flowRoleLabel} · {employee.storeName} · {employee.cpfMasked ?? 'CPF não cadastrado'}
+          <div className="min-w-0">
+            <h1 className={cn('truncate text-[#F0EFEC]/90', mobile ? 'text-[20px]' : 'text-[22px]')}>
+              {employee.name}
+            </h1>
+            <p className={cn('mt-1 text-[#F0EFEC]/38', mobile ? 'text-[12px] leading-snug' : 'text-[13px]')}>
+              {mobile ? (
+                <>
+                  <span className="block truncate">
+                    {employee.flowRoleLabel} · {employee.storeName}
+                  </span>
+                  <span className="mt-0.5 block truncate">{employee.cpfMasked ?? 'CPF não cadastrado'}</span>
+                </>
+              ) : (
+                `${employee.flowRoleLabel} · ${employee.storeName} · ${employee.cpfMasked ?? 'CPF não cadastrado'}`
+              )}
             </p>
           </div>
         </div>
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-white/[0.08] px-3 text-[13px] text-[#F0EFEC]/60 hover:bg-white/[0.04]"
+          className="inline-flex h-8 shrink-0 items-center gap-2 rounded-[8px] border border-white/[0.08] px-3 text-[13px] text-[#F0EFEC]/60 hover:bg-white/[0.04]"
         >
           <Settings className="size-3.5" strokeWidth={1.7} />
           Editar
         </button>
       </header>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className={mobile ? 'grid grid-cols-2 gap-2.5' : 'grid grid-cols-4 gap-3'}>
         <MetricCard
-          label="Cartões hoje"
+          compact={mobile}
+          label={mobile ? 'Hoje' : 'Cartões hoje'}
           value={metrics.cardsToday}
-          hint={metrics.lastCardAt ? `Último em ${formatDateTime(metrics.lastCardAt)}` : 'Sem cartão hoje'}
+          hint={lastHint}
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
-          label="Cartões no mês"
+          compact={mobile}
+          label={mobile ? 'No mês' : 'Cartões no mês'}
           value={metrics.cardsThisMonth}
-          hint={`Total histórico: ${formatCount(metrics.cardsTotal)}`}
+          hint={monthHint}
           icon={<TrendingUp className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
-          label="Projeção do mês"
+          compact={mobile}
+          label={mobile ? 'Projeção' : 'Projeção do mês'}
           value={metrics.projectedMonth ?? 0}
           empty={metrics.projectedMonth === null}
-          hint={metrics.projectionLabel}
+          hint={projectionHint}
           icon={<Target className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
-          label="Meta da unidade"
+          compact={mobile}
+          label={mobile ? 'Meta' : 'Meta da unidade'}
           value={metrics.storeMonthGoal ?? 0}
           empty={metrics.storeMonthGoal === null}
-          hint={
-            metrics.firstCardAt
-              ? `Primeiro cartão em ${formatDate(metrics.firstCardAt)}`
-              : 'Sem histórico de cartões'
-          }
+          hint={goalHint}
           icon={<CalendarDays className="size-4" strokeWidth={1.7} />}
         />
       </div>
 
-      <section className="mt-3 rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
-        <div className="mb-4">
+      <section
+        className={cn(
+          'mt-3 rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
+          mobile ? 'px-4 py-3.5' : 'px-5 py-4'
+        )}
+      >
+        <div className={mobile ? 'mb-3' : 'mb-4'}>
           <h2 className="text-[15px] text-[#F0EFEC]/82">Evolução em 12 meses</h2>
           <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Cartões deste funcionário no Card+.</p>
         </div>
-        <CardsChart data={data.months} showGoal={false} />
+        <CardsChart data={data.months} showGoal={false} height={mobile ? 168 : 280} />
       </section>
 
       <section className="mt-3 rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-        <div className="flex items-center justify-between px-5 py-4">
+        <div className={cn('flex items-center justify-between', mobile ? 'px-4 py-3.5' : 'px-5 py-4')}>
           <h2 className="text-[15px] text-[#F0EFEC]/82">Cartões recentes</h2>
           <span className="text-[12px] text-[#F0EFEC]/32">{data.recentCards.length} registros</span>
         </div>
         {data.recentCards.length === 0 ? (
-          <p className="px-5 pb-5 text-[13px] text-[#F0EFEC]/35">Este funcionário ainda não registrou cartões.</p>
+          <p className={cn('pb-5 text-[13px] text-[#F0EFEC]/35', mobile ? 'px-4' : 'px-5')}>
+            Este funcionário ainda não registrou cartões.
+          </p>
+        ) : mobile ? (
+          <div className="pb-1">
+            {data.recentCards.map((card) => (
+              <div key={card.id} className="border-t border-white/[0.035] px-4 py-3">
+                <p className="truncate text-[13px] text-[#F0EFEC]/80">{card.clientName}</p>
+                <p className="mt-1 flex items-center justify-between gap-3 text-[12px] text-[#F0EFEC]/42">
+                  <span>
+                    {formatBRLFromCents(card.amountInCents)}
+                    <span className="text-[#F0EFEC]/28"> · </span>
+                    {card.activated ? 'Ativado' : 'Pendente'}
+                  </span>
+                  <span className="shrink-0 text-[#F0EFEC]/32">{shortDateTime(card.createdAt)}</span>
+                </p>
+              </div>
+            ))}
+          </div>
         ) : (
           <table className="w-full text-left text-[13px]">
             <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">

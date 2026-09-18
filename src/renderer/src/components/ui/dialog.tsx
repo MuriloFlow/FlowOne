@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 
 type DialogProps = {
   open: boolean
@@ -17,7 +18,7 @@ export function Dialog({ open, title, description, wide = false, children, onClo
   return createPortal(
     <AnimatePresence>
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+        <div className={cn('fixed inset-0 z-[400] flex items-center justify-center', isMobileShell() ? 'p-3' : 'p-6')}>
           <motion.button
             type="button"
             aria-label="Fechar"

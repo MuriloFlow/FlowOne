@@ -26,6 +26,9 @@ export type AttendancePerson = {
   roleLabel: string
 }
 
+export const ATTENDANCE_PHOTO_MAX = 3
+export const ATTENDANCE_PHOTO_MAX_LENGTH = 1_500_000
+
 export type AttendanceEvent = {
   id: string
   storeId: string
@@ -35,6 +38,7 @@ export type AttendanceEvent = {
   kind: AttendanceKind
   justified: boolean
   note: string | null
+  photos: string[]
   createdBy: string | null
   createdByName: string | null
   createdAt: string
@@ -75,6 +79,7 @@ export type AttendanceEventWrite = {
   kind: AttendanceKind
   justified?: boolean
   note?: string | null
+  photos?: string[]
 }
 
 export function isTeamHeadcountRole(value: string | null | undefined): value is TeamHeadcountRole {
@@ -83,6 +88,15 @@ export function isTeamHeadcountRole(value: string | null | undefined): value is 
 
 export function isAttendanceKind(value: string | null | undefined): value is AttendanceKind {
   return ATTENDANCE_KINDS.some((kind) => kind === value)
+}
+
+export function isAttendancePhotoDataUrl(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('data:image/') || /[\r\n]/.test(trimmed)) return false
+  const marker = ';base64,'
+  const sep = trimmed.indexOf(marker)
+  if (sep < 0) return false
+  return trimmed.slice(sep + marker.length).length > 0
 }
 
 export function teamHeadcountLabel(role: TeamHeadcountRole): string {

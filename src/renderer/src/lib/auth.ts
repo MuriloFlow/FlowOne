@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { PersistedAuthSession } from '../../../shared/ipc'
 import { createSessionId, sha256Hex } from './crypto'
 import { getPublicIp } from './ip'
+import { isMobileShell } from './is-mobile-shell'
 import { canLoginWithRole, canViewAllStores, DEFAULT_LOGIN_ROLE, normalizeRole, roleLabel } from './roles'
 import { supabase } from './supabase'
 
@@ -189,7 +190,7 @@ async function registerFlowSession(
     p_refresh_token_hash: await sha256Hex(refreshToken),
     p_user_agent: userAgent,
     p_ip: ip,
-    p_device_label: 'FLOW Launcher',
+    p_device_label: isMobileShell() ? 'FLOW Mobile' : 'FLOW Launcher',
     p_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()
   })
 }

@@ -5,10 +5,13 @@ import { getFlowAdminClient } from './supabase-clients'
 import { compactScheduleKey } from '../shared/schedules'
 import { canEditStoreDesk, type FlowRoleId } from '../shared/roles'
 import {
+  ATTENDANCE_PHOTO_MAX,
+  ATTENDANCE_PHOTO_MAX_LENGTH,
   TEAM_HEADCOUNT_ROLES,
   attendanceKindIsJustified,
   attendanceStoreFunctionLabel,
   isAttendanceKind,
+  isAttendancePhotoDataUrl,
   isTeamHeadcountRole,
   normalizeAttendanceKind,
   type AttendanceBoard,
@@ -41,10 +44,17 @@ type EventRow = {
   kind: string
   justified: boolean | null
   note: string | null
+  photos?: unknown
   created_by: string | null
   created_by_name: string | null
   created_at: string
 }
+
+const EVENT_SELECT =
+  'id, cardplus_store_id, date_key, cardplus_collaborator_id, collaborator_name, kind, justified, note, photos, created_by, created_by_name, created_at'
+
+const EVENT_SELECT_NO_PHOTOS =
+  'id, cardplus_store_id, date_key, cardplus_collaborator_id, collaborator_name, kind, justified, note, created_by, created_by_name, created_at'
 
 const ROLE_COLUMNS: Record<TeamHeadcountRole, keyof Pick<
   DayHeadcountRow,
@@ -57,8 +67,21 @@ const ROLE_COLUMNS: Record<TeamHeadcountRole, keyof Pick<
   AUXILIAR: 'auxiliar'
 }
 
+function isMissingPhotosColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  const message = error.message ?? ''
+  if (!/photos/i.test(message)) return false
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    /column ['"]?photos['"]?/i.test(message) ||
+    /Could not find the 'photos' column/i.test(message)
+  )
+}
+
 function isMissingTable(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false
+  if (isMissingPhotosColumn(error)) return false
   return (
     error.code === '42P01' ||
     error.code === 'PGRST205' ||
@@ -70,6 +93,10 @@ export function missingAttendanceSql(): Error {
   return new Error(
     'Rode o SQL 0012_flow_attendance.sql no Supabase do FLOW. Se o 0012 antigo já rodou, use 0013_flow_attendance_daily_headcount.sql.'
   )
+}
+
+export function missingAttendancePhotosSql(): Error {
+  return new Error('Rode o SQL 0015_flow_attendance_photos.sql no Supabase do FLOW.')
 }
 
 function resolveMonthKey(monthKey?: string | null): string {
@@ -95,6 +122,35 @@ function asNote(value: unknown): string | null {
   if (!note) return null
   if (note.length > 280) throw new Error('A observação pode ter no máximo 280 caracteres.')
   return note
+}
+
+function photosFromRow(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (item): item is string => typeof item === 'string' && item.startsWith('data:image/')
+  )
+}
+
+function asPhotos(value: unknown): string[] {
+  if (value === null || value === undefined) return []
+  if (!Array.isArray(value)) throw new Error('As fotos do atestado são inválidas.')
+  const photos: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') throw new Error('Foto do atestado inválida.')
+    const trimmed = item.trim()
+    if (!trimmed) continue
+    if (!isAttendancePhotoDataUrl(trimmed)) {
+      throw new Error('Use apenas fotos em data URL (data:image/...).')
+    }
+    if (trimmed.length > ATTENDANCE_PHOTO_MAX_LENGTH) {
+      throw new Error('Uma das fotos passou do tamanho máximo.')
+    }
+    photos.push(trimmed)
+    if (photos.length > ATTENDANCE_PHOTO_MAX) {
+      throw new Error(`Pode anexar no máximo ${ATTENDANCE_PHOTO_MAX} fotos.`)
+    }
+  }
+  return photos
 }
 
 function emptyHeadcount(): TeamHeadcountRow[] {
@@ -141,6 +197,7 @@ function toEvent(row: EventRow): AttendanceEvent {
     kind,
     justified: attendanceKindIsJustified(kind),
     note: row.note,
+    photos: photosFromRow(row.photos),
     createdBy: row.created_by,
     createdByName: row.created_by_name,
     createdAt: row.created_at
@@ -256,9 +313,7 @@ export async function getAttendanceBoard(
       .lte('date_key', `${monthKey}-${last}`),
     client
       .from('flow_attendance_events')
-      .select(
-        'id, cardplus_store_id, date_key, cardplus_collaborator_id, collaborator_name, kind, justified, note, created_by, created_by_name, created_at'
-      )
+      .select(EVENT_SELECT)
       .eq('cardplus_store_id', storeId)
       .gte('date_key', `${monthKey}-01`)
       .lte('date_key', `${monthKey}-${last}`)
@@ -266,8 +321,23 @@ export async function getAttendanceBoard(
     listEmployees(storeId)
   ])
 
-  if (dayRes.error || eventRes.error) {
-    const error = dayRes.error ?? eventRes.error
+  let eventData = (eventRes.data ?? []) as EventRow[]
+  let eventError = eventRes.error
+  if (eventError && isMissingPhotosColumn(eventError)) {
+    const fallback = await client
+      .from('flow_attendance_events')
+      .select(EVENT_SELECT_NO_PHOTOS)
+      .eq('cardplus_store_id', storeId)
+      .gte('date_key', `${monthKey}-01`)
+      .lte('date_key', `${monthKey}-${last}`)
+      .order('created_at', { ascending: false })
+    eventData = (fallback.data ?? []) as EventRow[]
+    eventError = fallback.error
+  }
+
+  if (dayRes.error || eventError) {
+    const error = dayRes.error ?? eventError
+    if (isMissingPhotosColumn(error)) throw missingAttendancePhotosSql()
     if (isMissingTable(error)) {
       return {
         monthKey,
@@ -283,7 +353,7 @@ export async function getAttendanceBoard(
     throw new Error(`Erro ao carregar atestados: ${error?.message ?? 'falha desconhecida'}`)
   }
 
-  const events = ((eventRes.data ?? []) as EventRow[]).map(toEvent)
+  const events = eventData.map(toEvent)
   const byDate = new Map<string, { atestadoCount: number; faltaCount: number; bancoCount: number }>()
   for (const event of events) {
     const current = byDate.get(event.dateKey) ?? { atestadoCount: 0, faltaCount: 0, bancoCount: 0 }
@@ -389,6 +459,7 @@ export async function upsertAttendanceEvent(
     throw new Error('Colaborador não encontrado nesta unidade.')
   }
   const note = asNote(input.note)
+  const photos = asPhotos(input.photos)
   const justified = attendanceKindIsJustified(kind)
   const createdByName = await actorDisplayName(actorUserId)
   const client = getFlowAdminClient()
@@ -401,6 +472,7 @@ export async function upsertAttendanceEvent(
     kind,
     justified,
     note,
+    photos,
     updated_at: now
   }
 
@@ -410,11 +482,10 @@ export async function upsertAttendanceEvent(
       .update(body)
       .eq('id', input.id)
       .eq('cardplus_store_id', input.storeId)
-      .select(
-        'id, cardplus_store_id, date_key, cardplus_collaborator_id, collaborator_name, kind, justified, note, created_by, created_by_name, created_at'
-      )
+      .select(EVENT_SELECT)
       .maybeSingle()
     if (error) {
+      if (isMissingPhotosColumn(error)) throw missingAttendancePhotosSql()
       if (isMissingTable(error)) throw missingAttendanceSql()
       if (error.code === '23505') throw new Error('Essa pessoa já tem um registro neste dia.')
       throw new Error(`Erro ao atualizar o registro: ${error.message}`)
@@ -430,11 +501,10 @@ export async function upsertAttendanceEvent(
       { ...body, created_by: actorUserId, created_by_name: createdByName },
       { onConflict: 'cardplus_store_id,date_key,cardplus_collaborator_id' }
     )
-    .select(
-      'id, cardplus_store_id, date_key, cardplus_collaborator_id, collaborator_name, kind, justified, note, created_by, created_by_name, created_at'
-    )
+    .select(EVENT_SELECT)
     .maybeSingle()
   if (error) {
+    if (isMissingPhotosColumn(error)) throw missingAttendancePhotosSql()
     if (isMissingTable(error)) throw missingAttendanceSql()
     if (error.code === '23505') throw new Error('Essa pessoa já tem um registro neste dia.')
     throw new Error(`Erro ao registrar a ocorrência: ${error.message}`)

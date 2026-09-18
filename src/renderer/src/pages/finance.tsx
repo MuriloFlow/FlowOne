@@ -27,6 +27,7 @@ import {
   weekdayLong
 } from '@/lib/format'
 import { operationError, operations } from '@/lib/operations'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { cn } from '@/lib/utils'
 import type { FinanceDayRow, FinanceMetrics, FinanceStoreDayRow, StoreOption } from '../../../shared/operations'
 
@@ -260,6 +261,7 @@ function MonthDesk({
       ? 'Nenhum PU registrado neste mês'
       : `Média de ${formatCount(data.puRegisteredDays)} ${data.puRegisteredDays === 1 ? 'dia' : 'dias'} com PU`
   const mini = financeMiniStats(data, today)
+  const mobile = isMobileShell()
   const completedHint =
     data.monthSalesGoalCents === null
       ? 'Sem meta de valor no Card+'
@@ -312,7 +314,7 @@ function MonthDesk({
         </p>
       </header>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-4 gap-3'}>
         <MetricCard
           label="Venda do dia"
           value={data.saleTodayCents ?? 0}
@@ -360,7 +362,7 @@ function MonthDesk({
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-4 gap-3">
+      <div className={mobile ? 'mt-3 grid grid-cols-2 gap-3' : 'mt-3 grid grid-cols-4 gap-3'}>
         <MiniStat
           label="% concluído"
           value={mini.completedPct === null ? '—' : formatPercent(mini.completedPct) ?? '—'}
@@ -387,9 +389,15 @@ function MonthDesk({
         />
       </div>
 
-      <div className="mt-3 grid shrink-0 grid-cols-[minmax(0,1fr)_280px] items-stretch gap-3">
+      <div
+        className={
+          mobile
+            ? 'mt-3 grid shrink-0 grid-cols-1 items-stretch gap-3'
+            : 'mt-3 grid shrink-0 grid-cols-[minmax(0,1fr)_280px] items-stretch gap-3'
+        }
+      >
         <section className="overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
-          <div className="mb-4 flex items-start justify-between gap-4">
+          <div className={mobile ? 'mb-3 flex flex-col gap-2' : 'mb-4 flex items-start justify-between gap-4'}>
             <div>
               <h2 className="text-[15px] text-[#F0EFEC]/82">Vendas dos últimos 12 meses</h2>
               <p className="mt-1 text-[12px] text-[#F0EFEC]/35">
@@ -407,7 +415,7 @@ function MonthDesk({
               </span>
             </div>
           </div>
-          <SalesChart data={data.months} />
+          <SalesChart data={data.months} height={mobile ? 168 : 280} />
         </section>
 
         <aside className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
@@ -433,13 +441,20 @@ function MonthDesk({
       </div>
 
       <section className="mt-3 mb-8 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-        <div className="flex items-center justify-between px-5 py-4">
+        <div
+          className={
+            mobile
+              ? 'flex flex-col gap-3 px-5 py-4'
+              : 'flex items-center justify-between px-5 py-4'
+          }
+        >
           <div>
             <h2 className="text-[15px] text-[#F0EFEC]/82">Dias do mês</h2>
             <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Todos os dias, com venda, meta, last year e PU.</p>
           </div>
           <MonthSwitcher value={monthKey} onChange={onMonthKey} />
         </div>
+        <div className={mobile ? 'overflow-x-auto' : undefined}>
         <table className="w-full text-left text-[13px]">
           <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
             <tr className="border-t border-white/[0.04]">
@@ -496,6 +511,7 @@ function MonthDesk({
             })}
           </tbody>
         </table>
+        </div>
       </section>
     </>
   )
@@ -515,6 +531,7 @@ function DayDesk({
   onRegister: () => void
 }) {
   const empty = dayIsEmpty(day)
+  const mobile = isMobileShell()
 
   return (
     <>
@@ -527,7 +544,13 @@ function DayDesk({
         Dias do mês
       </button>
 
-      <header className="mb-5 flex items-end justify-between gap-4">
+      <header
+        className={
+          mobile
+            ? 'mb-5 flex flex-col gap-3'
+            : 'mb-5 flex items-end justify-between gap-4'
+        }
+      >
         <div>
           <p className="text-[12px] text-[#F0EFEC]/35">Financeiro · {formatDateKey(day.dateKey)}</p>
           <h1 className="mt-1 text-[22px] capitalize text-[#F0EFEC]/88">{weekdayLong(day.dateKey)}</h1>
@@ -535,13 +558,17 @@ function DayDesk({
         <button
           type="button"
           onClick={onRegister}
-          className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+          className={
+            mobile
+              ? 'h-10 w-full rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]'
+              : 'h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]'
+          }
         >
           {empty ? 'Registrar o dia' : 'Atualizar o dia'}
         </button>
       </header>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-4 gap-3'}>
         <MetricCard
           label="Venda do dia"
           value={day.saleCents ?? 0}
@@ -817,7 +844,8 @@ function MiniStat({
       <p className="text-[12px] text-[#F0EFEC]/38">{label}</p>
       <p
         className={cn(
-          'mt-1 text-[18px] tracking-tight',
+          'mt-1 tracking-tight break-words',
+          isMobileShell() ? 'text-[16px] leading-snug' : 'text-[18px]',
           tone === 'up' ? 'text-[#34D399]' : tone === 'down' ? 'text-red-300/85' : 'text-[#F0EFEC]/86'
         )}
       >
@@ -829,21 +857,23 @@ function MiniStat({
 }
 
 function FinanceSkeleton() {
+  const mobile = isMobileShell()
   return (
     <div className="grid flex-1 grid-rows-[auto_1fr] gap-3">
-      <div className="grid grid-cols-4 gap-3">
+      <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-4 gap-3'}>
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[148px] animate-pulse rounded-[16px] bg-white/4" />
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className={mobile ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-4 gap-3'}>
         <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
         <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
       </div>
-      <div className="min-h-[280px] animate-pulse rounded-[16px] bg-white/4" />
+      <div className={mobile ? 'h-[168px] animate-pulse rounded-[16px] bg-white/4' : 'min-h-[280px] animate-pulse rounded-[16px] bg-white/4'} />
+      {mobile ? <div className="h-[180px] animate-pulse rounded-[16px] bg-white/4" /> : null}
     </div>
   )
 }

@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { createPortal } from 'react-dom'
 import { AppSidebar } from '@/components/app-sidebar'
 import { KobbiDock, KobbiFab } from '@/components/kobbi-dock'
+import { MobileShellHeader } from '@/components/mobile-shell-header'
 import { ScopeLock } from '@/components/scope-lock'
 import { ShellMain } from '@/components/shell-main'
 import type { AuthUser } from '@/lib/auth'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import {
   clearSessionNavId,
+  getNavItem,
   readSessionNavId,
   writeSessionNavId,
   type NavId
@@ -33,6 +38,8 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
   const [switching, setSwitching] = useState(false)
   const [compact, setCompact] = useState(false)
   const [kobbiOpen, setKobbiOpen] = useState(false)
+  const [navOpen, setNavOpen] = useState(false)
+  const mobile = isMobileShell()
 
   useEffect(() => {
     let active = true
@@ -98,18 +105,28 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
 
   useEffect(() => {
     if (scope?.blocked || !user.canFilterStores) return
+    let active = true
     void operations()
       .listStores()
       .then((list) => {
-        setStores(list)
+        if (!active) return
+        const next = Array.isArray(list)
+          ? list.filter((store) => typeof store?.id === 'string' && typeof store?.name === 'string')
+          : []
+        setStores(next)
         setStoreId((current) => {
-          if (!current || list.some((store) => store.id === current)) return current
+          if (!current || next.some((store) => store.id === current)) return current
           setCurrentStoreId(null)
           void operations().setStorePreference(null)
           return null
         })
       })
-      .catch(() => setStores([]))
+      .catch(() => {
+        /* o StoreSwitcher tenta de novo sozinho */
+      })
+    return () => {
+      active = false
+    }
   }, [scope?.blocked, user.canFilterStores])
 
   function handleSignOut(): void {
@@ -138,10 +155,14 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
   }
 
   function navigate(id: NavId): void {
-    if (id === activeId && !employeeId) return
+    if (id === activeId && !employeeId) {
+      if (mobile) setNavOpen(false)
+      return
+    }
     setSwitching(true)
     setActiveId(id)
     setEmployeeId(null)
+    if (mobile) setNavOpen(false)
     window.setTimeout(() => setSwitching(false), 320)
   }
 
@@ -152,69 +173,114 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
     window.setTimeout(() => setSwitching(false), 320)
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 gap-1 overflow-hidden bg-[#111111] pt-1 pr-2 pb-2 font-medium">
-      <AppSidebar
+  const sidebar = (
+    <AppSidebar
+      user={user}
+      activeId={activeId}
+      stores={stores}
+      storeId={storeId}
+      loading={false}
+      compact={mobile ? false : compact}
+      className={mobile ? 'w-full overflow-visible pt-2 pb-1' : undefined}
+      onNavigate={navigate}
+      onSignOut={handleSignOut}
+      onStoreChange={(next) => {
+        setCurrentStoreId(next)
+        setStoreId(next)
+        setEmployeeId(null)
+        void operations().setStorePreference(next)
+      }}
+    />
+  )
+
+  const main = (
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      <ShellMain
         user={user}
         activeId={activeId}
-        stores={stores}
+        employeeId={employeeId}
         storeId={storeId}
-        loading={false}
-        compact={compact}
-        onNavigate={navigate}
-        onSignOut={handleSignOut}
-        onStoreChange={(next) => {
-          setCurrentStoreId(next)
-          setStoreId(next)
+        loading={switching}
+        fab={kobbiOpen ? null : <KobbiFab onOpen={() => setKobbiOpen(true)} />}
+        onOpenEmployee={openEmployee}
+        onCloseEmployee={() => {
           setEmployeeId(null)
-          void operations().setStorePreference(next)
+        }}
+        onOpenStoreOperation={(id) => {
+          setCurrentStoreId(id)
+          setStoreId(id)
+          setEmployeeId(null)
+          void operations().setStorePreference(id)
+          navigate('overview')
+        }}
+        onStoresChanged={() => {
+          void operations()
+            .listStores()
+            .then(setStores)
+            .catch(() => undefined)
+        }}
+        onOpenStoreTeam={(id) => {
+          setCurrentStoreId(id)
+          setStoreId(id)
+          setEmployeeId(null)
+          void operations().setStorePreference(id)
+          navigate('employees')
         }}
       />
-      <div className="relative flex min-h-0 min-w-0 flex-1">
-        <ShellMain
-          user={user}
-          activeId={activeId}
-          employeeId={employeeId}
-          storeId={storeId}
-          loading={switching}
-          fab={
-            kobbiOpen ? null : (
-              <KobbiFab onOpen={() => setKobbiOpen(true)} />
-            )
-          }
-          onOpenEmployee={openEmployee}
-          onCloseEmployee={() => {
-            setEmployeeId(null)
-          }}
-          onOpenStoreOperation={(id) => {
-            setCurrentStoreId(id)
-            setStoreId(id)
-            setEmployeeId(null)
-            void operations().setStorePreference(id)
-            navigate('overview')
-          }}
-          onStoresChanged={() => {
-            void operations()
-              .listStores()
-              .then(setStores)
-              .catch(() => undefined)
-          }}
-          onOpenStoreTeam={(id) => {
-            setCurrentStoreId(id)
-            setStoreId(id)
-            setEmployeeId(null)
-            void operations().setStorePreference(id)
-            navigate('employees')
-          }}
-        />
-        <KobbiDock
-          open={kobbiOpen}
-          storeId={storeId}
-          userName={user.displayName}
-          userRole={user.displayRole}
-          onClose={() => setKobbiOpen(false)}
-        />
+      <KobbiDock
+        open={kobbiOpen}
+        storeId={storeId}
+        userName={user.displayName}
+        userRole={user.displayRole}
+        onClose={() => setKobbiOpen(false)}
+      />
+    </div>
+  )
+
+  if (mobile) {
+    const title = employeeId ? 'Perfil' : getNavItem(activeId).label
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#111111] font-medium">
+        <MobileShellHeader title={title} onOpenNav={() => setNavOpen(true)} />
+        {createPortal(
+          <AnimatePresence>
+            {navOpen ? (
+              <motion.div
+                className="fixed inset-0 z-[200]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+              >
+                <button
+                  type="button"
+                  aria-label="Fechar menu"
+                  className="absolute inset-0 bg-black/55"
+                  onClick={() => setNavOpen(false)}
+                />
+                <motion.div
+                  initial={{ x: -320 }}
+                  animate={{ x: 0 }}
+                  exit={{ x: -320 }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+                  className="relative flex h-full w-[min(284px,86vw)] flex-col overflow-hidden bg-[#111111] pt-[var(--flow-safe-top)] pb-[var(--flow-safe-bottom)] shadow-[8px_0_40px_rgba(0,0,0,0.45)]"
+                >
+                  {sidebar}
+                </motion.div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>,
+          document.body
+        )}
+        {main}
       </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 gap-1 overflow-hidden bg-[#111111] pt-1 pr-2 pb-2 font-medium">
+      {sidebar}
+      {main}
     </div>
   )
 }

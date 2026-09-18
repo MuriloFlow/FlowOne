@@ -124,8 +124,8 @@ export function operationError(error: unknown): string {
   if (/is not a function|feche o flow por completo/i.test(cleaned)) {
     return 'Feche o FLOW por completo e abra de novo. A aba Usuários precisa desta atualização do launcher.'
   }
-  if (/fetch failed|network|econnreset|etimedout|enotfound/i.test(cleaned)) {
-    return 'Sem conexão com o banco agora. Tenta de novo em instantes.'
+  if (/failed to fetch|fetch failed|network|econnreset|etimedout|enotfound|sem conexão com o flow/i.test(cleaned)) {
+    return 'Sem conexão com o FLOW agora. Confira a internet e tente de novo.'
   }
   return cleaned || 'Não foi possível carregar os dados agora.'
 }

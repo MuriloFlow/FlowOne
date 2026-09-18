@@ -14,6 +14,7 @@ import { formatCount } from '@/lib/format'
 type CardsChartProps = {
   data: MonthPoint[]
   showGoal?: boolean
+  height?: number
 }
 
 function ChartTooltip({
@@ -52,18 +53,19 @@ function ChartTooltip({
   )
 }
 
-export function CardsChart({ data, showGoal = true }: CardsChartProps) {
+export function CardsChart({ data, showGoal = true, height = 280 }: CardsChartProps) {
   const points = data.map((item) => ({
     ...item,
     goalValue: item.goal
   }))
+  const compact = height < 220
 
   return (
-    <div className="h-[280px] w-full outline-none [&_*]:outline-none">
+    <div className="w-full outline-none [&_*]:outline-none" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={points}
-          margin={{ top: 8, right: 8, left: -18, bottom: 0 }}
+          margin={{ top: 8, right: 8, left: compact ? -12 : -18, bottom: 0 }}
           style={{ outline: 'none' }}
         >
           <defs>
@@ -77,14 +79,16 @@ export function CardsChart({ data, showGoal = true }: CardsChartProps) {
             dataKey="label"
             tickLine={false}
             axisLine={false}
-            tick={{ fill: 'rgba(240,239,236,0.32)', fontSize: 11 }}
-            dy={8}
+            tick={{ fill: 'rgba(240,239,236,0.32)', fontSize: compact ? 10 : 11 }}
+            dy={compact ? 4 : 8}
           />
           <YAxis
             tickLine={false}
             axisLine={false}
-            tick={{ fill: 'rgba(240,239,236,0.28)', fontSize: 11 }}
+            tick={{ fill: 'rgba(240,239,236,0.28)', fontSize: compact ? 10 : 11 }}
             allowDecimals={false}
+            width={compact ? 28 : 40}
+            tickCount={compact ? 3 : undefined}
           />
           <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(240,239,236,0.08)' }} />
           <Area

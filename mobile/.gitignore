@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+android/app/build
+android/.gradle
+android/app/.cxx
+android/local.properties
+ios/App/Pods
+ios/App/build
+ios/DerivedData
+*.log
+.DS_Store

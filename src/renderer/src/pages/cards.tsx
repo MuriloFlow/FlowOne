@@ -18,6 +18,7 @@ import {
   weekdayLabel,
   weekdayLong
 } from '@/lib/format'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
 import type { CardDayRow, CardRecord, CardsBoard, StoreOption } from '../../../shared/operations'
@@ -110,13 +111,20 @@ export function CardsPage({ storeId = null }: CardsPageProps) {
   }
 
   if (loading && !board) {
+    const mobile = isMobileShell()
     return (
       <div className="flex flex-col">
         <div className="mb-6 h-8 w-40 animate-pulse rounded-full bg-white/5" />
-        <div className="grid grid-cols-3 gap-3">
+        <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-3 gap-3'}>
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
+        </div>
+        <div className={mobile ? 'mt-3 grid grid-cols-2 gap-3' : 'mt-3 grid grid-cols-4 gap-3'}>
+          <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
+          <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
+          <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
+          <div className="h-[92px] animate-pulse rounded-[16px] bg-white/4" />
         </div>
       </div>
     )
@@ -277,29 +285,43 @@ function MonthDesk({
   onOpenDay: (dateKey: string) => void
   onInvalidate: () => void
 }) {
+  const mobile = isMobileShell()
   const overlayHint =
     board.cardTotalOverride === null
       ? board.monthGoal === null
-        ? 'Sem meta mensal no Card+'
-        : 'Progresso da meta mensal'
-      : `${formatCount(board.cardsThisMonthRegistered)} lançados · total ajustado ${formatCount(board.cardsThisMonth)}`
+        ? mobile
+          ? 'Sem meta no Card+'
+          : 'Sem meta mensal no Card+'
+        : mobile
+          ? 'Progresso da meta'
+          : 'Progresso da meta mensal'
+      : mobile
+        ? `${formatCount(board.cardsThisMonthRegistered)} lançados`
+        : `${formatCount(board.cardsThisMonthRegistered)} lançados · total ajustado ${formatCount(board.cardsThisMonth)}`
 
   return (
     <>
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
+      <header
+        className={mobile ? 'mb-4 flex flex-col gap-3' : 'mb-5 flex items-start justify-between gap-4'}
+      >
+        <div className="min-w-0">
           <h1 className="text-[22px] text-[#F0EFEC]/88">Cartões</h1>
           <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
             {board.storeName
-              ? `Métricas e registros de ${board.storeName}. Clique no dia para ver e registrar.`
-              : 'Clique no dia para ver, editar e registrar os cartões daquela data.'}
+              ? mobile
+                ? `Métricas de ${board.storeName}. Toque no dia para abrir.`
+                : `Métricas e registros de ${board.storeName}. Clique no dia para ver e registrar.`
+              : mobile
+                ? 'Toque no dia para ver e registrar os cartões.'
+                : 'Clique no dia para ver, editar e registrar os cartões daquela data.'}
           </p>
         </div>
         {board.canEdit ? <OptionsMenu onInvalidate={onInvalidate} /> : null}
       </header>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-3 gap-3'}>
         <MetricCard
+          compact={mobile}
           label="Cartões do dia"
           value={board.cardsToday}
           goal={board.todayGoal}
@@ -307,6 +329,7 @@ function MonthDesk({
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
+          compact={mobile}
           label="Cartões do mês"
           value={board.cardsThisMonth}
           goal={board.monthGoal}
@@ -314,6 +337,7 @@ function MonthDesk({
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
+          compact={mobile}
           label="Total registrado"
           value={board.cardsTotal}
           hint={board.storeName ? `Histórico de ${board.storeName}` : 'Histórico de todas as unidades'}
@@ -328,29 +352,77 @@ function MonthDesk({
         </p>
       ) : null}
 
-      <div className="mt-3 grid grid-cols-4 gap-3">
+      <div className={mobile ? 'mt-3 grid grid-cols-2 gap-2.5' : 'mt-3 grid grid-cols-4 gap-3'}>
         <MiniStat label="Pendentes" value={formatCount(board.pendingCount)} hint="Neste mês" />
         <MiniStat label="Ativados" value={formatCount(board.activatedCount)} hint="Neste mês" />
         <MiniStat
           label="Limite parado"
           value={formatCount(board.idleActivatedCount)}
-          hint="Ativado sem gasto neste mês"
+          hint={mobile ? 'Ativado sem gasto' : 'Ativado sem gasto neste mês'}
         />
         <MiniStat
           label="Limite disponível"
           value={formatBRLFromCents(board.availableCents)}
-          hint={`${formatBRLFromCents(board.usedCents)} gastos de ${formatBRLFromCents(board.limitCents)}`}
+          hint={
+            mobile
+              ? `${formatBRLFromCents(board.usedCents)} / ${formatBRLFromCents(board.limitCents)}`
+              : `${formatBRLFromCents(board.usedCents)} gastos de ${formatBRLFromCents(board.limitCents)}`
+          }
         />
       </div>
 
-      <section className="mt-3 mb-8 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-        <div className="flex items-center justify-between px-5 py-4">
+      <section className={cn('mt-3 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]', mobile ? 'mb-16' : 'mb-8')}>
+        <div
+          className={
+            mobile ? 'flex flex-col gap-3 px-4 py-4' : 'flex items-center justify-between px-5 py-4'
+          }
+        >
           <div>
             <h2 className="text-[15px] text-[#F0EFEC]/82">Dias do mês</h2>
-            <p className="mt-1 text-[12px] text-[#F0EFEC]/35">Todos os dias, mesmo com zero cartão.</p>
+            <p className="mt-1 text-[12px] text-[#F0EFEC]/35">
+              {mobile ? 'Toque no dia para abrir.' : 'Todos os dias, mesmo com zero cartão.'}
+            </p>
           </div>
           <MonthSwitcher value={monthKey} onChange={onMonthKey} />
         </div>
+        {mobile ? (
+          <div>
+            {board.days.map((day) => {
+              const sunday = isSunday(day.dateKey)
+              const todayRow = day.dateKey === today
+              return (
+                <button
+                  key={day.dateKey}
+                  type="button"
+                  onClick={() => onOpenDay(day.dateKey)}
+                  className={cn(
+                    'flex min-h-14 w-full items-center gap-3 border-t border-white/[0.03] px-4 py-2.5 text-left',
+                    todayRow ? 'bg-white/[0.03]' : null,
+                    sunday ? 'text-[#F0EFEC]/36' : 'text-[#F0EFEC]/72'
+                  )}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="capitalize text-[14px] text-[#F0EFEC]/85">{weekdayLabel(day.dateKey)}</span>
+                      <span className="text-[13px] text-[#F0EFEC]/50">{formatDateKey(day.dateKey)}</span>
+                      {todayRow ? (
+                        <span className="rounded-full bg-[#F0EFEC]/10 px-1.5 py-0.5 text-[10px] tracking-wide text-[#F0EFEC]/55 uppercase">
+                          Hoje
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-[#F0EFEC]/38">
+                      {formatCount(day.cards)} cartões
+                      {day.goal === null ? '' : ` · meta ${formatCount(day.goal)}`}
+                      {` · ${formatCount(day.pending)} pend.`}
+                    </span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-[#F0EFEC]/28" strokeWidth={1.8} />
+                </button>
+              )
+            })}
+          </div>
+        ) : (
         <table className="w-full text-left text-[13px]">
           <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
             <tr className="border-t border-white/[0.04]">
@@ -403,6 +475,7 @@ function MonthDesk({
             })}
           </tbody>
         </table>
+        )}
       </section>
     </>
   )
@@ -437,74 +510,108 @@ function DayDesk({
 }) {
   const idle = records.filter((card) => card.activated && card.amountUsedInCents === 0 && card.amountInCents > 0).length
   const available = Math.max(0, day.limitCents - day.usedCents)
+  const mobile = isMobileShell()
 
   return (
     <>
       <button
         type="button"
         onClick={onBack}
-        className="mb-4 flex items-center gap-2 text-[13px] text-[#F0EFEC]/40 hover:text-[#F0EFEC]/70"
+        className="mb-4 flex min-h-10 items-center gap-2 text-[13px] text-[#F0EFEC]/40 hover:text-[#F0EFEC]/70"
       >
         <ArrowLeft className="size-3.5" />
         Dias do mês
       </button>
 
-      <header className="mb-5 flex items-end justify-between gap-4">
-        <div>
+      <header
+        className={mobile ? 'mb-4 flex flex-col gap-3' : 'mb-5 flex items-end justify-between gap-4'}
+      >
+        <div className="min-w-0">
           <p className="text-[12px] text-[#F0EFEC]/35">Cartões · {formatDateKey(day.dateKey)}</p>
-          <h1 className="mt-1 text-[22px] capitalize text-[#F0EFEC]/88">{weekdayLong(day.dateKey)}</h1>
+          <h1 className={cn('mt-1 capitalize text-[#F0EFEC]/88', mobile ? 'text-[20px] leading-tight' : 'text-[22px]')}>
+            {mobile
+              ? `${weekdayLabel(day.dateKey)} · ${formatDateKey(day.dateKey)}`
+              : weekdayLong(day.dateKey)}
+          </h1>
         </div>
         <button
           type="button"
           onClick={onCreate}
-          className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+          className={
+            mobile
+              ? 'flex h-11 w-full shrink-0 items-center justify-center rounded-[10px] bg-[#F0EFEC] text-[14px] text-[#111111]'
+              : 'h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]'
+          }
         >
           Registrar neste dia
         </button>
       </header>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-3 gap-3'}>
         <MetricCard
+          compact={mobile}
           label="Cartões do dia"
           value={day.cards}
           goal={day.goal}
-          hint={day.goal === null ? 'Sem meta deste dia no Card+' : 'Progresso da meta diária'}
+          hint={day.goal === null ? (mobile ? 'Sem meta neste dia' : 'Sem meta deste dia no Card+') : 'Progresso da meta diária'}
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
+          compact={mobile}
           label="Pendentes"
           value={day.pending}
-          hint={`${formatCount(day.activated)} ativados · ${formatCount(idle)} parados`}
+          hint={
+            mobile
+              ? `${formatCount(day.activated)} ativ. · ${formatCount(idle)} parados`
+              : `${formatCount(day.activated)} ativados · ${formatCount(idle)} parados`
+          }
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
         />
         <MetricCard
+          compact={mobile}
           label="Limite disponível"
           value={available}
           money
-          hint={`${formatBRLFromCents(day.usedCents)} gastos de ${formatBRLFromCents(day.limitCents)}`}
+          hint={
+            mobile
+              ? `${formatBRLFromCents(day.usedCents)} / ${formatBRLFromCents(day.limitCents)}`
+              : `${formatBRLFromCents(day.usedCents)} gastos de ${formatBRLFromCents(day.limitCents)}`
+          }
           icon={<CreditCard className="size-4" strokeWidth={1.7} />}
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-3">
+      <div className={mobile ? 'mt-3 grid grid-cols-2 gap-2.5' : 'mt-3 grid grid-cols-3 gap-3'}>
         <MiniStat label="Digitações" value={formatCount(day.digitacoes)} />
         <MiniStat label="Ativados" value={formatCount(day.activated)} />
-        <MiniStat
-          label="Limite parado"
-          value={formatCount(idle)}
-          hint="Ativado sem gasto neste dia"
-        />
+        <div className={mobile ? 'col-span-2' : undefined}>
+          <MiniStat
+            label="Limite parado"
+            value={formatCount(idle)}
+            hint={mobile ? 'Ativado sem gasto' : 'Ativado sem gasto neste dia'}
+          />
+        </div>
       </div>
 
-      <section className="mt-3 mb-8 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              value={query}
-              onChange={(event) => onQuery(event.target.value)}
-              placeholder="Buscar cliente ou funcionário"
-              className="h-8 w-[240px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
-            />
+      <section className={cn('mt-3 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]', mobile ? 'mb-16' : 'mb-8')}>
+        <div
+          className={
+            mobile
+              ? 'flex flex-col gap-2 px-3 py-3'
+              : 'flex flex-wrap items-center justify-between gap-3 px-4 py-3'
+          }
+        >
+          <Input
+            value={query}
+            onChange={(event) => onQuery(event.target.value)}
+            placeholder={mobile ? 'Buscar cliente' : 'Buscar cliente ou funcionário'}
+            className={
+              mobile
+                ? 'h-9 w-full rounded-[8px] border-white/[0.06] bg-transparent text-[13px]'
+                : 'h-8 w-[240px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]'
+            }
+          />
+          <div className={mobile ? '-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5' : 'flex flex-wrap items-center gap-2'}>
             <Chip active={status === 'all'} onClick={() => onStatus('all')}>
               Todos
             </Chip>
@@ -517,10 +624,10 @@ function DayDesk({
             <Chip active={status === 'idle'} onClick={() => onStatus('idle')}>
               Limite parado
             </Chip>
+            <span className="ml-auto shrink-0 self-center text-[12px] text-[#F0EFEC]/32">
+              {formatCount(records.length)} {records.length === 1 ? 'cartão' : 'cartões'}
+            </span>
           </div>
-          <span className="text-[12px] text-[#F0EFEC]/32">
-            {formatCount(records.length)} {records.length === 1 ? 'cartão' : 'cartões'}
-          </span>
         </div>
         {records.length === 0 ? (
           <EmptyState
@@ -530,6 +637,47 @@ function DayDesk({
             actionLabel="Registrar o primeiro"
             onAction={onCreate}
           />
+        ) : mobile ? (
+          <div className="pb-1">
+            {records.map((card) => (
+              <div key={card.id} className="border-t border-white/[0.03] px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] text-[#F0EFEC]/85">{card.clientName}</p>
+                    <p className="mt-0.5 truncate text-[12px] text-[#F0EFEC]/38">
+                      {card.operatorName}
+                      {card.storeName ? ` · ${card.storeName}` : ''}
+                    </p>
+                  </div>
+                  <StatusBadge card={card} />
+                </div>
+                <p className="mt-2 text-[12px] leading-snug text-[#F0EFEC]/42">
+                  {formatBRLFromCents(card.amountInCents)}
+                  <span className="text-[#F0EFEC]/24"> · </span>
+                  gasto {formatBRLFromCents(card.amountUsedInCents)}
+                  <span className="text-[#F0EFEC]/24"> · </span>
+                  {formatBRLFromCents(card.availableInCents)}
+                </p>
+                <div className="mt-2 flex justify-end gap-1">
+                  <IconButton
+                    label={card.activated ? 'Marcar pendente' : 'Ativar'}
+                    onClick={() => onToggle(card)}
+                  >
+                    {card.activated ? 'Pend.' : 'Ativar'}
+                  </IconButton>
+                  <IconButton label="Editar" onClick={() => onEdit(card)}>
+                    <Pencil className="size-3.5" strokeWidth={1.7} />
+                  </IconButton>
+                  <IconButton label="Transferir" onClick={() => onTransfer(card)}>
+                    <ArrowRightLeft className="size-3.5" strokeWidth={1.7} />
+                  </IconButton>
+                  <IconButton label="Excluir" onClick={() => onRemove(card)}>
+                    <Trash2 className="size-3.5" strokeWidth={1.7} />
+                  </IconButton>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="overflow-auto">
             <table className="w-full text-left text-[13px]">
@@ -591,6 +739,7 @@ function DayDesk({
 function OptionsMenu({ onInvalidate }: { onInvalidate: () => void }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const mobile = isMobileShell()
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
@@ -608,11 +757,15 @@ function OptionsMenu({ onInvalidate }: { onInvalidate: () => void }) {
   }, [])
 
   return (
-    <div ref={rootRef} className="relative shrink-0">
+    <div ref={rootRef} className={cn('relative shrink-0', mobile && 'w-full')}>
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-white/[0.08] bg-white/[0.03] px-3 text-[13px] text-[#F0EFEC]/70 hover:bg-white/[0.05] hover:text-[#F0EFEC]/88"
+        className={
+          mobile
+            ? 'inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 text-[14px] text-[#F0EFEC]/70'
+            : 'inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-white/[0.08] bg-white/[0.03] px-3 text-[13px] text-[#F0EFEC]/70 hover:bg-white/[0.05] hover:text-[#F0EFEC]/88'
+        }
       >
         Opções
         <ChevronDown className={cn('size-3.5 text-[#F0EFEC]/40 transition-transform', open ? 'rotate-180' : null)} />
@@ -750,11 +903,28 @@ function InvalidateCardsDialog({
 }
 
 function MiniStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  const mobile = isMobileShell()
   return (
-    <article className="flex h-full min-h-[92px] flex-col rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-4 py-3">
-      <p className="text-[12px] text-[#F0EFEC]/38">{label}</p>
-      <p className="mt-1 text-[18px] tracking-tight text-[#F0EFEC]/86">{value}</p>
-      {hint ? <p className="mt-auto pt-2 text-[11px] leading-snug text-[#F0EFEC]/30">{hint}</p> : null}
+    <article
+      className={cn(
+        'flex h-full min-w-0 flex-col rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
+        mobile ? 'min-h-[88px] px-3.5 py-3' : 'min-h-[92px] px-4 py-3'
+      )}
+    >
+      <p className="text-[12px] leading-snug text-[#F0EFEC]/38">{label}</p>
+      <p
+        className={cn(
+          'mt-1 tracking-tight break-words text-[#F0EFEC]/86',
+          mobile ? 'text-[16px] leading-snug' : 'text-[18px]'
+        )}
+      >
+        {value}
+      </p>
+      {hint ? (
+        <p className={cn('mt-auto pt-2 leading-snug text-[#F0EFEC]/30', mobile ? 'line-clamp-2 text-[11px]' : 'text-[11px]')}>
+          {hint}
+        </p>
+      ) : null}
     </article>
   )
 }
@@ -765,7 +935,7 @@ function Chip({ active, children, onClick }: { active: boolean; children: string
       type="button"
       onClick={onClick}
       className={cn(
-        'h-8 rounded-[8px] px-2.5 text-[12px]',
+        'h-8 shrink-0 whitespace-nowrap rounded-[8px] px-2.5 text-[12px]',
         active ? 'bg-white/[0.08] text-[#F0EFEC]/80' : 'text-[#F0EFEC]/40 hover:bg-white/[0.04]'
       )}
     >

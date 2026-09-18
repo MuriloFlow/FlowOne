@@ -686,7 +686,10 @@ export function registerOperationsIpc(): void {
       collaboratorId: asString(body.collaboratorId, 'Colaborador'),
       kind: kindRaw,
       justified: typeof body.justified === 'boolean' ? body.justified : undefined,
-      note: typeof body.note === 'string' ? body.note : null
+      note: typeof body.note === 'string' ? body.note : null,
+      photos: Array.isArray(body.photos)
+        ? body.photos.filter((item): item is string => typeof item === 'string')
+        : undefined
     }
     const scoped = resolveStoreFilter(actor, actor.canViewAll ? input.storeId : null)
     if (scoped && input.storeId !== scoped) {

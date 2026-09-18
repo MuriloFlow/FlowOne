@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Flag, LayoutDashboard, Settings, Users } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Eye, Flag, LayoutDashboard, Settings, Users } from 'lucide-react'
 import { StoreDialog } from '@/components/store-dialog'
+import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ValuePending } from '@/components/value-pending'
 import { formatBRLFromCents, formatCount } from '@/lib/format'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
-import type { StoreBoard, StoreBoardItem } from '../../../shared/operations'
+import type { StoreBoard, StoreBoardItem, StorePerson } from '../../../shared/operations'
 
 type FilterId = 'all' | 'flagged' | 'gap'
 
@@ -25,6 +27,8 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<StoreBoardItem | null>(null)
+  const [peek, setPeek] = useState<StoreBoardItem | null>(null)
+  const mobile = isMobileShell()
 
   useEffect(() => {
     let active = true
@@ -102,7 +106,7 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="mb-6 h-8 w-40 animate-pulse rounded-full bg-white/5" />
-        <div className="mb-3 grid grid-cols-4 gap-3">
+        <div className={isMobileShell() ? 'mb-3 grid grid-cols-2 gap-3' : 'mb-3 grid grid-cols-4 gap-3'}>
           <div className="h-20 animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-20 animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-20 animate-pulse rounded-[16px] bg-white/4" />
@@ -115,20 +119,30 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="mb-5 flex items-end justify-between gap-4">
-        <div>
+      <header
+        className={
+          mobile ? 'mb-4 flex flex-col gap-3' : 'mb-5 flex items-end justify-between gap-4'
+        }
+      >
+        <div className="min-w-0">
           <h1 className="text-[22px] text-[#F0EFEC]/88">Unidades</h1>
           <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
             {storeId
               ? 'Mesa da unidade selecionada: equipe, metas do Card+ e liderança FLOW.'
-              : 'Todas as lojas do Card+, com gerentes, supervisor e acompanhamento da operação.'}
+              : mobile
+                ? 'Toque no olho para ver equipe, gerência e venda da loja.'
+                : 'Todas as lojas do Card+, com gerentes, supervisor e acompanhamento da operação.'}
           </p>
         </div>
         {board?.canCreate ? (
           <button
             type="button"
             onClick={openCreate}
-            className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+            className={
+              mobile
+                ? 'flex h-11 w-full shrink-0 items-center justify-center rounded-[10px] bg-[#F0EFEC] text-[14px] text-[#111111]'
+                : 'h-8 shrink-0 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]'
+            }
           >
             Cadastrar unidade
           </button>
@@ -142,7 +156,7 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
       ) : null}
 
       {board ? (
-        <div className="mb-3 grid grid-cols-4 gap-3">
+        <div className={mobile ? 'mb-3 grid grid-cols-2 gap-3' : 'mb-3 grid grid-cols-4 gap-3'}>
           <SummaryCard label="Unidades" value={formatCount(board.storeCount)} />
           <SummaryCard label="Equipe ativa" value={formatCount(board.employeeCount)} />
           <SummaryCard label="Cartões no mês" value={formatCount(board.cardsThisMonth)} />
@@ -157,30 +171,101 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
       {!board || board.stores.length === 0 ? (
         <EmptyStores canCreate={Boolean(board?.canCreate)} onCreate={openCreate} />
       ) : (
-        <section className="mb-8 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar unidade, gerente ou supervisor"
-                className="h-8 w-[260px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
-              />
-              <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
-                Todas
-              </FilterChip>
-              <FilterChip active={filter === 'gap'} onClick={() => setFilter('gap')}>
-                Sem liderança
-              </FilterChip>
-              <FilterChip active={filter === 'flagged'} onClick={() => setFilter('flagged')}>
-                Atenção
-              </FilterChip>
+        <section
+          className={cn(
+            'flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
+            !mobile && 'mb-8'
+          )}
+        >
+          {mobile ? (
+            <div className="flex flex-col gap-2.5 px-3 py-3">
+              <div className="flex items-center gap-3">
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Buscar unidade"
+                  className="h-9 min-w-0 flex-1 rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
+                />
+                <span className="shrink-0 text-[12px] text-[#F0EFEC]/32">
+                  {formatCount(rows.length)}
+                </span>
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto">
+                <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
+                  Todas
+                </FilterChip>
+                <FilterChip active={filter === 'gap'} onClick={() => setFilter('gap')}>
+                  Sem liderança
+                </FilterChip>
+                <FilterChip active={filter === 'flagged'} onClick={() => setFilter('flagged')}>
+                  Atenção
+                </FilterChip>
+              </div>
             </div>
-            <span className="text-[12px] text-[#F0EFEC]/32">
-              {formatCount(rows.length)} {rows.length === 1 ? 'unidade' : 'unidades'}
-            </span>
-          </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Buscar unidade, gerente ou supervisor"
+                  className="h-8 w-[260px] rounded-[8px] border-white/[0.06] bg-transparent text-[13px]"
+                />
+                <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
+                  Todas
+                </FilterChip>
+                <FilterChip active={filter === 'gap'} onClick={() => setFilter('gap')}>
+                  Sem liderança
+                </FilterChip>
+                <FilterChip active={filter === 'flagged'} onClick={() => setFilter('flagged')}>
+                  Atenção
+                </FilterChip>
+              </div>
+              <span className="text-[12px] text-[#F0EFEC]/32">
+                {formatCount(rows.length)} {rows.length === 1 ? 'unidade' : 'unidades'}
+              </span>
+            </div>
+          )}
 
+          {mobile ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {rows.map((store) => (
+                <div
+                  key={store.id}
+                  className="flex min-h-14 items-center gap-2 border-t border-white/[0.03] px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[14px] text-[#F0EFEC]/85">{store.name}</span>
+                      {store.flagged ? (
+                        <Flag className="size-3 shrink-0 text-amber-300/80" strokeWidth={1.8} />
+                      ) : null}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center">
+                    <IconButton label="Ver detalhes" onClick={() => setPeek(store)}>
+                      <Eye className="size-3.5" strokeWidth={1.7} />
+                    </IconButton>
+                    {onOpenOperation ? (
+                      <IconButton label="Ver operação" onClick={() => onOpenOperation(store.id)}>
+                        <LayoutDashboard className="size-3.5" strokeWidth={1.7} />
+                      </IconButton>
+                    ) : null}
+                    {onOpenTeam ? (
+                      <IconButton label="Ver equipe" onClick={() => onOpenTeam(store.id)}>
+                        <Users className="size-3.5" strokeWidth={1.7} />
+                      </IconButton>
+                    ) : null}
+                    {board?.canEdit ? (
+                      <IconButton label="Editar mesa" onClick={() => openEdit(store)}>
+                        <Settings className="size-3.5" strokeWidth={1.7} />
+                      </IconButton>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full text-left">
               <thead className="sticky top-0 bg-[#1A1A1A] text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
@@ -263,8 +348,65 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
+
+      <Dialog
+        open={Boolean(peek)}
+        title={peek?.name ?? 'Unidade'}
+        description={
+          peek
+            ? peek.internalCode
+              ? `Código ${peek.internalCode}`
+              : 'Detalhes da mesa no FLOW e no Card+'
+            : undefined
+        }
+        onClose={() => setPeek(null)}
+      >
+        {peek ? (
+          <div className="max-h-[min(70vh,480px)] space-y-0 overflow-y-auto px-5 pb-5">
+            <PeekRow label="Equipe" value={formatCount(peek.employeeCount)} />
+            <PeekRow
+              label="Cartões no mês"
+              value={
+                peek.monthGoal === null
+                  ? formatCount(peek.cardsThisMonth)
+                  : `${formatCount(peek.cardsThisMonth)} / ${formatCount(peek.monthGoal)}`
+              }
+            />
+            <PeekRow
+              label="Venda no mês"
+              value={
+                peek.salesThisMonthCents === 0 && peek.monthSalesGoalCents === null ? (
+                  <ValuePending size="sm" />
+                ) : (
+                  formatBRLFromCents(peek.salesThisMonthCents)
+                )
+              }
+            />
+            <PeekRow label="Gerente geral" value={personName(peek.generalManager)} />
+            <PeekRow label="Supervisor" value={personName(peek.supervisor)} />
+            <PeekRow
+              label="Gerentes"
+              value={
+                peek.managers.length === 0
+                  ? null
+                  : peek.managers.map((item) => item.name).join(', ')
+              }
+            />
+            <PeekRow label="Líder de operação" value={personName(peek.operationLead)} />
+            <PeekRow
+              label="Login operacional"
+              value={peek.hasOperationalAccess ? 'Com login' : 'Sem login operacional'}
+            />
+            {peek.missingLeadership ? (
+              <PeekRow label="Liderança" value="Incompleta" />
+            ) : null}
+            {peek.flagged ? <PeekRow label="Atenção" value="Unidade sinalizada" /> : null}
+          </div>
+        ) : null}
+      </Dialog>
 
       <StoreDialog
         open={dialogOpen}
@@ -279,10 +421,25 @@ export function StoresPage({ storeId = null, onOpenOperation, onOpenTeam, onDesk
   )
 }
 
+function personName(person: StorePerson | null): string | null {
+  return person?.name ?? null
+}
+
+function PeekRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-white/[0.04] py-3 last:border-0">
+      <span className="shrink-0 text-[13px] text-[#F0EFEC]/40">{label}</span>
+      <span className="min-w-0 text-right text-[13px] leading-snug text-[#F0EFEC]/78">
+        {value === null || value === '' ? <span className="text-[#F0EFEC]/28">—</span> : value}
+      </span>
+    </div>
+  )
+}
+
 function SummaryCard({ label, value, warn = false }: { label: string; value: string; warn?: boolean }) {
   return (
     <article className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-4 py-3">
-      <p className="text-[12px] text-[#F0EFEC]/38">{label}</p>
+      <p className="text-[12px] leading-snug text-[#F0EFEC]/38">{label}</p>
       <p className={cn('mt-1 text-[22px] tracking-tight', warn ? 'text-amber-200/85' : 'text-[#F0EFEC]/88')}>
         {value}
       </p>
@@ -304,7 +461,7 @@ function FilterChip({
       type="button"
       onClick={onClick}
       className={cn(
-        'h-8 rounded-[8px] px-2.5 text-[12px] transition-colors',
+        'h-8 shrink-0 whitespace-nowrap rounded-[8px] px-2.5 text-[12px] transition-colors',
         active ? 'bg-white/[0.08] text-[#F0EFEC]/80' : 'text-[#F0EFEC]/40 hover:bg-white/[0.04] hover:text-[#F0EFEC]/60'
       )}
     >
@@ -319,7 +476,7 @@ function IconButton({
   onClick
 }: {
   label: string
-  children: React.ReactNode
+  children: ReactNode
   onClick: () => void
 }) {
   return (
@@ -327,7 +484,7 @@ function IconButton({
       type="button"
       title={label}
       onClick={onClick}
-      className="flex size-8 items-center justify-center rounded-[8px] text-[#F0EFEC]/38 transition-colors hover:bg-white/[0.05] hover:text-[#F0EFEC]/75"
+      className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[#F0EFEC]/38 transition-colors hover:bg-white/[0.05] hover:text-[#F0EFEC]/75"
     >
       {children}
     </button>

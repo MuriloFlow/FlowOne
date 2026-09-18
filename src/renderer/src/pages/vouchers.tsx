@@ -5,6 +5,7 @@ import { AnimatedMoney } from '@/components/animated-number'
 import { MoneyCell } from '@/components/money-cell'
 import { initials } from '@/lib/identity'
 import { formatBRLFromCents } from '@/lib/format'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
 import {
@@ -24,6 +25,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const mobile = isMobileShell()
 
   async function load(): Promise<VoucherBoard> {
     const next = await operations().listVouchers(storeId)
@@ -117,7 +119,10 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     return (
       <div className="flex flex-col">
         <div className="mb-6 h-8 w-56 animate-pulse rounded-full bg-white/5" />
-        <div className="grid grid-cols-3 gap-3">
+        <div
+          data-mobile-stack={mobile ? '' : undefined}
+          className={mobile ? 'flex flex-col gap-3' : 'grid grid-cols-3 gap-3'}
+        >
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
           <div className="h-[132px] animate-pulse rounded-[16px] bg-white/4" />
@@ -133,9 +138,13 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         <h1 className="text-[22px] text-[#F0EFEC]/88">Vales e pagamentos</h1>
         <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
           {storeId
-            ? 'Vales somente da unidade selecionada.'
+            ? mobile
+              ? 'Vales da unidade selecionada.'
+              : 'Vales somente da unidade selecionada.'
             : 'Vale-almoço e vale-transporte por funcionário.'}{' '}
-          Status pago volta para pendente todo domingo à 00:00.
+          {mobile
+            ? 'Pago volta a pendente todo domingo.'
+            : 'Status pago volta para pendente todo domingo à 00:00.'}
           {board ? (
             <span className="text-[#F0EFEC]/28"> Semana {formatVoucherWeekLabel(board.periodKey)}.</span>
           ) : null}
@@ -148,20 +157,26 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-3 gap-3">
+      <div
+        data-mobile-stack={mobile ? '' : undefined}
+        className={mobile ? 'flex flex-col gap-3' : 'grid grid-cols-3 gap-3'}
+      >
         <MoneyCard
-          label="Total vale-almoço"
+          compact={mobile}
+          label={mobile ? 'Vale-almoço' : 'Total vale-almoço'}
           cents={board?.lunchTotalCents ?? 0}
-          hint="Soma de todos os funcionários visíveis"
+          hint={mobile ? 'Soma da equipe visível' : 'Soma de todos os funcionários visíveis'}
           icon={<Utensils className="size-4" strokeWidth={1.7} />}
         />
         <MoneyCard
-          label="Total vale-transporte"
+          compact={mobile}
+          label={mobile ? 'Vale-transporte' : 'Total vale-transporte'}
           cents={board?.transportTotalCents ?? 0}
-          hint="Soma de todos os funcionários visíveis"
+          hint={mobile ? 'Soma da equipe visível' : 'Soma de todos os funcionários visíveis'}
           icon={<Bus className="size-4" strokeWidth={1.7} />}
         />
         <MoneyCard
+          compact={mobile}
           label="Total geral"
           cents={board?.grandTotalCents ?? 0}
           hint="Almoço + transporte"
@@ -177,16 +192,73 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
           </p>
         </div>
       ) : (
-        <div className="mt-4 mb-[4.5rem] space-y-3">
+        <div className={cn('mt-4 space-y-3', mobile ? 'mb-16' : 'mb-[4.5rem]')}>
           {board.groups.map((group) => (
             <section key={group.id} className="overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
-              <div className="flex items-center justify-between px-5 py-3">
+              <div className={cn('flex items-center justify-between', mobile ? 'px-4 py-3' : 'px-5 py-3')}>
                 <h2 className="text-[13px] tracking-wide text-[#F0EFEC]/45 uppercase">{group.label}</h2>
                 <span className="text-[12px] text-[#F0EFEC]/28">
                   {group.rows.length} {group.rows.length === 1 ? 'funcionário' : 'funcionários'}
                 </span>
               </div>
-              <div className="overflow-x-auto">
+              {mobile ? (
+                <div>
+                  {group.rows.map((row) => (
+                    <div key={row.collaboratorId} className="border-t border-white/[0.03] px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[12px] text-[#F0EFEC]/55">
+                          {initials(row.name)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[14px] text-[#F0EFEC]/85">{row.name}</p>
+                          <p className="mt-0.5 truncate text-[12px] text-[#F0EFEC]/38">
+                            {storeId ? row.roleLabel : `${row.roleLabel} · ${row.storeName}`}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={busyId === row.collaboratorId}
+                          onClick={() =>
+                            void patch(row, { status: row.status === 'PAGO' ? 'PENDENTE' : 'PAGO' })
+                          }
+                          className={cn(
+                            'inline-flex h-7 shrink-0 items-center rounded-full px-2.5 text-[12px] transition-colors disabled:opacity-50',
+                            row.status === 'PAGO'
+                              ? 'bg-[#34D399]/12 text-[#34D399]'
+                              : 'bg-[#F0EFEC]/6 text-[#F0EFEC]/50'
+                          )}
+                        >
+                          {row.status === 'PAGO' ? 'Pago' : 'Pendente'}
+                        </button>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="min-w-0 rounded-[10px] border border-white/[0.04] bg-white/[0.02] px-3 py-2">
+                          <p className="text-[11px] text-[#F0EFEC]/38">Almoço</p>
+                          <div className="mt-1">
+                            <MoneyCell
+                              cents={row.lunchCents}
+                              onSave={(lunchCents) => patch(row, { lunchCents })}
+                            />
+                          </div>
+                        </div>
+                        <div className="min-w-0 rounded-[10px] border border-white/[0.04] bg-white/[0.02] px-3 py-2">
+                          <p className="text-[11px] text-[#F0EFEC]/38">Transporte</p>
+                          <div className="mt-1">
+                            <MoneyCell
+                              cents={row.transportCents}
+                              onSave={(transportCents) => patch(row, { transportCents })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-[12px] text-[#F0EFEC]/40">
+                        Total {formatBRLFromCents(row.dayTotalCents)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
                     <tr className="border-y border-white/[0.04]">
@@ -254,7 +326,8 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+                </div>
+              )}
             </section>
           ))}
         </div>
@@ -267,25 +340,46 @@ function MoneyCard({
   label,
   cents,
   hint,
-  icon
+  icon,
+  compact = false
 }: {
   label: string
   cents: number
   hint: string
   icon: ReactNode
+  compact?: boolean
 }) {
   return (
-    <article className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <p className="text-[13px] text-[#F0EFEC]/42">{label}</p>
-        <span className="flex size-8 items-center justify-center rounded-full bg-white/[0.04] text-[#F0EFEC]/35">
+    <article
+      className={cn(
+        'min-w-0 rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
+        compact ? 'px-4 py-3.5' : 'px-5 py-4'
+      )}
+    >
+      <div className={cn('flex items-start justify-between', compact ? 'mb-3 gap-2' : 'mb-5 gap-3')}>
+        <p className={cn('min-w-0 text-[#F0EFEC]/42', compact ? 'text-[12px] leading-snug' : 'text-[13px]')}>
+          {label}
+        </p>
+        <span
+          className={cn(
+            'flex shrink-0 items-center justify-center rounded-full bg-white/[0.04] text-[#F0EFEC]/35',
+            compact ? 'size-7' : 'size-8'
+          )}
+        >
           {icon}
         </span>
       </div>
-      <p className="text-[28px] leading-none tracking-tight text-[#F0EFEC]/92">
+      <p
+        className={cn(
+          'leading-none tracking-tight text-[#F0EFEC]/92',
+          compact ? 'text-[22px]' : 'text-[28px]'
+        )}
+      >
         <AnimatedMoney cents={cents} />
       </p>
-      <p className="mt-3 text-[12px] text-[#F0EFEC]/32">{hint}</p>
+      <p className={cn('text-[#F0EFEC]/32', compact ? 'mt-2 text-[11px] leading-snug' : 'mt-3 text-[12px]')}>
+        {hint}
+      </p>
     </article>
   )
 }

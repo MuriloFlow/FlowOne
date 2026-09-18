@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string
   readonly VITE_SUPABASE_ANON_KEY: string
+  readonly VITE_FLOW_OPS_URL?: string
+  readonly VITE_FLOW_SHELL?: string
 }
 
 interface ImportMeta {

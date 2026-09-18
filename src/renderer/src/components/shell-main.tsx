@@ -12,7 +12,9 @@ import { StoresPage } from '@/pages/stores'
 import { UsersPage } from '@/pages/users'
 import { VouchersPage } from '@/pages/vouchers'
 import type { AuthUser } from '@/lib/auth'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { DEFAULT_NAV_ID, getNavItem, type NavId } from '@/lib/navigation'
+import { cn } from '@/lib/utils'
 
 type ShellMainProps = {
   user: AuthUser
@@ -62,7 +64,9 @@ export function ShellMain({
   onStoresChanged
 }: ShellMainProps) {
   const current = getNavItem(activeId)
+  const mobile = isMobileShell()
   const showChrome =
+    !mobile &&
     activeId !== 'overview' &&
     activeId !== 'vouchers' &&
     activeId !== 'finance' &&
@@ -78,13 +82,21 @@ export function ShellMain({
       initial={{ opacity: 0, y: 12, scale: 0.985 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.55, delay: 0.05, ease }}
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#151515]"
+      className={cn(
+        'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#151515]',
+        mobile && 'mx-2 mb-2'
+      )}
       style={{ borderRadius: 18 }}
     >
       {loading ? (
         <MainSkeleton />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-7 py-6">
+        <div
+          className={cn(
+            'flex min-h-0 flex-1 flex-col overflow-y-auto',
+            mobile ? 'px-4 py-4' : 'px-7 py-6'
+          )}
+        >
           {showChrome ? (
             <nav className="mb-6 flex items-center gap-2 text-[13px] font-medium">
               {activeId === DEFAULT_NAV_ID ? (

@@ -13,6 +13,7 @@ import { formatBRLFromCents } from '@/lib/format'
 
 type SalesChartProps = {
   data: FinanceMonthPoint[]
+  height?: number
 }
 
 function ChartTooltip({
@@ -51,19 +52,20 @@ function ChartTooltip({
   )
 }
 
-export function SalesChart({ data }: SalesChartProps) {
+export function SalesChart({ data, height = 280 }: SalesChartProps) {
   const points = data.map((item) => ({
     ...item,
     sales: item.salesCents / 100,
     goalValue: item.goalCents === null ? null : item.goalCents / 100
   }))
+  const compact = height < 220
 
   return (
-    <div className="h-[280px] w-full outline-none [&_*]:outline-none">
+    <div className="w-full outline-none [&_*]:outline-none" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={points}
-          margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
+          margin={{ top: 8, right: 8, left: compact ? 0 : -8, bottom: 0 }}
           style={{ outline: 'none' }}
         >
           <defs>
@@ -77,16 +79,25 @@ export function SalesChart({ data }: SalesChartProps) {
             dataKey="label"
             tickLine={false}
             axisLine={false}
-            tick={{ fill: 'rgba(240,239,236,0.32)', fontSize: 11 }}
+            interval={compact ? 1 : 0}
+            tick={{ fill: 'rgba(240,239,236,0.32)', fontSize: compact ? 10 : 11 }}
             dy={8}
           />
           <YAxis
             tickLine={false}
             axisLine={false}
-            tick={{ fill: 'rgba(240,239,236,0.28)', fontSize: 11 }}
-            tickFormatter={(value: number) =>
-              value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
-            }
+            tickCount={compact ? 3 : 5}
+            width={compact ? 56 : 60}
+            tick={{ fill: 'rgba(240,239,236,0.28)', fontSize: compact ? 10 : 11 }}
+            tickFormatter={(value: number) => {
+              if (compact && value >= 1_000_000) {
+                return `${(value / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`
+              }
+              if (compact && value >= 1000) {
+                return `${Math.round(value / 1000).toLocaleString('pt-BR')} mil`
+              }
+              return value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+            }}
           />
           <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(240,239,236,0.08)' }} />
           <Area
