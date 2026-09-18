@@ -3,6 +3,7 @@ import logo from '@/assets/logo.png'
 import { StoreSwitcher } from '@/components/store-switcher'
 import { UserMenu } from '@/components/user-menu'
 import type { AuthUser } from '@/lib/auth'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { NAV_ITEMS, visibleNavItems, type NavId } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import type { StoreOption } from '../../../shared/operations'
@@ -35,23 +36,26 @@ export function AppSidebar({
   onStoreChange
 }: AppSidebarProps) {
   const items = visibleNavItems(user.role)
+  const mobile = isMobileShell()
   return (
     <aside
       className={cn(
         'flex h-full min-h-0 shrink-0 flex-col overflow-visible bg-transparent px-3 pb-3',
-        compact ? 'w-[76px] pt-3' : 'w-[284px] pt-4',
+        compact ? 'w-[76px]' : 'w-[284px]',
+        mobile ? 'pt-4' : 'pt-0',
         className
       )}
     >
       <div
         className={cn(
-          'mb-4 flex h-12 shrink-0 items-center overflow-visible',
-          compact ? 'justify-center px-0' : 'px-2'
+          'flex shrink-0 items-center overflow-visible',
+          mobile ? 'mb-4 h-12' : 'mb-5 h-8',
+          compact ? 'justify-center px-0' : mobile ? 'px-2' : 'px-3'
         )}
       >
         {loading ? (
-          <div className="h-5 w-[5.5rem] animate-pulse rounded-md bg-white/6" />
-        ) : (
+          <div className={cn('animate-pulse rounded-md bg-white/6', mobile ? 'h-5 w-[5.5rem]' : 'h-[18px] w-20')} />
+        ) : mobile ? (
           <div className="flex h-8 items-center overflow-visible py-1.5">
             <motion.img
               src={logo}
@@ -62,6 +66,15 @@ export function AppSidebar({
               className="h-5 w-auto max-w-[132px] origin-left object-contain object-left"
             />
           </div>
+        ) : (
+          <motion.img
+            src={logo}
+            alt="FLOW"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease }}
+            className="h-[18px] w-auto max-w-full object-contain object-left"
+          />
         )}
       </div>
 
