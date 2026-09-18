@@ -16,6 +16,7 @@ export default defineConfig({
         '@': resolve('src/renderer/src'),
         '@capacitor/core': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
         '@capacitor/preferences': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
+        '@capacitor/app': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
         '@capgo/capacitor-updater': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts')
       }
     },

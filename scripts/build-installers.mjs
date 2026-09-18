@@ -9,7 +9,8 @@ const downloadDir = path.join(root, 'download')
 const mobileDir = path.join(root, 'mobile')
 const onlyMobile = process.argv.includes('--mobile')
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
-const version = String(pkg.version || '1.0.0')
+const mobilePkg = JSON.parse(fs.readFileSync(path.join(mobileDir, 'package.json'), 'utf8'))
+const version = String(mobilePkg.version || pkg.version || '1.0.0')
 
 fs.mkdirSync(downloadDir, { recursive: true })
 
@@ -45,7 +46,9 @@ if (!onlyMobile) {
   }
 }
 
-run('npm ci', mobileDir)
+if (!fs.existsSync(path.join(mobileDir, 'node_modules'))) {
+  run('npm ci', mobileDir)
+}
 run('npm run build', mobileDir)
 
 try {

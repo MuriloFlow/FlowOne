@@ -2,6 +2,15 @@ declare module '@capacitor/core' {
   export const Capacitor: {
     isNativePlatform: () => boolean
   }
+  export const CapacitorHttp: {
+    get: (options: {
+      url: string
+      headers?: Record<string, string>
+      connectTimeout?: number
+      readTimeout?: number
+      responseType?: 'text' | 'json'
+    }) => Promise<{ status: number; data: unknown }>
+  }
 }
 
 declare module '@capacitor/preferences' {
@@ -9,6 +18,12 @@ declare module '@capacitor/preferences' {
     get: (options: { key: string }) => Promise<{ value: string | null }>
     set: (options: { key: string; value: string }) => Promise<void>
     remove: (options: { key: string }) => Promise<void>
+  }
+}
+
+declare module '@capacitor/app' {
+  export const App: {
+    addListener: (event: 'resume', listener: () => void) => Promise<{ remove: () => Promise<void> }>
   }
 }
 

@@ -31,7 +31,9 @@ const config: CapacitorConfig = {
       resizeOnFullScreen: true
     },
     CapacitorUpdater: {
-      autoUpdate: false
+      autoUpdate: false,
+      appReadyTimeout: 15000,
+      responseTimeout: 60
     }
   }
 }

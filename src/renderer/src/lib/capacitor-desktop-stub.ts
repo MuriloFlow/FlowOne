@@ -2,6 +2,14 @@ export const Capacitor = {
   isNativePlatform: () => false
 }
 
+export const CapacitorHttp = {
+  get: async () => ({ status: 404, data: '' })
+}
+
+export const App = {
+  addListener: async () => ({ remove: async () => undefined })
+}
+
 export const Preferences = {
   get: async () => ({ value: null as string | null }),
   set: async () => undefined,
