@@ -887,7 +887,7 @@ function PersonPicker({
                 top: coords.top,
                 bottom: coords.bottom,
                 maxHeight: coords.maxHeight,
-                zIndex: 70
+                zIndex: 500
               }}
               className="overflow-auto rounded-[12px] border border-white/[0.08] bg-[#1A1A1A] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
             >
