@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - name: Bump installer version
+        id: bump
         shell: pwsh
         run: |
           $version = "1.1.$env:GITHUB_RUN_NUMBER"
@@ -79,30 +80,30 @@ jobs:
           gh release upload $tag mobile-www.zip latest-mobile.yml --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify release assets
+      - name: Verify mobile OTA assets
+        continue-on-error: true
         shell: pwsh
         run: |
-          $version = $env:VERSION
-          if (-not $version) { throw 'VERSION ausente' }
           $ok = $false
-          for ($i = 0; $i -lt 10; $i++) {
-            Start-Sleep -Seconds 6
-            try {
-              $res = Invoke-WebRequest -Uri "https://github.com/MuriloFlow/FlowOne/releases/latest/download/latest-mobile.yml" -UseBasicParsing -TimeoutSec 30
-              if ($res.StatusCode -eq 200 -and $res.Content -match 'mobile-www.zip') {
-                $ok = $true
-                Write-Output "OTA ok: latest-mobile.yml"
-                break
-              }
-            } catch {
-              Write-Output "Aguardando latest-mobile.yml tentativa $($i + 1)"
+          for ($i = 0; $i -lt 8; $i++) {
+            $releases = gh api "repos/MuriloFlow/FlowOne/releases?per_page=8" | ConvertFrom-Json
+            $hit = $releases | Where-Object {
+              -not $_.draft -and ($_.assets.name -contains 'latest-mobile.yml') -and ($_.assets.name -contains 'mobile-www.zip')
+            } | Select-Object -First 1
+            if ($hit) {
+              $ok = $true
+              Write-Output "OTA ok em $($hit.tag_name)"
+              break
             }
+            Write-Output "Aguardando latest-mobile.yml tentativa $($i + 1)"
+            Start-Sleep -Seconds 4
           }
           if (-not $ok) { throw "Release sem latest-mobile.yml. O APK nao consegue atualizar." }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: npm run dist:publish
-        continue-on-error: true
+      - name: Publish desktop installer
+        if: always() && steps.bump.outcome == 'success'
+        run: npm run dist:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
