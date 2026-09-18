@@ -13,7 +13,10 @@ export default defineConfig({
   renderer: {
     resolve: {
       alias: {
-        '@': resolve('src/renderer/src')
+        '@': resolve('src/renderer/src'),
+        '@capacitor/core': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
+        '@capacitor/preferences': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
+        '@capgo/capacitor-updater': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts')
       }
     },
     plugins: [react(), tailwindcss()]

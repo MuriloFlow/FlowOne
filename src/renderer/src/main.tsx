@@ -11,7 +11,12 @@ async function boot(): Promise<void> {
     const { installFlowMobileBridge } = await import('./lib/flow-mobile-bridge')
     await installFlowMobileBridge()
     const { runSilentUpdate } = await import('./lib/live-update')
-    void runSilentUpdate()
+    await Promise.race([
+      runSilentUpdate(),
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 12_000)
+      })
+    ])
   }
 
   createRoot(document.getElementById('root')!).render(

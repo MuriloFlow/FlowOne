@@ -17,5 +17,8 @@ declare module '@capgo/capacitor-updater' {
     notifyAppReady: () => Promise<void>
     download: (options: { url: string; version: string }) => Promise<{ id: string }>
     next: (options: { id: string }) => Promise<void>
+    set: (options: { id: string }) => Promise<void>
+    reload: () => Promise<void>
+    current: () => Promise<{ bundle?: { id?: string; version?: string }; native?: string }>
   }
 }

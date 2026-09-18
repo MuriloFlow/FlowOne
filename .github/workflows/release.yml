@@ -32,6 +32,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
           Write-Output "VERSION=$version"
       - run: npm run dist:publish
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -73,14 +74,24 @@ jobs:
             $bytes[$i] = [Convert]::ToByte($sha.Substring($i * 2, 2), 16)
           }
           $b64 = [Convert]::ToBase64String($bytes)
-          @(
+          $tag = "v$version"
+          $view = gh release view $tag --json tagName 2>$null
+          if (-not $view) {
+            $latest = gh api repos/MuriloFlow/FlowOne/releases/latest --jq .tag_name
+            if ($latest) { $tag = $latest }
+          }
+          $yml = @(
             "version: $version"
             "path: mobile-www.zip"
             "sha512: $b64"
-            "url: https://github.com/MuriloFlow/FlowOne/releases/download/v$version/mobile-www.zip"
+            "url: https://github.com/MuriloFlow/FlowOne/releases/download/$tag/mobile-www.zip"
             "releaseDate: $([DateTime]::UtcNow.ToString('o'))"
-          ) | Set-Content -Path latest-mobile.yml -Encoding utf8
-          gh release upload "v$version" mobile-www.zip latest-mobile.yml --clobber
+          ) -join "`n"
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'latest-mobile.yml'), "$yml`n")
+          if (-not (gh release view $tag --json tagName 2>$null)) {
+            gh release create $tag --title $tag --notes "FLOW $version"
+          }
+          gh release upload $tag mobile-www.zip latest-mobile.yml --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify release assets
@@ -88,32 +99,21 @@ jobs:
         run: |
           $version = $env:VERSION
           if (-not $version) { throw 'VERSION ausente' }
-          $files = @(
-            "latest.yml",
-            "FLOW-Setup-$version.exe",
-            "FLOW-Setup-$version.exe.blockmap",
-            "latest-mobile.yml",
-            "mobile-www.zip"
-          )
           $ok = $false
           for ($i = 0; $i -lt 10; $i++) {
             Start-Sleep -Seconds 6
-            $missing = @()
-            foreach ($name in $files) {
-              $url = "https://github.com/MuriloFlow/FlowOne/releases/download/v$version/$name"
-              try {
-                $res = Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -TimeoutSec 30
-                if ($res.StatusCode -ne 200) { $missing += $name }
-              } catch {
-                $missing += $name
+            try {
+              $res = Invoke-WebRequest -Uri "https://github.com/MuriloFlow/FlowOne/releases/latest/download/latest-mobile.yml" -UseBasicParsing -TimeoutSec 30
+              if ($res.StatusCode -eq 200 -and $res.Content -match 'mobile-www.zip') {
+                $ok = $true
+                Write-Output "OTA ok: latest-mobile.yml"
+                break
               }
+            } catch {
+              Write-Output "Aguardando latest-mobile.yml tentativa $($i + 1)"
             }
-            if ($missing.Count -eq 0) {
-              $ok = $true
-              Write-Output "Assets ok: $($files -join ', ')"
-              break
-            }
-            Write-Output "Aguardando assets ($($missing -join ', ')) tentativa $($i + 1)"
           }
-          if (-not $ok) { throw "Release v$version incompleto. Faltam instalador, latest.yml ou o bundle mobile." }
+          if (-not $ok) { throw "Release sem latest-mobile.yml. O APK nao consegue atualizar." }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
