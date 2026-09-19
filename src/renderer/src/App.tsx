@@ -51,7 +51,7 @@ export function App() {
           : undefined
       }
     >
-      {mobile ? null : <Titlebar branded={!user} overlay={Boolean(user)} />}
+      {mobile ? null : <Titlebar branded={!user} />}
       <main className={updateVisible ? 'flex min-h-0 flex-1 pb-14' : 'flex min-h-0 flex-1'}>
         {booting ? (
           <BootSkeleton />

@@ -278,7 +278,7 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 gap-1 overflow-hidden bg-[#111111] pr-2 pb-2 font-medium">
+    <div className="flex min-h-0 flex-1 gap-1 overflow-hidden bg-[#111111] pt-1 pr-2 pb-2 font-medium">
       {sidebar}
       {main}
     </div>
