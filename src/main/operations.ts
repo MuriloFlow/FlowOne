@@ -16,7 +16,7 @@ import { getFinanceBoard, upsertFinanceDayExtras } from './finance-days'
 import { assertCardInStore, createCard, deleteCard, getCardsBoard, transferCard, updateCard } from './cards'
 import { applyOverviewCardOverlay, deleteCardTotalOverride, upsertCardTotalOverride } from './card-overrides'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
-import { deleteIdentity, getIdentity, syncProfileRoleIfSamePerson, upsertIdentity } from './identities'
+import { deleteIdentity, getIdentity, upsertIdentity } from './identities'
 import { deleteEmployeeDocument, getEmployeeDocument, saveEmployeeDocument } from './employee-documents'
 import { invalidateMemo, memo } from './memo'
 import { resolveActor, resolveStoreFilter } from './scope'
@@ -355,9 +355,7 @@ export function registerOperationsIpc(): void {
       if (deskId !== updated.id) await upsertIdentity(deskId, input.cpf, input.flowRole)
       await syncDeskAccountName(deskId, input.name)
     }
-    await syncProfileRoleIfSamePerson(actor.userId, input.name, input.flowRole, {
-      isGlobalDesk: Boolean(deskId) || Boolean(updated.isGlobalDesk)
-    })
+    // Card+ é operacional. Só Usuários do FLOW pode alterar o perfil autenticado.
     bustOperationsCache()
     invalidateMemo('actor')
     return updated

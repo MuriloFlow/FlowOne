@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { getCardplusClient, getFlowAdminClient } from './supabase-clients'
 import { listEmployees, listStores } from './cardplus'
-import { identityMask, listIdentities, syncProfileRoleIfSamePerson, upsertIdentity, type IdentityRecord } from './identities'
+import { identityMask, listIdentities, upsertIdentity, type IdentityRecord } from './identities'
 import { resolveActor } from './scope'
 import { scheduleActorMatchScore } from '../shared/schedules'
 import type { EmployeeListItem, StoreAccessAccount, StoreAccessWriteInput } from '../shared/operations'
@@ -311,10 +311,7 @@ async function healActorDirectory(
       if (identity?.flowRole !== nextRole) {
         await upsertIdentity(item.id, identity?.cpfDigits ?? '', nextRole)
       }
-      await syncProfileRoleIfSamePerson(actor.userId, item.name, nextRole, {
-        isGlobalDesk: Boolean(item.isGlobalDesk),
-        email: actorEmail
-      })
+      // A identidade do Card+ não pode alterar a permissão do login FLOW.
       return {
         ...item,
         flowRole: nextRole,

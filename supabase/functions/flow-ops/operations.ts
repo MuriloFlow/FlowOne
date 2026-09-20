@@ -29,7 +29,7 @@ import {
 } from './cards.ts'
 import { applyOverviewCardOverlay, deleteCardTotalOverride, upsertCardTotalOverride } from './card-overrides.ts'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores.ts'
-import { deleteIdentity, getIdentity, syncProfileRoleIfSamePerson, upsertIdentity } from './identities.ts'
+import { deleteIdentity, getIdentity, upsertIdentity } from './identities.ts'
 import { deleteEmployeeDocument, getEmployeeDocument, saveEmployeeDocument } from './employee-documents.ts'
 import { resolveActor, resolveStoreFilter } from './scope.ts'
 import {
@@ -327,9 +327,7 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
       if (deskId !== updated.id) await upsertIdentity(deskId, input.cpf, input.flowRole)
       await syncDeskAccountName(deskId, input.name)
     }
-    await syncProfileRoleIfSamePerson(actor.userId, input.name, input.flowRole, {
-      isGlobalDesk: Boolean(deskId) || Boolean(updated.isGlobalDesk)
-    })
+    // Card+ é operacional. Só Usuários do FLOW pode alterar o perfil autenticado.
     return updated
   },
 

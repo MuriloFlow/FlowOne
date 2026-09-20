@@ -2,7 +2,6 @@ import { listEmployeeDirectory } from './access'
 import { listAttendanceEventsRange, listAttendanceKinds } from './attendance'
 import { ensureOperationalCollaborator, listEmployees, listStores } from './cardplus'
 import { dateKeyInSaoPaulo, isoWeekday, lastDayOfMonth, mondayOf, monthKeyFromDateKey, shiftWeek, weekDateKeys } from './dates'
-import { syncProfileRoleIfSamePerson } from './identities'
 import { getFlowAdminClient } from './supabase-clients'
 import { canEditStoreDesk, isTiAdminAppRole, isTiRole, type FlowRoleId } from '../shared/roles'
 import {
@@ -501,12 +500,7 @@ export async function getScheduleBoard(
         sourceId: found.id
       })
       self = operator
-      if (userId) {
-        await syncProfileRoleIfSamePerson(userId, operator.name, operator.flowRole ?? nextFlow, {
-          isGlobalDesk: true,
-          email: actor.email
-        })
-      }
+      // Garantir colaborador na escala não rebaixa nem renomeia a conta FLOW.
     } catch {
       self = found
     }
