@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff, Loader2, ScanLine, Trash2, Upload } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
+import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -57,6 +58,9 @@ export function EmployeeDialog({
   const [rgImage, setRgImage] = useState<string | null>(null)
   const [loadingDocument, setLoadingDocument] = useState(false)
   const [compressingDocument, setCompressingDocument] = useState(false)
+  const [cpfUnlocked, setCpfUnlocked] = useState(false)
+  const [rgUnlocked, setRgUnlocked] = useState(false)
+  const [sensitiveAction, setSensitiveAction] = useState<'cpf' | 'rg' | null>(null)
   const documentInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -78,6 +82,8 @@ export function EmployeeDialog({
     setDisplayName(employee?.name ?? '')
     setShowPassword(false)
     setRgImage(null)
+    setCpfUnlocked(mode === 'create')
+    setRgUnlocked(mode === 'create')
 
     if (mode === 'edit' && employee) {
       setLoadingIdentity(true)
@@ -108,6 +114,7 @@ export function EmployeeDialog({
     setError(null)
     try {
       setRgImage(await compressAttendancePhoto(file))
+      setRgUnlocked(true)
     } catch (documentError) {
       setError(operationError(documentError))
     } finally {
@@ -215,13 +222,26 @@ export function EmployeeDialog({
           </div>
           <div className="space-y-1.5">
             <Label className="text-[12px] text-[#F0EFEC]/45">CPF</Label>
-            <Input
-              value={cpf}
-              disabled={loadingIdentity}
-              onChange={(event) => setCpf(formatCpf(event.target.value))}
-              placeholder="000.000.000-00"
-              className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
-            />
+            <div className="relative">
+              <Input
+                value={cpf}
+                disabled={loadingIdentity}
+                readOnly={mode === 'edit' && !cpfUnlocked}
+                onChange={(event) => setCpf(formatCpf(event.target.value))}
+                placeholder="000.000.000-00"
+                className={`h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] pr-10 text-[13px] transition-[filter] ${mode === 'edit' && !cpfUnlocked ? 'cursor-default blur-[5px] select-none' : ''}`}
+              />
+              {mode === 'edit' ? (
+                <button
+                  type="button"
+                  aria-label={cpfUnlocked ? 'Ocultar CPF' : 'Ver CPF'}
+                  onClick={() => cpfUnlocked ? setCpfUnlocked(false) : setSensitiveAction('cpf')}
+                  className="absolute top-1/2 right-2 -translate-y-1/2 rounded-[6px] p-1 text-[#F0EFEC]/40 transition-colors hover:bg-white/[0.06] hover:text-[#F0EFEC]/75"
+                >
+                  {cpfUnlocked ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -258,9 +278,21 @@ export function EmployeeDialog({
           />
           {rgImage ? (
             <div className="overflow-hidden rounded-[10px] border border-white/[0.08] bg-black/20">
-              <img src={rgImage} alt="Documento RG" className="max-h-44 w-full object-contain" />
+              <button
+                type="button"
+                aria-label={rgUnlocked ? 'Ocultar documento RG' : 'Ver documento RG'}
+                onClick={() => rgUnlocked ? setRgUnlocked(false) : setSensitiveAction('rg')}
+                className="group relative block w-full overflow-hidden bg-black/30"
+              >
+                <img src={rgImage} alt={rgUnlocked ? 'Documento RG' : 'Documento RG protegido'} className={`max-h-44 w-full object-contain transition duration-300 ${rgUnlocked ? '' : 'scale-[1.03] blur-[10px]'}`} />
+                {!rgUnlocked ? (
+                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/20 text-[12px] text-white/80">
+                    <Eye className="size-4" /> Clique para visualizar com senha
+                  </span>
+                ) : null}
+              </button>
               <div className="flex items-center justify-between border-t border-white/[0.06] px-2 py-1.5">
-                <span className="text-[11px] text-[#F0EFEC]/42">RG anexado</span>
+                <span className="text-[11px] text-[#F0EFEC]/42">{rgUnlocked ? 'RG visualizado com segurança' : 'RG protegido'}</span>
                 <div className="flex gap-1">
                   <button type="button" onClick={() => documentInputRef.current?.click()} className="rounded-[6px] p-1.5 text-[#F0EFEC]/50 hover:bg-white/[0.06]">
                     <Upload className="size-3.5" />
@@ -377,6 +409,17 @@ export function EmployeeDialog({
           </button>
         </div>
       </div>
+      <PasswordConfirmationDialog
+        open={sensitiveAction !== null}
+        title={sensitiveAction === 'cpf' ? 'Visualizar CPF' : 'Visualizar documento RG'}
+        description={sensitiveAction === 'cpf' ? 'Confirme sua senha para revelar o CPF deste funcionário.' : 'Confirme sua senha para visualizar a foto do documento deste funcionário.'}
+        onClose={() => setSensitiveAction(null)}
+        onConfirmed={() => {
+          if (sensitiveAction === 'cpf') setCpfUnlocked(true)
+          if (sensitiveAction === 'rg') setRgUnlocked(true)
+          setSensitiveAction(null)
+        }}
+      />
     </Dialog>
   )
 }

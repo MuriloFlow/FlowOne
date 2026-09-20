@@ -9,6 +9,7 @@ import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
 import { PaymentSignatureDialog } from '@/components/payment-signature-dialog'
+import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
 import { exportVoucherReceipts } from '@/lib/voucher-receipt-export'
 import {
   formatVoucherWeekLabel,
@@ -29,6 +30,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [signingRow, setSigningRow] = useState<VoucherRow | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [confirmingExport, setConfirmingExport] = useState(false)
   const mobile = isMobileShell()
 
   async function load(): Promise<VoucherBoard> {
@@ -148,6 +150,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
       setError(null)
     } catch (exportError) {
       setError(operationError(exportError))
+      throw exportError
     } finally {
       setExporting(false)
     }
@@ -192,7 +195,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         <button
           type="button"
           disabled={exporting || !board?.groups.some((group) => group.rows.some((row) => row.status === 'PAGO' && row.paymentSignature))}
-          onClick={() => void finalizePayments()}
+          onClick={() => setConfirmingExport(true)}
           className="inline-flex h-9 shrink-0 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-3 text-[12px] font-medium text-[#111] transition-opacity disabled:opacity-35"
         >
           <FileDown className="size-3.5" /> {exporting ? 'Gerando...' : 'Finalizar pagamento'}
@@ -383,6 +386,17 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         saving={busyId === signingRow?.collaboratorId}
         onClose={() => { if (busyId !== signingRow?.collaboratorId) setSigningRow(null) }}
         onConfirm={confirmPayment}
+      />
+      <PasswordConfirmationDialog
+        open={confirmingExport}
+        title="Finalizar pagamento"
+        description="Confirme sua senha para gerar o PDF com os recibos assinados e os documentos dos funcionários."
+        confirmLabel="Gerar PDF seguro"
+        onClose={() => { if (!exporting) setConfirmingExport(false) }}
+        onConfirmed={async () => {
+          await finalizePayments()
+          setConfirmingExport(false)
+        }}
       />
     </div>
   )
