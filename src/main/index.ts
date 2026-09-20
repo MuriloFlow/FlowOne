@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron'
 import log from 'electron-log'
 import { createMainWindow, getMainWindow, registerWindowIpc } from './window'
 import { clearAuthSession, flushAuthSession, hydrateAuthSession, persistAuthSession, readAuthSession } from './session-store'
-import { registerUpdater } from './updater'
+import { registerUpdater, startBackgroundUpdater } from './updater'
 import { loadLocalEnv } from './env'
 import { registerKobbiIpc } from './kobbi'
 import { registerOperationsIpc } from './operations'
@@ -27,18 +27,47 @@ function isPersistedSession(value: unknown): value is PersistedAuthSession {
 app.setName('FLOW')
 app.setAppUserModelId('com.flow.launcher')
 
+const backgroundStartup = app.isPackaged && process.argv.includes('--background-update')
+let appReady = false
+let launchWindowRequested = !backgroundStartup
+
+function enableBackgroundUpdateAtLogin(): void {
+  if (!app.isPackaged || process.platform !== 'win32') return
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      path: process.execPath,
+      args: ['--background-update']
+    })
+  } catch (error) {
+    log.info('[updater] nÃ£o foi possÃ­vel configurar a atualizaÃ§Ã£o em segundo plano', error)
+  }
+}
+
+function openLauncherWindow(): void {
+  launchWindowRequested = true
+  if (!appReady) return
+  const existing = getMainWindow()
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore()
+    existing.show()
+    existing.focus()
+    return
+  }
+  registerUpdater(createMainWindow())
+}
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    const window = getMainWindow()
-    if (!window) return
-    if (window.isMinimized()) window.restore()
-    window.focus()
+    openLauncherWindow()
   })
 
   app.whenReady().then(async () => {
+    appReady = true
+    enableBackgroundUpdateAtLogin()
     loadLocalEnv()
     registerWindowIpc()
     registerOperationsIpc()
@@ -55,16 +84,11 @@ if (!gotLock) {
     ipcMain.handle('auth:clear-session', async () => clearAuthSession())
 
     await hydrateAuthSession()
-    const window = createMainWindow()
-    registerUpdater(window)
+    if (launchWindowRequested) openLauncherWindow()
+    else startBackgroundUpdater()
 
     app.on('activate', () => {
-      const existing = getMainWindow()
-      if (existing) {
-        existing.focus()
-        return
-      }
-      registerUpdater(createMainWindow())
+      openLauncherWindow()
     })
   })
 }

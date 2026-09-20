@@ -6,6 +6,7 @@ import type { UpdateStatus } from '../shared/ipc'
 const CHECK_EVERY_MS = 4_000
 const FOCUS_DEBOUNCE_MS = 600
 const RETRY_DELAYS_MS = [1_500, 3_000, 8_000]
+const BACKGROUND_IDLE_EXIT_MS = 12_000
 const OWNER = 'MuriloFlow'
 const REPO = 'FlowOne'
 
@@ -34,6 +35,27 @@ let closeBound = false
 let retryAttempt = 0
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let pointedVersion: string | null = null
+let backgroundMode = false
+let pollingStarted = false
+let backgroundExitTimer: ReturnType<typeof setTimeout> | null = null
+
+function isBackgroundOnly(): boolean {
+  return backgroundMode && (!mainWindow || mainWindow.isDestroyed())
+}
+
+function exitBackgroundWhenIdle(): void {
+  if (!isBackgroundOnly() || backgroundExitTimer) return
+  backgroundExitTimer = setTimeout(() => {
+    backgroundExitTimer = null
+    if (isBackgroundOnly() && !isBusy()) app.quit()
+  }, BACKGROUND_IDLE_EXIT_MS)
+}
+
+function cancelBackgroundExit(): void {
+  if (!backgroundExitTimer) return
+  clearTimeout(backgroundExitTimer)
+  backgroundExitTimer = null
+}
 
 function isBusy(status: UpdateStatus = currentStatus): boolean {
   return status.state === 'available' || status.state === 'downloading' || status.state === 'ready'
@@ -48,6 +70,7 @@ function emit(status: UpdateStatus): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('updater:status', status)
   }
+  if (status.state === 'idle' || status.state === 'error') exitBackgroundWhenIdle()
 }
 
 export function getUpdateStatus(): UpdateStatus {
@@ -159,6 +182,7 @@ function registerListeners(): void {
   listenersRegistered = true
 
   autoUpdater.on('update-available', (info) => {
+    cancelBackgroundExit()
     clearRetry()
     if (currentStatus.state === 'ready') return
     emit({ state: 'available', version: info.version })
@@ -171,6 +195,7 @@ function registerListeners(): void {
   })
 
   autoUpdater.on('download-progress', (progress) => {
+    cancelBackgroundExit()
     if (currentStatus.state === 'ready') return
     emit({ state: 'downloading', percent: Math.round(progress.percent) })
   })
@@ -178,6 +203,14 @@ function registerListeners(): void {
   autoUpdater.on('update-downloaded', (info) => {
     clearRetry()
     emit({ state: 'ready', version: info.version })
+    if (isBackgroundOnly()) {
+      log.info('[updater] instalando atualizaÃ§Ã£o silenciosamente em segundo plano')
+      setTimeout(() => {
+        if (isBackgroundOnly() && currentStatus.state === 'ready') {
+          autoUpdater.quitAndInstall(true, false)
+        }
+      }, 600)
+    }
   })
 
   autoUpdater.on('error', (error) => {
@@ -202,10 +235,8 @@ function registerListeners(): void {
   })
 }
 
-export function registerUpdater(window: BrowserWindow): void {
-  mainWindow = window
-  registerIpc()
-  bindCloseToInstall(window)
+function startUpdater(background: boolean): void {
+  backgroundMode = background && (!mainWindow || mainWindow.isDestroyed())
 
   if (!app.isPackaged) {
     emit({ state: 'idle' })
@@ -220,20 +251,29 @@ export function registerUpdater(window: BrowserWindow): void {
   })
 
   void checkForUpdates({ force: true })
+  if (backgroundMode || pollingStarted) return
+  pollingStarted = true
   setInterval(() => {
     if (!net.isOnline()) return
     void checkForUpdates()
   }, CHECK_EVERY_MS)
+  app.on('browser-window-focus', () => void checkForUpdates())
+  powerMonitor.on('resume', () => void checkForUpdates({ force: true }))
+  powerMonitor.on('unlock-screen', () => void checkForUpdates({ force: true }))
+}
 
-  app.on('browser-window-focus', () => {
-    void checkForUpdates()
-  })
-  powerMonitor.on('resume', () => {
-    void checkForUpdates({ force: true })
-  })
-  powerMonitor.on('unlock-screen', () => {
-    void checkForUpdates({ force: true })
-  })
+/** Inicia o download sem criar BrowserWindow; usado apenas pelo auto-start do Windows. */
+export function startBackgroundUpdater(): void {
+  startUpdater(true)
+}
+
+export function registerUpdater(window: BrowserWindow): void {
+  mainWindow = window
+  backgroundMode = false
+  cancelBackgroundExit()
+  registerIpc()
+  bindCloseToInstall(window)
+  startUpdater(false)
 }
 
 export async function checkForUpdates(options?: { force?: boolean }): Promise<void> {
