@@ -46,6 +46,8 @@ const flow: FlowApi = {
     getEmployee: (id: string, storeId?: string | null) =>
       ipcRenderer.invoke('operations:employee', { id, storeId: storeId ?? null }),
     getEmployeeIdentity: (id: string) => ipcRenderer.invoke('operations:employee-identity', id),
+    getEmployeeDocument: (id: string) => ipcRenderer.invoke('operations:employee-document', id),
+    saveEmployeeDocument: (input) => ipcRenderer.invoke('operations:employee-document-save', input),
     createEmployee: (input: CreateEmployeeInput) => ipcRenderer.invoke('operations:employee-create', input),
     updateEmployee: (input: UpdateEmployeeInput) => ipcRenderer.invoke('operations:employee-update', input),
     deleteEmployee: (id: string, storeId?: string | null) =>

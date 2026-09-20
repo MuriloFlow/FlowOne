@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Eye, EyeOff, Loader2, ScanLine, Trash2, Upload } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,11 +10,13 @@ import {
   isManagerLoginSubRole,
   type CardPlusSubRole,
   type EmployeeIdentity,
+  type EmployeeDocument,
   type EmployeeListItem,
   type StoreOption
 } from '../../../shared/operations'
 import { DEFAULT_EMPLOYEE_ROLE, FLOW_ROLES, isFlowRole, suggestedFlowRole, type FlowRoleId } from '@/lib/roles'
 import { operationError, operations } from '@/lib/operations'
+import { compressAttendancePhoto } from '@/lib/attendance-photo'
 
 type EmployeeDialogProps = {
   open: boolean
@@ -52,6 +54,10 @@ export function EmployeeDialog({
   const [saving, setSaving] = useState(false)
   const [loadingIdentity, setLoadingIdentity] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [rgImage, setRgImage] = useState<string | null>(null)
+  const [loadingDocument, setLoadingDocument] = useState(false)
+  const [compressingDocument, setCompressingDocument] = useState(false)
+  const documentInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
@@ -71,6 +77,7 @@ export function EmployeeDialog({
     setConfirmPassword('')
     setDisplayName(employee?.name ?? '')
     setShowPassword(false)
+    setRgImage(null)
 
     if (mode === 'edit' && employee) {
       setLoadingIdentity(true)
@@ -84,10 +91,29 @@ export function EmployeeDialog({
         })
         .catch((identityError: unknown) => setError(operationError(identityError)))
         .finally(() => setLoadingIdentity(false))
+      setLoadingDocument(true)
+      void operations()
+        .getEmployeeDocument(employee.id)
+        .then((document: EmployeeDocument) => setRgImage(document.rgImage))
+        .catch((documentError: unknown) => setError(operationError(documentError)))
+        .finally(() => setLoadingDocument(false))
     }
   }, [open, mode, employee, stores, defaultStoreId])
 
   const needsLogin = isManagerLoginSubRole(cardplusRole)
+
+  async function chooseDocument(file: File | null): Promise<void> {
+    if (!file) return
+    setCompressingDocument(true)
+    setError(null)
+    try {
+      setRgImage(await compressAttendancePhoto(file))
+    } catch (documentError) {
+      setError(operationError(documentError))
+    } finally {
+      setCompressingDocument(false)
+    }
+  }
 
   async function submit(): Promise<void> {
     setSaving(true)
@@ -116,6 +142,9 @@ export function EmployeeDialog({
         mode === 'create'
           ? await operations().createEmployee(payload)
           : await operations().updateEmployee({ ...payload, id: employee!.id })
+      if (rgImage !== null || mode === 'edit') {
+        await operations().saveEmployeeDocument({ collaboratorId: saved.id, rgImage })
+      }
       onSaved(saved)
       onClose()
     } catch (submitError) {
@@ -210,6 +239,51 @@ export function EmployeeDialog({
           </div>
         ) : null}
 
+        <div className="space-y-2 rounded-[12px] border border-white/[0.06] bg-white/[0.02] p-3.5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <Label className="text-[12px] text-[#F0EFEC]/65">Documento de identidade (RG)</Label>
+              <p className="mt-1 text-[11px] leading-relaxed text-[#F0EFEC]/35">
+                Foto centralizada e protegida no FLOW. Ela entra no recibo de pagamento assinado.
+              </p>
+            </div>
+            <ScanLine className="mt-0.5 size-4 shrink-0 text-[#F0EFEC]/32" strokeWidth={1.6} />
+          </div>
+          <input
+            ref={documentInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => void chooseDocument(event.target.files?.[0] ?? null)}
+          />
+          {rgImage ? (
+            <div className="overflow-hidden rounded-[10px] border border-white/[0.08] bg-black/20">
+              <img src={rgImage} alt="Documento RG" className="max-h-44 w-full object-contain" />
+              <div className="flex items-center justify-between border-t border-white/[0.06] px-2 py-1.5">
+                <span className="text-[11px] text-[#F0EFEC]/42">RG anexado</span>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => documentInputRef.current?.click()} className="rounded-[6px] p-1.5 text-[#F0EFEC]/50 hover:bg-white/[0.06]">
+                    <Upload className="size-3.5" />
+                  </button>
+                  <button type="button" onClick={() => setRgImage(null)} className="rounded-[6px] p-1.5 text-red-300/70 hover:bg-red-400/10">
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={loadingDocument || compressingDocument}
+              onClick={() => documentInputRef.current?.click()}
+              className="flex h-20 w-full flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-white/[0.1] text-[#F0EFEC]/42 transition-colors hover:border-white/[0.2] hover:bg-white/[0.03] disabled:opacity-50"
+            >
+              {compressingDocument || loadingDocument ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              <span className="text-[12px]">{compressingDocument ? 'Preparando imagem...' : 'Anexar foto do RG'}</span>
+            </button>
+          )}
+        </div>
+
         {needsLogin && mode === 'create' ? (
           <div className="space-y-3.5 rounded-[12px] border border-white/[0.06] bg-white/[0.02] p-3.5">
             <div>
@@ -290,6 +364,8 @@ export function EmployeeDialog({
             disabled={
               saving ||
               loadingIdentity ||
+              loadingDocument ||
+              compressingDocument ||
               !name.trim() ||
               !storeId ||
               (needsLogin && mode === 'create' && (!username.trim() || password.length < 6))

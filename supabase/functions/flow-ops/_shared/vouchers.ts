@@ -19,12 +19,23 @@ export type VoucherRow = {
   storeId: string
   storeName: string
   cpfMasked: string | null
+  cpf: string | null
+  rgImage: string | null
   group: VoucherGroupId
   roleLabel: string
   lunchCents: number
   transportCents: number
   dayTotalCents: number
   status: VoucherStatus
+  paymentSignature: string | null
+  paidAt: string | null
+  receiptNumber: string | null
+}
+
+export function isVoucherSignatureDataUrl(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('data:image/png;base64,') || /[\r\n]/.test(trimmed)) return false
+  return trimmed.length <= 1_500_000 && trimmed.length > 'data:image/png;base64,'.length
 }
 
 export type VoucherBoard = {

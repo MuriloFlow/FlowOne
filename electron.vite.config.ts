@@ -17,6 +17,9 @@ export default defineConfig({
         '@capacitor/core': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
         '@capacitor/preferences': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
         '@capacitor/app': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
+        '@capacitor/filesystem': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
+        '@capacitor/share': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
+        '@capacitor/screen-orientation': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
         '@capgo/capacitor-updater': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts')
       }
     },

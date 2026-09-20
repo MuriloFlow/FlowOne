@@ -16,6 +16,7 @@ import {
   type ScheduleTeam
 } from '../../../shared/schedules'
 import { formatDateKey } from '@/lib/format'
+import { exportFile } from '@/lib/native-export'
 
 type ExportSlot = ScheduleSlot & { assignments: ScheduleAssignment[] }
 type ExportDay = Omit<ScheduleDay, 'slots'> & { slots: ExportSlot[] }
@@ -278,16 +279,12 @@ export async function exportScheduleImage(
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
   if (!blob) return
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
   const scopeName =
     days.length === 1 && single
       ? `${single.dateKey}-${weekdayShort(single.weekday)}`
       : board.weekStart
-  link.href = url
-  link.download = `escala-${scheduleExportLabel(team).replace(/\s+/g, '-').toLowerCase()}-${scopeName}.png`
-  link.click()
-  URL.revokeObjectURL(url)
+  const filename = `escala-${scheduleExportLabel(team).replace(/\s+/g, '-').toLowerCase()}-${scopeName}.png`
+  await exportFile(blob, filename, 'Exportar escala')
   if (navigator.clipboard && 'write' in navigator.clipboard && typeof ClipboardItem !== 'undefined') {
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => undefined)
   }

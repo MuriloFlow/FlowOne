@@ -78,6 +78,8 @@ function createOperations(prefs: Prefs): OperationsApi {
     listEmployees: (storeId) => callOp('listEmployees', withStore(storeId)),
     getEmployee: (id, storeId) => callOp('getEmployee', withStore(storeId, { id })),
     getEmployeeIdentity: (id) => callOp('getEmployeeIdentity', { id }),
+    getEmployeeDocument: (id) => callOp('getEmployeeDocument', { id }),
+    saveEmployeeDocument: (input) => callOp('saveEmployeeDocument', input),
     createEmployee: (input) => callOp('createEmployee', input),
     updateEmployee: (input) => callOp('updateEmployee', input),
     deleteEmployee: (id, storeId) => callOp('deleteEmployee', withStore(storeId, { id })),
@@ -226,6 +228,10 @@ export async function installFlowMobileBridge(): Promise<void> {
             typeof body.storeId === 'string' ? body.storeId : null,
             typeof body.monthKey === 'string' ? body.monthKey : null
           )
+        case 'operations:employee-document':
+          return operations.getEmployeeDocument(String(body.id ?? ''))
+        case 'operations:employee-document-save':
+          return operations.saveEmployeeDocument(payload as Parameters<OperationsApi['saveEmployeeDocument']>[0])
         case 'operations:headcount-upsert':
           return operations.upsertTeamHeadcount(payload as Parameters<OperationsApi['upsertTeamHeadcount']>[0])
         case 'operations:attendance-upsert':

@@ -30,6 +30,7 @@ import {
 import { applyOverviewCardOverlay, deleteCardTotalOverride, upsertCardTotalOverride } from './card-overrides.ts'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores.ts'
 import { deleteIdentity, getIdentity, syncProfileRoleIfSamePerson, upsertIdentity } from './identities.ts'
+import { deleteEmployeeDocument, getEmployeeDocument, saveEmployeeDocument } from './employee-documents.ts'
 import { resolveActor, resolveStoreFilter } from './scope.ts'
 import {
   getScheduleBoard as loadScheduleBoard,
@@ -250,6 +251,22 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
     }
   },
 
+  async getEmployeeDocument(payload) {
+    const actor = await resolveActor()
+    const collaboratorId = typeof payload === 'string' ? asString(payload, 'Funcionário') : asString((payload as { id?: unknown })?.id, 'Funcionário')
+    await assertEmployeeInStore(collaboratorId, resolveStoreFilter(actor, actor.canViewAll ? null : actor.boundStoreId))
+    return getEmployeeDocument(collaboratorId)
+  },
+
+  async saveEmployeeDocument(payload) {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Documento inválido.')
+    const body = payload as Record<string, unknown>
+    const collaboratorId = asString(body.collaboratorId, 'Funcionário')
+    await assertEmployeeInStore(collaboratorId, resolveStoreFilter(actor, actor.canViewAll ? null : actor.boundStoreId))
+    return saveEmployeeDocument(collaboratorId, typeof body.rgImage === 'string' ? body.rgImage : null)
+  },
+
   async createEmployee(payload) {
     const actor = await resolveActor()
     const parsed = parseWriteInput(payload)
@@ -328,15 +345,18 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
       await deleteEmployeeRow(collaborator.id, storeId)
       await deleteIdentity(collaborator.id)
       await deleteVoucher(collaborator.id)
+      await deleteEmployeeDocument(collaborator.id)
     }
     if (deskId && deskId !== collaborator?.id) {
       await deleteGlobalDeskAccount(deskId)
       await deleteIdentity(deskId)
       await deleteVoucher(deskId)
+      await deleteEmployeeDocument(deskId)
     } else if (!collaborator) {
       await deleteGlobalDeskAccount(id)
       await deleteIdentity(id)
       await deleteVoucher(id)
+      await deleteEmployeeDocument(id)
     }
   },
 
@@ -677,7 +697,8 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
     await upsertVoucher(collaboratorId, {
       lunchCents: typeof body.lunchCents === 'number' ? body.lunchCents : undefined,
       transportCents: typeof body.transportCents === 'number' ? body.transportCents : undefined,
-      status
+      status,
+      signature: typeof body.signature === 'string' ? body.signature : undefined
     })
   },
 

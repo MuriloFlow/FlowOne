@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Banknote, Bus, Utensils } from 'lucide-react'
+import { Banknote, Bus, CheckCircle2, FileDown, Utensils } from 'lucide-react'
 import { AnimatedMoney } from '@/components/animated-number'
 import { MoneyCell } from '@/components/money-cell'
 import { initials } from '@/lib/identity'
@@ -8,6 +8,8 @@ import { formatBRLFromCents } from '@/lib/format'
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
+import { PaymentSignatureDialog } from '@/components/payment-signature-dialog'
+import { exportVoucherReceipts } from '@/lib/voucher-receipt-export'
 import {
   formatVoucherWeekLabel,
   msUntilNextVoucherReset,
@@ -25,6 +27,8 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [signingRow, setSigningRow] = useState<VoucherRow | null>(null)
+  const [exporting, setExporting] = useState(false)
   const mobile = isMobileShell()
 
   async function load(): Promise<VoucherBoard> {
@@ -63,7 +67,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
 
   function applyLocal(
     row: VoucherRow,
-    next: { lunchCents?: number; transportCents?: number; status?: VoucherStatus }
+    next: { lunchCents?: number; transportCents?: number; status?: VoucherStatus; signature?: string }
   ): void {
     setBoard((current) => {
       if (!current) return current
@@ -78,7 +82,9 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
             lunchCents,
             transportCents,
             dayTotalCents: lunchCents + transportCents,
-            status: next.status ?? item.status
+            status: next.status ?? item.status,
+            paymentSignature: next.signature ?? (next.status === 'PENDENTE' ? null : item.paymentSignature),
+            paidAt: next.status === 'PAGO' ? new Date().toISOString() : next.status === 'PENDENTE' ? null : item.paidAt
           }
         })
       }))
@@ -95,7 +101,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
 
   async function patch(
     row: VoucherRow,
-    next: { lunchCents?: number; transportCents?: number; status?: VoucherStatus }
+    next: { lunchCents?: number; transportCents?: number; status?: VoucherStatus; signature?: string }
   ): Promise<void> {
     const previous = board
     applyLocal(row, next)
@@ -112,6 +118,38 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
       throw patchError
     } finally {
       setBusyId(null)
+    }
+  }
+
+  function beginPayment(row: VoucherRow): void {
+    if (!row.cpf || !row.rgImage) {
+      setError(`${row.name} precisa ter CPF e a foto do RG anexada antes de registrar o pagamento.`)
+      return
+    }
+    setSigningRow(row)
+  }
+
+  async function confirmPayment(signature: string): Promise<void> {
+    if (!signingRow) return
+    const row = signingRow
+    try {
+      await patch(row, { status: 'PAGO', signature })
+      setSigningRow(null)
+    } catch {
+      // O erro já aparece no quadro e a assinatura continua aberta para nova tentativa.
+    }
+  }
+
+  async function finalizePayments(): Promise<void> {
+    if (!board) return
+    setExporting(true)
+    try {
+      await exportVoucherReceipts(board.groups.flatMap((group) => group.rows))
+      setError(null)
+    } catch (exportError) {
+      setError(operationError(exportError))
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -134,7 +172,8 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
 
   return (
     <div className="flex flex-col">
-      <header className="mb-6">
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
         <h1 className="text-[22px] text-[#F0EFEC]/88">Vales e pagamentos</h1>
         <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
           {storeId
@@ -149,6 +188,15 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
             <span className="text-[#F0EFEC]/28"> Semana {formatVoucherWeekLabel(board.periodKey)}.</span>
           ) : null}
         </p>
+        </div>
+        <button
+          type="button"
+          disabled={exporting || !board?.groups.some((group) => group.rows.some((row) => row.status === 'PAGO' && row.paymentSignature))}
+          onClick={() => void finalizePayments()}
+          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-3 text-[12px] font-medium text-[#111] transition-opacity disabled:opacity-35"
+        >
+          <FileDown className="size-3.5" /> {exporting ? 'Gerando...' : 'Finalizar pagamento'}
+        </button>
       </header>
 
       {error ? (
@@ -218,9 +266,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
                         <button
                           type="button"
                           disabled={busyId === row.collaboratorId}
-                          onClick={() =>
-                            void patch(row, { status: row.status === 'PAGO' ? 'PENDENTE' : 'PAGO' })
-                          }
+                          onClick={() => row.status === 'PAGO' ? void patch(row, { status: 'PENDENTE' }) : beginPayment(row)}
                           className={cn(
                             'inline-flex h-7 shrink-0 items-center rounded-full px-2.5 text-[12px] transition-colors disabled:opacity-50',
                             row.status === 'PAGO'
@@ -228,7 +274,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
                               : 'bg-[#F0EFEC]/6 text-[#F0EFEC]/50'
                           )}
                         >
-                          {row.status === 'PAGO' ? 'Pago' : 'Pendente'}
+                          {row.status === 'PAGO' ? <><CheckCircle2 className="mr-1 size-3" />Pago</> : 'Pendente'}
                         </button>
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-2">
@@ -309,9 +355,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
                           <button
                             type="button"
                             disabled={busyId === row.collaboratorId}
-                            onClick={() =>
-                              void patch(row, { status: row.status === 'PAGO' ? 'PENDENTE' : 'PAGO' })
-                            }
+                            onClick={() => row.status === 'PAGO' ? void patch(row, { status: 'PENDENTE' }) : beginPayment(row)}
                             className={cn(
                               'inline-flex h-7 items-center rounded-full px-2.5 text-[12px] transition-colors disabled:opacity-50',
                               row.status === 'PAGO'
@@ -319,7 +363,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
                                 : 'bg-[#F0EFEC]/6 text-[#F0EFEC]/50 hover:bg-[#F0EFEC]/10'
                             )}
                           >
-                            {row.status === 'PAGO' ? 'Pago' : 'Pendente'}
+                            {row.status === 'PAGO' ? 'Pago assinado' : 'Assinar e pagar'}
                           </button>
                         </td>
                       </tr>
@@ -332,6 +376,14 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
           ))}
         </div>
       )}
+      <PaymentSignatureDialog
+        open={Boolean(signingRow)}
+        employeeName={signingRow?.name ?? ''}
+        amountLabel={formatBRLFromCents(signingRow?.dayTotalCents ?? 0)}
+        saving={busyId === signingRow?.collaboratorId}
+        onClose={() => { if (busyId !== signingRow?.collaboratorId) setSigningRow(null) }}
+        onConfirm={confirmPayment}
+      />
     </div>
   )
 }

@@ -55,12 +55,15 @@ export default defineConfig(({ mode }) => {
         '@capacitor/core': path.resolve(mobileModules, '@capacitor/core'),
         '@capacitor/preferences': path.resolve(mobileModules, '@capacitor/preferences'),
         '@capacitor/app': path.resolve(mobileModules, '@capacitor/app'),
+        '@capacitor/filesystem': path.resolve(mobileModules, '@capacitor/filesystem'),
+        '@capacitor/share': path.resolve(mobileModules, '@capacitor/share'),
+        '@capacitor/screen-orientation': path.resolve(mobileModules, '@capacitor/screen-orientation'),
         '@capgo/capacitor-updater': path.resolve(mobileModules, '@capgo/capacitor-updater')
       },
       dedupe: ['react', 'react-dom', 'lucide-react', 'framer-motion']
     },
     optimizeDeps: {
-      exclude: ['@capacitor/core', '@capacitor/preferences', '@capacitor/app', '@capgo/capacitor-updater']
+      exclude: ['@capacitor/core', '@capacitor/preferences', '@capacitor/app', '@capacitor/filesystem', '@capacitor/share', '@capacitor/screen-orientation', '@capgo/capacitor-updater']
     },
     server: {
       port: 5174,

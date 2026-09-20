@@ -3,6 +3,7 @@ import {
   VOUCHER_GROUP_LABEL,
   VOUCHER_GROUPS,
   voucherGroupFor,
+  isVoucherSignatureDataUrl,
   type VoucherBoard,
   type VoucherRow,
   type VoucherStatus
@@ -10,6 +11,8 @@ import {
 import { voucherPeriodKey } from './_shared/vouchers.ts'
 import { getFlowAdminClient } from './supabase-clients.ts'
 import { listEmployees } from './cardplus.ts'
+import { listIdentities } from './identities.ts'
+import { listEmployeeDocuments } from './employee-documents.ts'
 
 type VoucherDbRow = {
   cardplus_collaborator_id: string
@@ -17,6 +20,9 @@ type VoucherDbRow = {
   transport_cents: number
   status: string
   period_key: string
+  payment_signature: string | null
+  paid_at: string | null
+  receipt_number: string | null
 }
 
 function isMissingTable(error: { code?: string; message?: string } | null): boolean {
@@ -39,6 +45,9 @@ export async function resetExpiredVouchers(): Promise<void> {
     .update({
       status: 'PENDENTE',
       paid_at: null,
+      payment_signature: null,
+      payment_signed_at: null,
+      receipt_number: null,
       period_key: periodKey,
       updated_at: new Date().toISOString()
     })
@@ -57,9 +66,13 @@ export async function listVoucherBoard(storeId?: string | null): Promise<Voucher
     (employee) => employee.isActive && employee.name.trim().toUpperCase() !== 'CAIXA'
   )
 
-  const { data, error } = await getFlowAdminClient()
+  const [{ data, error }, identities, documents] = await Promise.all([
+    getFlowAdminClient()
     .from('flow_employee_vouchers')
-    .select('cardplus_collaborator_id, lunch_cents, transport_cents, status, period_key')
+    .select('cardplus_collaborator_id, lunch_cents, transport_cents, status, period_key, payment_signature, paid_at, receipt_number'),
+    listIdentities(),
+    listEmployeeDocuments()
+  ])
 
   if (error && !isMissingTable(error)) {
     throw new Error(`Erro ao carregar vales: ${error.message}`)
@@ -76,12 +89,17 @@ export async function listVoucherBoard(storeId?: string | null): Promise<Voucher
       storeId: employee.storeId,
       storeName: employee.storeName,
       cpfMasked: employee.cpfMasked,
+      cpf: identities.get(employee.id)?.cpfDigits ?? null,
+      rgImage: documents.get(employee.id)?.rgImage ?? null,
       group: voucherGroupFor(employee.flowRole, employee.cardplusRole),
       roleLabel: employee.flowRoleLabel,
       lunchCents,
       transportCents,
       dayTotalCents: lunchCents + transportCents,
-      status: asStatus(voucher?.status ?? 'PENDENTE')
+      status: asStatus(voucher?.status ?? 'PENDENTE'),
+      paymentSignature: voucher?.payment_signature ?? null,
+      paidAt: voucher?.paid_at ?? null,
+      receiptNumber: voucher?.receipt_number ?? null
     }
   })
 
@@ -104,12 +122,12 @@ export async function listVoucherBoard(storeId?: string | null): Promise<Voucher
 
 export async function upsertVoucher(
   collaboratorId: string,
-  patch: { lunchCents?: number; transportCents?: number; status?: VoucherStatus }
+  patch: { lunchCents?: number; transportCents?: number; status?: VoucherStatus; signature?: string }
 ): Promise<void> {
   const periodKey = voucherPeriodKey()
   const current = await getFlowAdminClient()
     .from('flow_employee_vouchers')
-    .select('lunch_cents, transport_cents, status')
+    .select('lunch_cents, transport_cents, status, payment_signature, receipt_number')
     .eq('cardplus_collaborator_id', collaboratorId)
     .maybeSingle()
 
@@ -127,6 +145,13 @@ export async function upsertVoucher(
   }
 
   const status = patch.status ?? asStatus(current.data?.status ?? 'PENDENTE')
+  const signature = patch.signature?.trim() || null
+  const receiptNumber = status === 'PAGO'
+    ? current.data?.receipt_number ?? `${periodKey.replaceAll('-', '')}-${collaboratorId.slice(0, 8).toUpperCase()}`
+    : null
+  if (patch.status === 'PAGO' && !isVoucherSignatureDataUrl(signature ?? '')) {
+    throw new Error('A assinatura do recebimento é obrigatória para finalizar o pagamento.')
+  }
   const { error } = await getFlowAdminClient().from('flow_employee_vouchers').upsert(
     {
       cardplus_collaborator_id: collaboratorId,
@@ -135,6 +160,9 @@ export async function upsertVoucher(
       status,
       period_key: periodKey,
       paid_at: status === 'PAGO' ? new Date().toISOString() : null,
+      payment_signature: status === 'PAGO' ? signature ?? current.data?.payment_signature ?? null : null,
+      payment_signed_at: status === 'PAGO' ? new Date().toISOString() : null,
+      receipt_number: receiptNumber,
       updated_at: new Date().toISOString()
     },
     { onConflict: 'cardplus_collaborator_id' }

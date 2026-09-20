@@ -308,6 +308,12 @@ export type EmployeeIdentity = {
   flowRole: string | null
 }
 
+export type EmployeeDocument = {
+  collaboratorId: string
+  rgImage: string | null
+  updatedAt: string | null
+}
+
 export type EmployeeProfile = {
   employee: EmployeeListItem
   metrics: {
@@ -381,6 +387,8 @@ export type OperationsApi = {
   listEmployees: (storeId?: string | null) => Promise<EmployeeListItem[]>
   getEmployee: (id: string, storeId?: string | null) => Promise<EmployeeProfile>
   getEmployeeIdentity: (id: string) => Promise<EmployeeIdentity>
+  getEmployeeDocument: (id: string) => Promise<EmployeeDocument>
+  saveEmployeeDocument: (input: { collaboratorId: string; rgImage: string | null }) => Promise<EmployeeDocument>
   createEmployee: (input: CreateEmployeeInput) => Promise<EmployeeListItem>
   updateEmployee: (input: UpdateEmployeeInput) => Promise<EmployeeListItem>
   deleteEmployee: (id: string, storeId?: string | null) => Promise<void>
@@ -414,6 +422,7 @@ export type OperationsApi = {
     lunchCents?: number
     transportCents?: number
     status?: import('./vouchers').VoucherStatus
+    signature?: string
   }) => Promise<void>
   listFlowUsers: () => Promise<FlowLauncherUser[]>
   upsertFlowUser: (input: FlowLauncherUserWrite) => Promise<FlowLauncherUser>

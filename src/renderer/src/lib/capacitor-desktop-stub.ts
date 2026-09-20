@@ -24,3 +24,8 @@ export const CapacitorUpdater = {
   reload: async () => undefined,
   current: async () => ({ bundle: { id: 'builtin', version: '0.0.0' }, native: '0.0.0' })
 }
+
+export const Directory = { Cache: 'CACHE' }
+export const Filesystem = { writeFile: async () => ({ uri: '' }) }
+export const Share = { share: async () => undefined }
+export const ScreenOrientation = { lock: async () => undefined, unlock: async () => undefined }

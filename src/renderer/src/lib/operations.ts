@@ -34,6 +34,9 @@ export function operations(): OperationsApi {
     getEmployee: (id, storeId) =>
       api.getEmployee(id, storeId === undefined ? getCurrentStoreId() : storeId),
     getEmployeeIdentity: (id) => api.getEmployeeIdentity(id),
+    getEmployeeDocument: (id) => invokeOperation('getEmployeeDocument', 'operations:employee-document', { id }),
+    saveEmployeeDocument: (input) =>
+      invokeOperation('saveEmployeeDocument', 'operations:employee-document-save', input),
     createEmployee: (input) => api.createEmployee(input),
     updateEmployee: (input) => api.updateEmployee(input),
     deleteEmployee: (id, storeId) =>
