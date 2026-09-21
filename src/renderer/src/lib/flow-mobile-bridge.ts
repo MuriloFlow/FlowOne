@@ -124,6 +124,7 @@ function createOperations(prefs: Prefs): OperationsApi {
     listSorteioBoard: (storeId) => callOp('listSorteioBoard', withStore(storeId)),
     registerSorteioClient: (input) => callOp('registerSorteioClient', input),
     addSorteioVale: (input) => callOp('addSorteioVale', input),
+    deleteSorteioClient: (clientId) => callOp('deleteSorteioClient', { clientId }),
     listFlowUsers: () => callOp('listFlowUsers'),
     upsertFlowUser: (input) => callOp('upsertFlowUser', input),
     getActorScope: () => callOp('getActorScope')

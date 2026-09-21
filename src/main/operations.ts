@@ -24,7 +24,7 @@ import { getScheduleBoard, saveScheduleSlots, resetScheduleSlots, upsertSchedule
 import { getAttendanceBoard, upsertTeamHeadcount, upsertAttendanceEvent, deleteAttendanceEvent } from './attendance'
 import { readStorePreference, writeStorePreference } from './store-preference'
 import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
-import { addSorteioVale, listSorteioBoard, lookupSorteioClient, registerSorteioClient } from './sorteio'
+import { addSorteioVale, deleteSorteioClient, listSorteioBoard, lookupSorteioClient, registerSorteioClient } from './sorteio'
 import { listFlowUsers, upsertFlowUser } from './users'
 import type {
   CardMonthTotalWrite,
@@ -829,6 +829,13 @@ export function registerOperationsIpc(): void {
     )
     bustOperationsCache()
     return result
+  })
+
+  handle('operations:sorteio-delete', async (payload) => {
+    if (!payload || typeof payload !== 'object') throw new Error('Cliente inválido.')
+    const body = payload as Record<string, unknown>
+    await deleteSorteioClient(asString(body.clientId, 'Cliente'))
+    bustOperationsCache()
   })
 
   handle('operations:users', async () => {

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { History, Lock, Ticket, UserPlus } from 'lucide-react'
+import { Download, History, Lock, Ticket, Trash2, UserPlus } from 'lucide-react'
 import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
 import { SorteioFlow, sorteioDialogTitle, type SorteioStep } from '@/components/sorteio-flow'
+import { DangerConfirmButton } from '@/components/ui/danger-confirm-button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { formatCount } from '@/lib/format'
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
+import { exportSorteioPhonesExcel } from '@/lib/sorteio-export'
 import { cn } from '@/lib/utils'
 import type { SorteioBoard, SorteioClient } from '../../../shared/sorteio'
 
@@ -28,6 +30,9 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
   const [dialogExisting, setDialogExisting] = useState<SorteioClient | null>(null)
   const [dialogIsNew, setDialogIsNew] = useState(false)
   const [mobileHistory, setMobileHistory] = useState(false)
+  const [removing, setRemoving] = useState<SorteioClient | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const reload = useCallback(async () => {
     if (!historyUnlocked) return
@@ -50,6 +55,7 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
     setHistoryUnlocked(false)
     setBoard(null)
     setMobileHistory(false)
+    setRemoving(null)
   }, [storeId])
 
   const filtered = (board?.clients ?? []).filter((client) => {
@@ -74,31 +80,103 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
     setDialogOpen(true)
   }
 
+  async function exportPhones(): Promise<void> {
+    if (exporting) return
+    const list = filtered.length ? filtered : board?.clients ?? []
+    if (!list.length) {
+      setError('Não há clientes no histórico para exportar.')
+      return
+    }
+    setExporting(true)
+    try {
+      await exportSorteioPhonesExcel(list)
+      setError(null)
+    } catch (err) {
+      setError(operationError(err))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  async function confirmDelete(): Promise<void> {
+    if (!removing || deleting) return
+    setDeleting(true)
+    try {
+      await operations().deleteSorteioClient(removing.id)
+      setBoard((current) =>
+        current
+          ? {
+              ...current,
+              clients: current.clients.filter((item) => item.id !== removing.id),
+              totalClients: Math.max(0, current.totalClients - 1),
+              totalVales: Math.max(0, current.totalVales - removing.chances)
+            }
+          : current
+      )
+      setRemoving(null)
+      setError(null)
+      void reload()
+    } catch (err) {
+      setError(operationError(err))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const meta = sorteioDialogTitle(dialogStep, dialogExisting, dialogIsNew)
+  const canExport = (board?.clients.length ?? 0) > 0
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {mobile ? (
         mobileHistory && historyUnlocked ? (
           <>
-            <header className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h1 className="text-[20px] text-[#F0EFEC]/88">Histórico</h1>
-                <p className="mt-1 text-[13px] text-[#F0EFEC]/38">Clientes e vales do sorteio.</p>
+            <header className="mb-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-[20px] text-[#F0EFEC]/88">Histórico</h1>
+                  <p className="mt-1 text-[13px] text-[#F0EFEC]/38">Clientes e vales do sorteio.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileHistory(false)}
+                  className="h-9 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/55"
+                >
+                  Voltar
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setMobileHistory(false)}
-                className="h-9 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/55"
-              >
-                Voltar
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={!canExport || exporting}
+                  onClick={() => void exportPhones()}
+                  className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-[#F0EFEC] text-[13px] text-[#111111] disabled:opacity-45"
+                >
+                  <Download className="size-3.5" strokeWidth={1.8} />
+                  {exporting ? 'Exportando…' : 'Exportar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="flex h-11 items-center justify-center gap-2 rounded-[10px] border border-white/[0.08] text-[13px] text-[#F0EFEC]/75"
+                >
+                  <UserPlus className="size-3.5" strokeWidth={1.8} />
+                  Cadastrar
+                </button>
+              </div>
             </header>
             {error ? <ErrorBox message={error} /> : null}
             {loading && !board ? (
               <div className="min-h-[200px] flex-1 animate-pulse rounded-[14px] bg-white/4" />
             ) : (
-              <HistoryList board={board} query={query} filtered={filtered} onQuery={setQuery} mobile />
+              <HistoryList
+                board={board}
+                query={query}
+                filtered={filtered}
+                onQuery={setQuery}
+                mobile
+                onDelete={setRemoving}
+              />
             )}
           </>
         ) : (
@@ -142,13 +220,26 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
                 Cadastre clientes e some vales (chances) no sorteio da loja.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="h-8 shrink-0 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
-            >
-              Cadastrar
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              {historyUnlocked && canExport ? (
+                <button
+                  type="button"
+                  disabled={exporting}
+                  onClick={() => void exportPhones()}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-white/[0.08] px-3.5 text-[13px] text-[#F0EFEC]/70 hover:bg-white/[0.04] disabled:opacity-45"
+                >
+                  <Download className="size-3.5" strokeWidth={1.8} />
+                  {exporting ? 'Exportando…' : 'Exportar'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={openCreate}
+                className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+              >
+                Cadastrar
+              </button>
+            </div>
           </header>
 
           {error ? <ErrorBox message={error} /> : null}
@@ -160,7 +251,7 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
               </div>
               <p className="text-[15px] text-[#F0EFEC]/82">Histórico protegido</p>
               <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-[#F0EFEC]/38">
-                Confirme a senha da sua conta FLOW para ver os clientes e vales cadastrados.
+                Confirme a senha da sua conta FLOW para ver, exportar ou excluir cadastros.
               </p>
               <button
                 type="button"
@@ -176,7 +267,14 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
           ) : (board?.clients.length ?? 0) === 0 ? (
             <EmptyHistory onCreate={openCreate} />
           ) : (
-            <HistoryList board={board} query={query} filtered={filtered} onQuery={setQuery} mobile={false} />
+            <HistoryList
+              board={board}
+              query={query}
+              filtered={filtered}
+              onQuery={setQuery}
+              mobile={false}
+              onDelete={setRemoving}
+            />
           )}
 
           <Dialog
@@ -207,10 +305,37 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
         </>
       )}
 
+      <Dialog
+        open={removing !== null}
+        title="Excluir cliente"
+        description={
+          removing
+            ? `Apaga ${removing.name} e todos os ${removing.chances} ${removing.chances === 1 ? 'vale' : 'vales'} deste CPF. Não dá para desfazer.`
+            : undefined
+        }
+        onClose={() => {
+          if (!deleting) setRemoving(null)
+        }}
+      >
+        <div className="flex items-center justify-end gap-2 px-5 pb-5">
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => setRemoving(null)}
+            className="h-8 rounded-[8px] px-3.5 text-[13px] text-[#F0EFEC]/45"
+          >
+            Cancelar
+          </button>
+          <DangerConfirmButton loading={deleting} onClick={() => void confirmDelete()}>
+            Excluir
+          </DangerConfirmButton>
+        </div>
+      </Dialog>
+
       <PasswordConfirmationDialog
         open={askingPassword}
         title="Abrir histórico do sorteio"
-        description="Digite a senha da conta FLOW para visualizar os cadastros."
+        description="Digite a senha da conta FLOW para visualizar, exportar ou excluir cadastros."
         confirmLabel="Liberar histórico"
         onClose={() => setAskingPassword(false)}
         onConfirmed={() => {
@@ -263,13 +388,15 @@ function HistoryList({
   query,
   filtered,
   onQuery,
-  mobile
+  mobile,
+  onDelete
 }: {
   board: SorteioBoard | null
   query: string
   filtered: SorteioClient[]
   onQuery: (value: string) => void
   mobile: boolean
+  onDelete: (client: SorteioClient) => void
 }) {
   return (
     <section
@@ -304,22 +431,33 @@ function HistoryList({
                     {client.cpfMasked} · {client.phoneFormatted}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full bg-[#F0EFEC]/08 px-2.5 py-1 text-[12px] text-[#F0EFEC]/75">
-                  {client.chances} {client.chances === 1 ? 'vale' : 'vales'}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-[#F0EFEC]/08 px-2.5 py-1 text-[12px] text-[#F0EFEC]/75">
+                    {client.chances} {client.chances === 1 ? 'vale' : 'vales'}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Excluir ${client.name}`}
+                    onClick={() => onDelete(client)}
+                    className="flex size-8 items-center justify-center rounded-[8px] text-red-300/70 hover:bg-red-500/10"
+                  >
+                    <Trash2 className="size-3.5" strokeWidth={1.8} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full min-w-[640px] border-collapse text-left">
+          <table className="w-full min-w-[720px] border-collapse text-left">
             <thead className="sticky top-0 bg-[#1A1A1A]">
               <tr className="border-y border-white/[0.04] text-[11px] uppercase tracking-[0.06em] text-[#F0EFEC]/28">
                 <th className="px-4 py-2.5 font-medium">Cliente</th>
                 <th className="px-4 py-2.5 font-medium">CPF</th>
                 <th className="px-4 py-2.5 font-medium">Telefone</th>
                 <th className="px-4 py-2.5 font-medium text-right">Vales</th>
+                <th className="px-4 py-2.5 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -329,6 +467,16 @@ function HistoryList({
                   <td className="px-4 py-3 text-[13px] text-[#F0EFEC]/48">{client.cpfMasked}</td>
                   <td className="px-4 py-3 text-[13px] text-[#F0EFEC]/48">{client.phoneFormatted}</td>
                   <td className="px-4 py-3 text-right text-[13.5px] text-[#F0EFEC]/86">{client.chances}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      aria-label={`Excluir ${client.name}`}
+                      onClick={() => onDelete(client)}
+                      className="inline-flex size-8 items-center justify-center rounded-[8px] text-red-300/65 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="size-3.5" strokeWidth={1.8} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -428,6 +428,7 @@ export type OperationsApi = {
   listSorteioBoard: (storeId?: string | null) => Promise<import('./sorteio').SorteioBoard>
   registerSorteioClient: (input: import('./sorteio').SorteioRegisterInput) => Promise<import('./sorteio').SorteioConfirmResult>
   addSorteioVale: (input: import('./sorteio').SorteioAddValeInput) => Promise<import('./sorteio').SorteioConfirmResult>
+  deleteSorteioClient: (clientId: string) => Promise<void>
   listFlowUsers: () => Promise<FlowLauncherUser[]>
   upsertFlowUser: (input: FlowLauncherUserWrite) => Promise<FlowLauncherUser>
   getActorScope: () => Promise<ActorScopeView>

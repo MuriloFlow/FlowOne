@@ -131,6 +131,12 @@ export function operations(): OperationsApi {
       }
       return invokeOperation('addSorteioVale', 'operations:sorteio-add-vale', payload)
     },
+    deleteSorteioClient: (clientId) => {
+      if (typeof api.deleteSorteioClient === 'function') {
+        return api.deleteSorteioClient(clientId)
+      }
+      return invokeOperation('deleteSorteioClient', 'operations:sorteio-delete', { clientId })
+    },
     listFlowUsers: () => invokeOperation('listFlowUsers', 'operations:users'),
     upsertFlowUser: (input) => invokeOperation('upsertFlowUser', 'operations:user-upsert', input),
     getActorScope: () => invokeOperation('getActorScope', 'operations:scope')

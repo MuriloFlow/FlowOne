@@ -48,6 +48,7 @@ import {
 import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers.ts'
 import {
   addSorteioVale,
+  deleteSorteioClient,
   listSorteioBoard,
   lookupSorteioClient,
   registerSorteioClient
@@ -753,6 +754,13 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
       },
       actor.userId
     )
+  },
+
+  async deleteSorteioClient(payload) {
+    await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Cliente inválido.')
+    const body = payload as Record<string, unknown>
+    await deleteSorteioClient(asString(body.clientId, 'Cliente'))
   },
 
   async listFlowUsers() {

@@ -292,3 +292,15 @@ export async function addSorteioVale(
     isNewClient: false
   }
 }
+
+export async function deleteSorteioClient(clientId: string): Promise<void> {
+  const id = clientId.trim()
+  if (!id) throw new Error('Cliente inválido.')
+  const { error } = await getFlowAdminClient().from('flow_sorteio_clients').delete().eq('id', id)
+  if (error) {
+    if (isMissingTable(error)) {
+      throw new Error('Tabelas do sorteio ausentes. Rode o SQL 0017_flow_sorteio.sql no Supabase FLOW.')
+    }
+    throw new Error(`Erro ao excluir cliente: ${error.message}`)
+  }
+}

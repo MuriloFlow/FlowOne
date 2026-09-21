@@ -108,6 +108,7 @@ const flow: FlowApi = {
     },
     registerSorteioClient: (input) => ipcRenderer.invoke('operations:sorteio-register', input),
     addSorteioVale: (input) => ipcRenderer.invoke('operations:sorteio-add-vale', input),
+    deleteSorteioClient: (clientId) => ipcRenderer.invoke('operations:sorteio-delete', { clientId }),
     listFlowUsers: () => ipcRenderer.invoke('operations:users'),
     upsertFlowUser: (input) => ipcRenderer.invoke('operations:user-upsert', input),
     getActorScope: () => ipcRenderer.invoke('operations:scope')
