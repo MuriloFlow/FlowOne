@@ -65,11 +65,17 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>O FLOW usa a câmera para anexar a foto do atestado.</string>
+	<string>O FLOW usa a câmera para anexar a foto do atestado e documentos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>O FLOW acessa a galeria para anexar a foto do atestado.</string>
+	<string>O FLOW acessa a galeria para anexar a foto do atestado e documentos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>O FLOW pode salvar uma cópia da foto do atestado se você escolher.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIFileSharingEnabled</key>
+	<false/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

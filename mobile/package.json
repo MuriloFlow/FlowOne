@@ -12,6 +12,7 @@
     "sync": "npm run build && npx cap sync",
     "android": "npm run sync && npx cap open android",
     "ios": "npm run sync && npx cap open ios",
+    "ios:package": "node ../scripts/package-ios.mjs",
     "resources": "node scripts/sync-desktop-icon.mjs && npx @capacitor/assets generate --iconBackgroundColor '#111111' --splashBackgroundColor '#111111' --android --ios"
   },
   "dependencies": {

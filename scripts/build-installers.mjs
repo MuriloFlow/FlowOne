@@ -57,6 +57,18 @@ try {
   console.warn('cap sync android failed — run npx cap add android first.')
 }
 
+try {
+  run('npx cap sync ios', mobileDir)
+} catch {
+  console.warn('cap sync ios failed — run npx cap add ios first.')
+}
+
+try {
+  run('node scripts/package-ios.mjs', root)
+} catch (error) {
+  console.warn('iOS package skipped:', error instanceof Error ? error.message : error)
+}
+
 const sdk = androidHome()
 let apkCopied = false
 if (sdk && hasJava()) {
@@ -87,25 +99,8 @@ if (!apkCopied) {
   console.warn('APK not produced. Install JDK 17 + Android SDK, then rerun npm run dist:mobile.')
 }
 
-fs.writeFileSync(
-  path.join(downloadDir, 'IOS-README.txt'),
-  [
-    'FLOW iOS',
-    '',
-    'Este Windows não gera IPA assinado.',
-    'No Mac:',
-    '  1. clone o repo e `cd mobile && npm ci && npm run sync`',
-    '  2. abra `ios/App/App.xcworkspace` no Xcode',
-    '  3. escolha o Team Apple Developer em Signing & Capabilities (bundle com.flow.mobile)',
-    '  4. Product → Archive → Distribute App',
-    '',
-    `Versão alinhada ao launcher: ${version}`,
-    ''
-  ].join('\n')
-)
-
 const dist = path.join(mobileDir, 'dist')
-if (fs.existsSync(dist)) {
+if (fs.existsSync(dist) && !fs.existsSync(path.join(downloadDir, 'mobile-www.zip'))) {
   const zipName = 'mobile-www.zip'
   const zipPath = path.join(downloadDir, zipName)
   try {
