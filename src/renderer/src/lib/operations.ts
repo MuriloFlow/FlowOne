@@ -130,5 +130,11 @@ export function operationError(error: unknown): string {
   if (/failed to fetch|fetch failed|network|econnreset|etimedout|enotfound|sem conexão com o flow/i.test(cleaned)) {
     return 'Sem conexão com o FLOW agora. Confira a internet e tente de novo.'
   }
+  if (/share canceled|sharing canceled|cancelad/i.test(cleaned)) {
+    return ''
+  }
+  if (/only file urls|unsupported url|não foi possível salvar o arquivo|não foi possível preparar o arquivo|não foi possível gerar a imagem|não foi possível montar o recibo|tempo esgotado ao carregar/i.test(cleaned)) {
+    return 'Não foi possível exportar no celular. Feche outros apps, tente de novo e escolha onde salvar (Drive, Arquivos ou WhatsApp).'
+  }
   return cleaned || 'Não foi possível carregar os dados agora.'
 }

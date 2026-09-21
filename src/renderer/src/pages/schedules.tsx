@@ -48,6 +48,7 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
   const [hoursOpen, setHoursOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportDateKey, setExportDateKey] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [overSlot, setOverSlot] = useState<string | null>(null)
   const [overPool, setOverPool] = useState(false)
@@ -526,16 +527,22 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
               <button
                 key={item.id}
                 type="button"
-                disabled={!board}
+                disabled={!board || exporting}
                 onClick={() => {
                   if (!board) return
+                  setExporting(true)
+                  setError(null)
                   void exportScheduleImage(board, item.id, { dateKey: exportDateKey })
-                  setExportOpen(false)
+                    .then(() => setExportOpen(false))
+                    .catch((exportError) => setError(operationError(exportError)))
+                    .finally(() => setExporting(false))
                 }}
-                className="flex h-11 w-full items-center justify-between rounded-[10px] border border-white/[0.06] px-3 text-left hover:bg-white/[0.04]"
+                className="flex h-11 w-full items-center justify-between rounded-[10px] border border-white/[0.06] px-3 text-left hover:bg-white/[0.04] disabled:opacity-45"
               >
                 <span>
-                  <span className="block text-[13px] text-[#F0EFEC]/78">Escala de {item.exportLabel}</span>
+                  <span className="block text-[13px] text-[#F0EFEC]/78">
+                    {exporting ? 'Gerando escala…' : `Escala de ${item.exportLabel}`}
+                  </span>
                   <span className="block text-[11px] text-[#F0EFEC]/32">
                     {exportDateKey
                       ? `Só ${weekdayName(board?.days.find((day) => day.dateKey === exportDateKey)?.weekday ?? 1)}`

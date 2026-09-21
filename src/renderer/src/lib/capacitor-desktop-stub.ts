@@ -25,7 +25,7 @@ export const CapacitorUpdater = {
   current: async () => ({ bundle: { id: 'builtin', version: '0.0.0' }, native: '0.0.0' })
 }
 
-export const Directory = { Cache: 'CACHE' }
-export const Filesystem = { writeFile: async () => ({ uri: '' }) }
+export const Directory = { Cache: 'CACHE', Data: 'DATA', ExternalCache: 'EXTERNAL_CACHE' }
+export const Filesystem = { writeFile: async () => ({ uri: 'file:///tmp/flow-stub' }) }
 export const Share = { share: async () => undefined }
 export const ScreenOrientation = { lock: async () => undefined, unlock: async () => undefined }

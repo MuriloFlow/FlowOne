@@ -16,6 +16,7 @@ import {
   type ScheduleTeam
 } from '../../../shared/schedules'
 import { formatDateKey } from '@/lib/format'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import { exportFile } from '@/lib/native-export'
 
 type ExportSlot = ScheduleSlot & { assignments: ScheduleAssignment[] }
@@ -277,15 +278,30 @@ export async function exportScheduleImage(
     ctx.stroke()
   })
 
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) return
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((value) => resolve(value), 'image/png')
+  })
+  let file = blob
+  if (!file) {
+    const dataUrl = canvas.toDataURL('image/png')
+    const response = await fetch(dataUrl)
+    file = await response.blob()
+  }
+  if (!file || file.size < 32) throw new Error('Não foi possível gerar a imagem da escala.')
+
   const scopeName =
     days.length === 1 && single
       ? `${single.dateKey}-${weekdayShort(single.weekday)}`
       : board.weekStart
   const filename = `escala-${scheduleExportLabel(team).replace(/\s+/g, '-').toLowerCase()}-${scopeName}.png`
-  await exportFile(blob, filename, 'Exportar escala')
-  if (navigator.clipboard && 'write' in navigator.clipboard && typeof ClipboardItem !== 'undefined') {
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => undefined)
+  await exportFile(file, filename, 'Exportar escala')
+
+  if (
+    !isMobileShell() &&
+    navigator.clipboard &&
+    'write' in navigator.clipboard &&
+    typeof ClipboardItem !== 'undefined'
+  ) {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': file })]).catch(() => undefined)
   }
 }

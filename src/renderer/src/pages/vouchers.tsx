@@ -149,7 +149,13 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
       await exportVoucherReceipts(board.groups.flatMap((group) => group.rows))
       setError(null)
     } catch (exportError) {
-      setError(operationError(exportError))
+      const message = operationError(exportError)
+      // Fechar a folha de compartilhar no celular não é falha — o PDF já foi gerado.
+      if (/share canceled|sharing canceled|cancelad/i.test(message)) {
+        setError(null)
+        return
+      }
+      setError(message)
       throw exportError
     } finally {
       setExporting(false)
