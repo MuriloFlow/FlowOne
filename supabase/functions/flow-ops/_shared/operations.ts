@@ -417,6 +417,7 @@ export type OperationsApi = {
   upsertAttendanceEvent: (input: import('./attendance').AttendanceEventWrite) => Promise<import('./attendance').AttendanceEvent>
   deleteAttendanceEvent: (id: string, storeId: string) => Promise<void>
   listVouchers: (storeId?: string | null) => Promise<import('./vouchers').VoucherBoard>
+  listVoucherHistory: (monthKey: string, storeId?: string | null) => Promise<import('./vouchers').VoucherHistoryBoard>
   updateVoucher: (input: {
     collaboratorId: string
     lunchCents?: number

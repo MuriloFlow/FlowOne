@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Banknote, Bus, CheckCircle2, FileDown, Utensils } from 'lucide-react'
+import { Banknote, Bus, CheckCircle2, FileDown, History, Utensils } from 'lucide-react'
 import { AnimatedMoney } from '@/components/animated-number'
 import { MoneyCell } from '@/components/money-cell'
+import { MonthSwitcher } from '@/components/month-switcher'
 import { initials } from '@/lib/identity'
-import { formatBRLFromCents } from '@/lib/format'
+import { currentDateKey, currentMonthKey, formatBRLFromCents, formatDateTime, weekdayLong } from '@/lib/format'
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
@@ -15,6 +16,7 @@ import {
   formatVoucherWeekLabel,
   msUntilNextVoucherReset,
   type VoucherBoard,
+  type VoucherHistoryBoard,
   type VoucherRow,
   type VoucherStatus
 } from '../../../shared/vouchers'
@@ -31,6 +33,11 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   const [signingRow, setSigningRow] = useState<VoucherRow | null>(null)
   const [exporting, setExporting] = useState(false)
   const [confirmingExport, setConfirmingExport] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [monthKey, setMonthKey] = useState(currentMonthKey)
+  const [history, setHistory] = useState<VoucherHistoryBoard | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
   const mobile = isMobileShell()
 
   async function load(): Promise<VoucherBoard> {
@@ -54,6 +61,36 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
       active = false
     }
   }, [storeId])
+
+  useEffect(() => {
+    if (!historyOpen) return
+    let active = true
+    setHistoryLoading(true)
+    void operations()
+      .listVoucherHistory(monthKey, storeId)
+      .then((next) => {
+        if (!active) return
+        setHistory(next)
+        setError(null)
+        const today = currentDateKey()
+        const current = next.sundays.filter((sunday) => sunday.periodKey <= today)
+        const preferred = [...current].reverse().find((sunday) => sunday.payments.length > 0) ?? current.at(-1) ?? next.sundays[0]
+        setSelectedPeriod((currentPeriod) =>
+          currentPeriod && next.sundays.some((sunday) => sunday.periodKey === currentPeriod)
+            ? currentPeriod
+            : preferred?.periodKey ?? null
+        )
+      })
+      .catch((loadError: unknown) => {
+        if (active) setError(operationError(loadError))
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [historyOpen, monthKey, storeId])
 
   useEffect(() => {
     let timer = 0
@@ -191,21 +228,35 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
               : 'Vales somente da unidade selecionada.'
             : 'Vale-almoço e vale-transporte por funcionário.'}{' '}
           {mobile
-            ? 'Pago volta a pendente todo domingo.'
-            : 'Status pago volta para pendente todo domingo à 00:00.'}
+            ? 'Pago volta a pendente no sábado, 00:00.'
+            : 'Status pago volta para pendente todo sábado à 00:00.'}
           {board ? (
             <span className="text-[#F0EFEC]/28"> Semana {formatVoucherWeekLabel(board.periodKey)}.</span>
           ) : null}
         </p>
         </div>
-        <button
-          type="button"
-          disabled={exporting || !board?.groups.some((group) => group.rows.some((row) => row.status === 'PAGO' && row.paymentSignature))}
-          onClick={() => setConfirmingExport(true)}
-          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-3 text-[12px] font-medium text-[#111] transition-opacity disabled:opacity-35"
-        >
-          <FileDown className="size-3.5" /> {exporting ? 'Gerando...' : 'Finalizar pagamento'}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((open) => !open)}
+            className={cn(
+              'inline-flex h-9 items-center gap-2 rounded-[9px] border px-3 text-[12px] font-medium transition-colors',
+              historyOpen
+                ? 'border-[#F0EFEC]/20 bg-[#F0EFEC]/10 text-[#F0EFEC]'
+                : 'border-white/[0.08] bg-white/[0.03] text-[#F0EFEC]/70 hover:text-[#F0EFEC]'
+            )}
+          >
+            <History className="size-3.5" /> Histórico
+          </button>
+          <button
+            type="button"
+            disabled={exporting || !board?.groups.some((group) => group.rows.some((row) => row.status === 'PAGO' && row.paymentSignature))}
+            onClick={() => setConfirmingExport(true)}
+            className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-3 text-[12px] font-medium text-[#111] transition-opacity disabled:opacity-35"
+          >
+            <FileDown className="size-3.5" /> {exporting ? 'Gerando...' : mobile ? 'Finalizar' : 'Finalizar pagamento'}
+          </button>
+        </div>
       </header>
 
       {error ? (
@@ -214,6 +265,24 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         </div>
       ) : null}
 
+      {historyOpen ? (
+        <VoucherHistory
+          mobile={mobile}
+          monthKey={monthKey}
+          loading={historyLoading}
+          history={history}
+          selectedPeriod={selectedPeriod}
+          showStore={!storeId}
+          onMonthKey={(next) => {
+            setSelectedPeriod(null)
+            setMonthKey(next)
+          }}
+          onSelect={setSelectedPeriod}
+        />
+      ) : null}
+
+      {!historyOpen ? (
+      <>
       <div
         data-mobile-stack={mobile ? '' : undefined}
         className={mobile ? 'flex flex-col gap-3' : 'grid grid-cols-3 gap-3'}
@@ -385,6 +454,8 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
           ))}
         </div>
       )}
+      </>
+      ) : null}
       <PaymentSignatureDialog
         open={Boolean(signingRow)}
         employeeName={signingRow?.name ?? ''}
@@ -404,6 +475,146 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
           setConfirmingExport(false)
         }}
       />
+    </div>
+  )
+}
+
+function VoucherHistory({
+  mobile,
+  monthKey,
+  loading,
+  history,
+  selectedPeriod,
+  showStore,
+  onMonthKey,
+  onSelect
+}: {
+  mobile: boolean
+  monthKey: string
+  loading: boolean
+  history: VoucherHistoryBoard | null
+  selectedPeriod: string | null
+  showStore: boolean
+  onMonthKey: (monthKey: string) => void
+  onSelect: (periodKey: string) => void
+}) {
+  const today = currentDateKey()
+  const selected = history?.sundays.find((sunday) => sunday.periodKey === selectedPeriod) ?? null
+
+  return (
+    <div className={cn(mobile ? 'mb-16' : 'mb-[4.5rem]')}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-[13px] text-[#F0EFEC]/40">Domingos do mês. Cada coluna é um lote pago.</p>
+        <MonthSwitcher value={monthKey} onChange={onMonthKey} />
+      </div>
+      {loading && !history ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="h-24 animate-pulse rounded-[16px] bg-white/4" />
+          <div className="h-24 animate-pulse rounded-[16px] bg-white/4" />
+          <div className="h-24 animate-pulse rounded-[16px] bg-white/4" />
+          <div className="h-24 animate-pulse rounded-[16px] bg-white/4" />
+        </div>
+      ) : (
+        <div className={cn('grid gap-3', (history?.sundays.length ?? 4) > 4 ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4')}>
+          {(history?.sundays ?? []).map((sunday) => {
+            const future = sunday.periodKey > today
+            const active = sunday.periodKey === selectedPeriod
+            return (
+              <button
+                key={sunday.periodKey}
+                type="button"
+                disabled={future}
+                onClick={() => onSelect(sunday.periodKey)}
+                className={cn(
+                  'rounded-[16px] border px-4 py-3 text-left transition-colors disabled:opacity-40',
+                  active
+                    ? 'border-[#F0EFEC]/25 bg-[#F0EFEC]/8'
+                    : 'border-white/[0.045] bg-[#1A1A1A] hover:border-white/10'
+                )}
+              >
+                <p className="text-[11px] tracking-wide text-[#F0EFEC]/35 uppercase">Domingo</p>
+                <p className="mt-1 text-[16px] text-[#F0EFEC]/88">{sunday.label}</p>
+                <p className="mt-2 text-[12px] text-[#F0EFEC]/42">
+                  {future
+                    ? 'Ainda não chegou'
+                    : sunday.payments.length
+                      ? `${sunday.payments.length} pago${sunday.payments.length === 1 ? '' : 's'} · ${formatBRLFromCents(sunday.totalCents)}`
+                      : 'Nenhum pagamento'}
+                </p>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {selected && selected.periodKey <= today ? (
+        <section className="mt-4 overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
+          <div className={cn('flex items-center justify-between', mobile ? 'px-4 py-3' : 'px-5 py-3')}>
+            <h2 className="text-[13px] capitalize tracking-wide text-[#F0EFEC]/55">{weekdayLong(selected.periodKey)}</h2>
+            <span className="text-[12px] text-[#F0EFEC]/35">{formatBRLFromCents(selected.totalCents)}</span>
+          </div>
+          {selected.payments.length === 0 ? (
+            <p className="border-t border-white/[0.04] px-5 py-8 text-center text-[13px] text-[#F0EFEC]/38">
+              Nenhum vale foi pago neste domingo.
+            </p>
+          ) : mobile ? (
+            <div>
+              {selected.payments.map((payment) => (
+                <div key={payment.collaboratorId} className="border-t border-white/[0.04] px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[11px] text-[#F0EFEC]/55">
+                      {initials(payment.name)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] text-[#F0EFEC]/85">{payment.name}</p>
+                      <p className="truncate text-[12px] text-[#F0EFEC]/38">
+                        {showStore ? `${payment.roleLabel} · ${payment.storeName}` : payment.roleLabel}
+                      </p>
+                    </div>
+                    <p className="text-[13px] text-[#34D399]">{formatBRLFromCents(payment.totalCents)}</p>
+                  </div>
+                  <p className="mt-2 text-[12px] text-[#F0EFEC]/40">
+                    Almoço {formatBRLFromCents(payment.lunchCents)} · Transporte {formatBRLFromCents(payment.transportCents)}
+                    {payment.paidAt ? ` · ${formatDateTime(payment.paidAt)}` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">
+                  <tr className="border-y border-white/[0.04]">
+                    <th className="px-5 py-2.5 font-medium">Funcionário</th>
+                    <th className="px-3 py-2.5 font-medium">Vale-almoço</th>
+                    <th className="px-3 py-2.5 font-medium">Vale-transporte</th>
+                    <th className="px-3 py-2.5 font-medium">Total</th>
+                    <th className="px-5 py-2.5 font-medium">Pago em</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selected.payments.map((payment) => (
+                    <tr key={payment.collaboratorId} className="border-t border-white/[0.03]">
+                      <td className="px-5 py-3">
+                        <p className="text-[13px] text-[#F0EFEC]/85">{payment.name}</p>
+                        <p className="text-[12px] text-[#F0EFEC]/35">
+                          {showStore ? `${payment.roleLabel} · ${payment.storeName}` : payment.roleLabel}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3 text-[13px] text-[#F0EFEC]/70">{formatBRLFromCents(payment.lunchCents)}</td>
+                      <td className="px-3 py-3 text-[13px] text-[#F0EFEC]/70">{formatBRLFromCents(payment.transportCents)}</td>
+                      <td className="px-3 py-3 text-[13px] text-[#34D399]">{formatBRLFromCents(payment.totalCents)}</td>
+                      <td className="px-5 py-3 text-[12px] text-[#F0EFEC]/45">
+                        {payment.paidAt ? formatDateTime(payment.paidAt) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : null}
     </div>
   )
 }

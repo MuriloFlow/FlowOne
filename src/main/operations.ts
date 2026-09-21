@@ -23,7 +23,7 @@ import { resolveActor, resolveStoreFilter } from './scope'
 import { getScheduleBoard, saveScheduleSlots, resetScheduleSlots, upsertScheduleAssignment, deleteScheduleAssignment } from './schedules'
 import { getAttendanceBoard, upsertTeamHeadcount, upsertAttendanceEvent, deleteAttendanceEvent } from './attendance'
 import { readStorePreference, writeStorePreference } from './store-preference'
-import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers'
+import { deleteVoucher, listVoucherBoard, listVoucherHistory, upsertVoucher } from './vouchers'
 import { addSorteioVale, deleteSorteioClient, listSorteioBoard, lookupSorteioClient, registerSorteioClient } from './sorteio'
 import { listFlowUsers, upsertFlowUser } from './users'
 import type {
@@ -750,6 +750,14 @@ export function registerOperationsIpc(): void {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, payload)
     return memo(cacheKey('vouchers', storeId), 8_000, () => listVoucherBoard(storeId))
+  })
+
+  handle('operations:voucher-history', async (payload) => {
+    const actor = await resolveActor()
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const monthKey = asString(body.monthKey, 'Mês')
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null)
+    return listVoucherHistory(monthKey, storeId)
   })
 
   handle('operations:voucher-update', async (payload) => {

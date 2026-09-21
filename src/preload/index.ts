@@ -88,6 +88,8 @@ const flow: FlowApi = {
       ipcRenderer.invoke('operations:attendance-delete', { id, storeId }),
     listVouchers: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:vouchers', { storeId: storeId ?? null }),
+    listVoucherHistory: (monthKey: string, storeId?: string | null) =>
+      ipcRenderer.invoke('operations:voucher-history', { monthKey, storeId: storeId ?? null }),
     updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input),
     lookupSorteioClient: (cpf, storeId) => {
       if (cpf && typeof cpf === 'object' && 'cpf' in (cpf as object)) {

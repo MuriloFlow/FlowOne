@@ -8,7 +8,7 @@ import {
   type VoucherRow,
   type VoucherStatus
 } from './_shared/vouchers.ts'
-import { voucherPeriodKey } from './_shared/vouchers.ts'
+import { voucherPeriodKey, sundaysInMonth, formatSundayLabel, type VoucherHistoryBoard } from './_shared/vouchers.ts'
 import { getFlowAdminClient } from './supabase-clients.ts'
 import { listEmployees } from './cardplus.ts'
 import { listIdentities } from './identities.ts'
@@ -38,9 +38,107 @@ function asStatus(value: string): VoucherStatus {
   return value === 'PAGO' ? 'PAGO' : 'PENDENTE'
 }
 
+function isMissingHistory(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  return (
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    /flow_voucher_payment_history/i.test(error.message ?? '')
+  )
+}
+
+type PaidSnapshot = {
+  cardplus_collaborator_id: string
+  lunch_cents: number
+  transport_cents: number
+  period_key: string
+  paid_at: string | null
+  receipt_number: string | null
+}
+
+async function archivePayments(rows: PaidSnapshot[]): Promise<void> {
+  if (!rows.length) return
+  const employees = await listEmployees(null)
+  const byId = new Map(employees.map((employee) => [employee.id, employee]))
+  const { error } = await getFlowAdminClient().from('flow_voucher_payment_history').upsert(
+    rows.map((row) => {
+      const employee = byId.get(row.cardplus_collaborator_id)
+      return {
+        cardplus_collaborator_id: row.cardplus_collaborator_id,
+        period_key: row.period_key,
+        cardplus_store_id: employee?.storeId ?? null,
+        name: employee?.name ?? 'Funcionário',
+        store_name: employee?.storeName ?? '',
+        role_label: employee?.flowRoleLabel ?? '',
+        lunch_cents: row.lunch_cents,
+        transport_cents: row.transport_cents,
+        paid_at: row.paid_at,
+        receipt_number: row.receipt_number
+      }
+    }),
+    { onConflict: 'cardplus_collaborator_id,period_key' }
+  )
+  if (error && !isMissingHistory(error)) {
+    throw new Error(`Erro ao guardar histórico do vale: ${error.message}`)
+  }
+  if (error && isMissingHistory(error)) {
+    log.warn('[vouchers] histórico ausente — rode 0018_flow_voucher_payment_history.sql')
+  }
+}
+
+async function rememberPayment(input: {
+  collaboratorId: string
+  periodKey: string
+  lunchCents: number
+  transportCents: number
+  paidAt: string | null
+  receiptNumber: string | null
+}): Promise<void> {
+  await archivePayments([
+    {
+      cardplus_collaborator_id: input.collaboratorId,
+      period_key: input.periodKey,
+      lunch_cents: input.lunchCents,
+      transport_cents: input.transportCents,
+      paid_at: input.paidAt,
+      receipt_number: input.receiptNumber
+    }
+  ])
+}
+
+async function forgetPayment(collaboratorId: string, periodKey: string): Promise<void> {
+  const { error } = await getFlowAdminClient()
+    .from('flow_voucher_payment_history')
+    .delete()
+    .eq('cardplus_collaborator_id', collaboratorId)
+    .eq('period_key', periodKey)
+  if (error && !isMissingHistory(error)) {
+    log.warn('[vouchers] histórico delete', error.message)
+  }
+}
+
 export async function resetExpiredVouchers(): Promise<void> {
   const periodKey = voucherPeriodKey()
-  const { error } = await getFlowAdminClient()
+  const admin = getFlowAdminClient()
+  const expired = await admin
+    .from('flow_employee_vouchers')
+    .select('cardplus_collaborator_id, lunch_cents, transport_cents, period_key, paid_at, receipt_number')
+    .eq('status', 'PAGO')
+    .neq('period_key', periodKey)
+
+  if (expired.error && !isMissingTable(expired.error)) {
+    log.warn('[vouchers] reset semanal', expired.error.message)
+    return
+  }
+  if (expired.error) return
+
+  try {
+    await archivePayments((expired.data ?? []) as PaidSnapshot[])
+  } catch (error) {
+    log.warn('[vouchers] arquivar antes do reset', error instanceof Error ? error.message : error)
+  }
+
+  const { error } = await admin
     .from('flow_employee_vouchers')
     .update({
       status: 'PENDENTE',
@@ -127,7 +225,7 @@ export async function upsertVoucher(
   const periodKey = voucherPeriodKey()
   const current = await getFlowAdminClient()
     .from('flow_employee_vouchers')
-    .select('lunch_cents, transport_cents, status, payment_signature, receipt_number')
+    .select('lunch_cents, transport_cents, status, payment_signature, receipt_number, paid_at')
     .eq('cardplus_collaborator_id', collaboratorId)
     .maybeSingle()
 
@@ -152,6 +250,12 @@ export async function upsertVoucher(
   if (patch.status === 'PAGO' && !isVoucherSignatureDataUrl(signature ?? '')) {
     throw new Error('A assinatura do recebimento é obrigatória para finalizar o pagamento.')
   }
+  const paidAt =
+    status !== 'PAGO'
+      ? null
+      : patch.status === 'PAGO'
+        ? new Date().toISOString()
+        : current.data?.paid_at ?? new Date().toISOString()
   const { error } = await getFlowAdminClient().from('flow_employee_vouchers').upsert(
     {
       cardplus_collaborator_id: collaboratorId,
@@ -159,9 +263,9 @@ export async function upsertVoucher(
       transport_cents: transportCents,
       status,
       period_key: periodKey,
-      paid_at: status === 'PAGO' ? new Date().toISOString() : null,
+      paid_at: paidAt,
       payment_signature: status === 'PAGO' ? signature ?? current.data?.payment_signature ?? null : null,
-      payment_signed_at: status === 'PAGO' ? new Date().toISOString() : null,
+      payment_signed_at: status === 'PAGO' ? paidAt : null,
       receipt_number: receiptNumber,
       updated_at: new Date().toISOString()
     },
@@ -174,6 +278,19 @@ export async function upsertVoucher(
     }
     throw new Error(`Erro ao salvar vale: ${error.message}`)
   }
+
+  if (status === 'PAGO') {
+    await rememberPayment({
+      collaboratorId,
+      periodKey,
+      lunchCents,
+      transportCents,
+      paidAt,
+      receiptNumber
+    })
+  } else if (patch.status === 'PENDENTE') {
+    await forgetPayment(collaboratorId, periodKey)
+  }
 }
 
 export async function deleteVoucher(collaboratorId: string): Promise<void> {
@@ -183,5 +300,84 @@ export async function deleteVoucher(collaboratorId: string): Promise<void> {
     .eq('cardplus_collaborator_id', collaboratorId)
   if (error && !isMissingTable(error)) {
     log.warn('[vouchers] delete', error.message)
+  }
+}
+
+type HistoryDbRow = {
+  cardplus_collaborator_id: string
+  period_key: string
+  cardplus_store_id: string | null
+  name: string
+  store_name: string
+  role_label: string
+  lunch_cents: number
+  transport_cents: number
+  paid_at: string | null
+  receipt_number: string | null
+}
+
+export async function listVoucherHistory(
+  monthKey: string,
+  storeId?: string | null
+): Promise<VoucherHistoryBoard> {
+  await resetExpiredVouchers()
+  const periodKey = voucherPeriodKey()
+  const currentPaid = await getFlowAdminClient()
+    .from('flow_employee_vouchers')
+    .select('cardplus_collaborator_id, lunch_cents, transport_cents, period_key, paid_at, receipt_number')
+    .eq('status', 'PAGO')
+    .eq('period_key', periodKey)
+  if (!currentPaid.error) {
+    try {
+      await archivePayments((currentPaid.data ?? []) as PaidSnapshot[])
+    } catch (error) {
+      log.warn('[vouchers] arquivar semana atual', error instanceof Error ? error.message : error)
+    }
+  }
+
+  const sundays = sundaysInMonth(monthKey)
+  if (!sundays.length) throw new Error('Mês inválido.')
+
+  let query = getFlowAdminClient()
+    .from('flow_voucher_payment_history')
+    .select(
+      'cardplus_collaborator_id, period_key, cardplus_store_id, name, store_name, role_label, lunch_cents, transport_cents, paid_at, receipt_number'
+    )
+    .in('period_key', sundays)
+    .order('name', { ascending: true })
+  if (storeId) query = query.eq('cardplus_store_id', storeId)
+
+  const { data, error } = await query
+  if (error) {
+    if (isMissingHistory(error)) {
+      throw new Error('Rode o SQL 0018_flow_voucher_payment_history.sql no Supabase do FLOW para ver o histórico.')
+    }
+    throw new Error(`Erro ao carregar histórico de vales: ${error.message}`)
+  }
+
+  const rows = (data ?? []) as HistoryDbRow[]
+  return {
+    monthKey,
+    sundays: sundays.map((periodKey) => {
+      const payments = rows
+        .filter((row) => row.period_key === periodKey)
+        .map((row) => ({
+          collaboratorId: row.cardplus_collaborator_id,
+          name: row.name,
+          storeName: row.store_name,
+          roleLabel: row.role_label,
+          lunchCents: row.lunch_cents,
+          transportCents: row.transport_cents,
+          totalCents: row.lunch_cents + row.transport_cents,
+          paidAt: row.paid_at,
+          receiptNumber: row.receipt_number
+        }))
+      return {
+        periodKey,
+        label: formatSundayLabel(periodKey),
+        totalCents: payments.reduce((total, payment) => total + payment.totalCents, 0),
+        payments
+      }
+    })
   }
 }

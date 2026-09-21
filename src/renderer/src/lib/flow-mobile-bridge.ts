@@ -119,6 +119,8 @@ function createOperations(prefs: Prefs): OperationsApi {
     upsertAttendanceEvent: (input) => callOp('upsertAttendanceEvent', input),
     deleteAttendanceEvent: (id, storeId) => callOp('deleteAttendanceEvent', { id, storeId }),
     listVouchers: (storeId) => callOp('listVouchers', withStore(storeId)),
+    listVoucherHistory: (monthKey, storeId) =>
+      callOp('listVoucherHistory', withStore(storeId, { monthKey })),
     updateVoucher: (input) => callOp('updateVoucher', input),
     lookupSorteioClient: (cpf, storeId) => callOp('lookupSorteioClient', withStore(storeId, { cpf })),
     listSorteioBoard: (storeId) => callOp('listSorteioBoard', withStore(storeId)),

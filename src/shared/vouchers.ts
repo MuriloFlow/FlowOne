@@ -59,15 +59,76 @@ export function voucherPeriodKey(date = new Date()): string {
   }).format(date)
   const [year, month, day] = dateKey.split('-').map(Number)
   const weekday = new Date(`${dateKey}T12:00:00-03:00`).getUTCDay()
-  const sunday = new Date(Date.UTC(year, month - 1, day - weekday))
+  // Sábado 00:00 fecha a semana: o período corrente passa a ser o domingo seguinte.
+  const offset = weekday === 6 ? 1 : -weekday
+  const sunday = new Date(Date.UTC(year, month - 1, day + offset))
   return `${sunday.getUTCFullYear()}-${String(sunday.getUTCMonth() + 1).padStart(2, '0')}-${String(sunday.getUTCDate()).padStart(2, '0')}`
 }
 
 export function msUntilNextVoucherReset(now = new Date()): number {
-  const [year, month, day] = voucherPeriodKey(now).split('-').map(Number)
-  const nextSunday = new Date(Date.UTC(year, month - 1, day + 7))
-  const nextKey = `${nextSunday.getUTCFullYear()}-${String(nextSunday.getUTCMonth() + 1).padStart(2, '0')}-${String(nextSunday.getUTCDate()).padStart(2, '0')}`
-  return Math.max(1500, new Date(`${nextKey}T00:00:00-03:00`).getTime() - now.getTime())
+  const dateKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(now)
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const weekday = new Date(`${dateKey}T12:00:00-03:00`).getUTCDay()
+  const days = weekday === 6 ? 7 : 6 - weekday
+  const saturday = new Date(Date.UTC(year, month - 1, day + days))
+  const key = `${saturday.getUTCFullYear()}-${String(saturday.getUTCMonth() + 1).padStart(2, '0')}-${String(saturday.getUTCDate()).padStart(2, '0')}`
+  return Math.max(1500, new Date(`${key}T00:00:00-03:00`).getTime() - now.getTime())
+}
+
+export function sundaysInMonth(monthKey: string): string[] {
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) return []
+  const [year, month] = monthKey.split('-').map(Number)
+  const dates: string[] = []
+  const cursor = new Date(Date.UTC(year, month - 1, 1))
+  while (cursor.getUTCMonth() === month - 1) {
+    if (cursor.getUTCDay() === 0) {
+      dates.push(
+        `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}-${String(cursor.getUTCDate()).padStart(2, '0')}`
+      )
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return dates
+}
+
+export function formatSundayLabel(periodKey: string): string {
+  const [year, month, day] = periodKey.split('-').map(Number)
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    timeZone: 'UTC'
+  })
+    .format(new Date(Date.UTC(year, month - 1, day)))
+    .replace('.', '')
+}
+
+export type VoucherHistoryPayment = {
+  collaboratorId: string
+  name: string
+  storeName: string
+  roleLabel: string
+  lunchCents: number
+  transportCents: number
+  totalCents: number
+  paidAt: string | null
+  receiptNumber: string | null
+}
+
+export type VoucherHistorySunday = {
+  periodKey: string
+  label: string
+  totalCents: number
+  payments: VoucherHistoryPayment[]
+}
+
+export type VoucherHistoryBoard = {
+  monthKey: string
+  sundays: VoucherHistorySunday[]
 }
 
 export function formatVoucherWeekLabel(periodKey: string): string {

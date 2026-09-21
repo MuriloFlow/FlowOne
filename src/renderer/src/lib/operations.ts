@@ -102,6 +102,16 @@ export function operations(): OperationsApi {
       return invokeOperation('deleteAttendanceEvent', 'operations:attendance-delete', { id, storeId })
     },
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
+    listVoucherHistory: (monthKey, storeId) => {
+      const resolved = storeId === undefined ? getCurrentStoreId() : storeId
+      if (typeof api.listVoucherHistory === 'function') {
+        return api.listVoucherHistory(monthKey, resolved)
+      }
+      return invokeOperation('listVoucherHistory', 'operations:voucher-history', {
+        monthKey,
+        storeId: resolved
+      })
+    },
     updateVoucher: (input) => api.updateVoucher(input),
     lookupSorteioClient: (cpf, storeId) => {
       const resolved = storeId === undefined ? getCurrentStoreId() : storeId

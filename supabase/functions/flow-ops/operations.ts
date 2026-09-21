@@ -45,7 +45,7 @@ import {
   upsertAttendanceEvent as saveAttendanceEvent,
   deleteAttendanceEvent as removeAttendanceEvent
 } from './attendance.ts'
-import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers.ts'
+import { deleteVoucher, listVoucherBoard, listVoucherHistory, upsertVoucher } from './vouchers.ts'
 import {
   addSorteioVale,
   deleteSorteioClient,
@@ -688,6 +688,15 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, payload)
     return listVoucherBoard(storeId)
+  },
+
+  async listVoucherHistory(payload) {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Mês inválido.')
+    const body = payload as Record<string, unknown>
+    const monthKey = asString(body.monthKey, 'Mês')
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null)
+    return listVoucherHistory(monthKey, storeId)
   },
 
   async updateVoucher(payload) {
