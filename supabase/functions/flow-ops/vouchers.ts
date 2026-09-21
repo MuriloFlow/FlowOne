@@ -167,7 +167,7 @@ export async function listVoucherBoard(storeId?: string | null): Promise<Voucher
   const [{ data, error }, identities, documents] = await Promise.all([
     getFlowAdminClient()
     .from('flow_employee_vouchers')
-    .select('cardplus_collaborator_id, lunch_cents, transport_cents, status, period_key, payment_signature, paid_at, receipt_number'),
+    .select('cardplus_collaborator_id, lunch_cents, transport_cents, status, period_key, paid_at, receipt_number'),
     listIdentities(),
     listEmployeeDocuments()
   ])
@@ -195,7 +195,7 @@ export async function listVoucherBoard(storeId?: string | null): Promise<Voucher
       transportCents,
       dayTotalCents: lunchCents + transportCents,
       status: asStatus(voucher?.status ?? 'PENDENTE'),
-      paymentSignature: voucher?.payment_signature ?? null,
+      paymentSignature: null,
       paidAt: voucher?.paid_at ?? null,
       receiptNumber: voucher?.receipt_number ?? null
     }
@@ -225,7 +225,7 @@ export async function upsertVoucher(
   const periodKey = voucherPeriodKey()
   const current = await getFlowAdminClient()
     .from('flow_employee_vouchers')
-    .select('lunch_cents, transport_cents, status, payment_signature, receipt_number, paid_at')
+    .select('lunch_cents, transport_cents, status, receipt_number, paid_at')
     .eq('cardplus_collaborator_id', collaboratorId)
     .maybeSingle()
 
@@ -264,8 +264,8 @@ export async function upsertVoucher(
       status,
       period_key: periodKey,
       paid_at: paidAt,
-      payment_signature: status === 'PAGO' ? signature ?? current.data?.payment_signature ?? null : null,
-      payment_signed_at: status === 'PAGO' ? paidAt : null,
+      payment_signature: null,
+      payment_signed_at: null,
       receipt_number: receiptNumber,
       updated_at: new Date().toISOString()
     },

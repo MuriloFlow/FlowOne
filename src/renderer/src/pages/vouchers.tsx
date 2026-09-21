@@ -38,7 +38,28 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   const [history, setHistory] = useState<VoucherHistoryBoard | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
+  const [signatureCache, setSignatureCache] = useState<Record<string, string>>({})
   const mobile = isMobileShell()
+
+  function rememberSignature(collaboratorId: string, signature: string): void {
+    setSignatureCache((current) => ({ ...current, [collaboratorId]: signature }))
+  }
+
+  function forgetSignature(collaboratorId: string): void {
+    setSignatureCache((current) => {
+      if (!current[collaboratorId]) return current
+      const next = { ...current }
+      delete next[collaboratorId]
+      return next
+    })
+  }
+
+  function rowsWithSignatures(rows: VoucherRow[]): VoucherRow[] {
+    return rows.map((row) => ({
+      ...row,
+      paymentSignature: signatureCache[row.collaboratorId] ?? null
+    }))
+  }
 
   async function load(): Promise<VoucherBoard> {
     const next = await operations().listVouchers(storeId)
@@ -93,9 +114,14 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   }, [historyOpen, monthKey, storeId])
 
   useEffect(() => {
+    setSignatureCache({})
+  }, [board?.periodKey])
+
+  useEffect(() => {
     let timer = 0
     const arm = () => {
       timer = window.setTimeout(() => {
+        setSignatureCache({})
         void load().catch((loadError: unknown) => setError(operationError(loadError)))
         arm()
       }, msUntilNextVoucherReset())
@@ -122,7 +148,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
             transportCents,
             dayTotalCents: lunchCents + transportCents,
             status: next.status ?? item.status,
-            paymentSignature: next.signature ?? (next.status === 'PENDENTE' ? null : item.paymentSignature),
+            paymentSignature: null,
             paidAt: next.status === 'PAGO' ? new Date().toISOString() : next.status === 'PENDENTE' ? null : item.paidAt
           }
         })
@@ -142,7 +168,10 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     row: VoucherRow,
     next: { lunchCents?: number; transportCents?: number; status?: VoucherStatus; signature?: string }
   ): Promise<void> {
-    const previous = board
+    const previousBoard = board
+    const previousCache = signatureCache
+    if (next.status === 'PENDENTE') forgetSignature(row.collaboratorId)
+    else if (next.signature) rememberSignature(row.collaboratorId, next.signature)
     applyLocal(row, next)
     setBusyId(row.collaboratorId)
     try {
@@ -152,7 +181,8 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
       })
       setError(null)
     } catch (patchError) {
-      setBoard(previous)
+      setBoard(previousBoard)
+      setSignatureCache(previousCache)
       setError(operationError(patchError))
       throw patchError
     } finally {
@@ -183,7 +213,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     if (!board) return
     setExporting(true)
     try {
-      await exportVoucherReceipts(board.groups.flatMap((group) => group.rows))
+      await exportVoucherReceipts(rowsWithSignatures(board.groups.flatMap((group) => group.rows)))
       setError(null)
     } catch (exportError) {
       const message = operationError(exportError)
@@ -250,7 +280,13 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
           </button>
           <button
             type="button"
-            disabled={exporting || !board?.groups.some((group) => group.rows.some((row) => row.status === 'PAGO' && row.paymentSignature))}
+            disabled={
+              exporting ||
+              !board?.groups.some(
+                (group) =>
+                  group.rows.some((row) => row.status === 'PAGO' && Boolean(signatureCache[row.collaboratorId]))
+              )
+            }
             onClick={() => setConfirmingExport(true)}
             className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-3 text-[12px] font-medium text-[#111] transition-opacity disabled:opacity-35"
           >
