@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Clock3, GripVertical, ImageDown, MapPin, Plus, UserRound, X } from 'lucide-react'
+import { Clock3, GripVertical, ImageDown, MapPin, Plus, Share2, UserRound, X } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { ScheduleHoursDialog } from '@/components/schedule-hours-dialog'
 import { WeekSwitcher } from '@/components/week-switcher'
@@ -228,8 +228,8 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
               }}
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-[8px] bg-[#F0EFEC] px-2.5 text-[12px] text-[#111111] disabled:opacity-40"
             >
-              <ImageDown className="size-3.5 shrink-0" />
-              Exportar
+              <Share2 className="size-3.5 shrink-0" />
+              Compartilhar
             </button>
           </div>
         ) : (
@@ -485,8 +485,12 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
 
       <Dialog
         open={exportOpen}
-        title="Exportar"
-        description="Imagem clara para imprimir. Semana inteira ou só um dia. Cada horário fica na própria linha."
+        title={mobile ? 'Compartilhar escala' : 'Exportar'}
+        description={
+          mobile
+            ? 'Abre o compartilhamento do celular com a imagem pronta — WhatsApp, Telegram etc. Semana inteira ou só um dia.'
+            : 'Imagem clara para imprimir. Semana inteira ou só um dia. Cada horário fica na própria linha.'
+        }
         onClose={() => setExportOpen(false)}
       >
         <div className="space-y-4 px-5 pb-5">
@@ -534,23 +538,38 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
                   setError(null)
                   void exportScheduleImage(board, item.id, { dateKey: exportDateKey })
                     .then(() => setExportOpen(false))
-                    .catch((exportError) => setError(operationError(exportError)))
+                    .catch((exportError) => {
+                      const message = operationError(exportError)
+                      if (/share canceled|sharing canceled|cancelad/i.test(message)) {
+                        setError(null)
+                        return
+                      }
+                      setError(message)
+                    })
                     .finally(() => setExporting(false))
                 }}
                 className="flex h-11 w-full items-center justify-between rounded-[10px] border border-white/[0.06] px-3 text-left hover:bg-white/[0.04] disabled:opacity-45"
               >
                 <span>
                   <span className="block text-[13px] text-[#F0EFEC]/78">
-                    {exporting ? 'Gerando escala…' : `Escala de ${item.exportLabel}`}
+                    {exporting
+                      ? mobile
+                        ? 'Preparando imagem…'
+                        : 'Gerando escala…'
+                      : `Escala de ${item.exportLabel}`}
                   </span>
                   <span className="block text-[11px] text-[#F0EFEC]/32">
                     {exportDateKey
                       ? `Só ${weekdayName(board?.days.find((day) => day.dateKey === exportDateKey)?.weekday ?? 1)}`
                       : 'Semana inteira'}
-                    {' · '}imagem clara para imprimir
+                    {mobile ? ' · compartilhar direto no WhatsApp' : ' · imagem clara para imprimir'}
                   </span>
                 </span>
-                <ImageDown className="size-3.5 text-[#F0EFEC]/28" />
+                {mobile ? (
+                  <Share2 className="size-3.5 text-[#F0EFEC]/28" />
+                ) : (
+                  <ImageDown className="size-3.5 text-[#F0EFEC]/28" />
+                )}
               </button>
             ))}
           </div>

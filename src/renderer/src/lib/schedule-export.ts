@@ -294,7 +294,10 @@ export async function exportScheduleImage(
       ? `${single.dateKey}-${weekdayShort(single.weekday)}`
       : board.weekStart
   const filename = `escala-${scheduleExportLabel(team).replace(/\s+/g, '-').toLowerCase()}-${scopeName}.png`
-  await exportFile(file, filename, 'Exportar escala')
+  const shareTitle = isMobileShell()
+    ? `Escala ${scheduleExportLabel(team)}`
+    : 'Exportar escala'
+  await exportFile(file, filename, shareTitle)
 
   if (
     !isMobileShell() &&

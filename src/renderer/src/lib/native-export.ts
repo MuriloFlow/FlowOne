@@ -75,26 +75,51 @@ async function pluginAvailable(name: string): Promise<boolean> {
   }
 }
 
+type ShareResult = 'ok' | 'cancel' | 'fail'
+
 /**
  * Compartilha via Web Share API (funciona no Android WebView sem plugin Filesystem).
  * É o caminho principal quando o APK instalado não tem o plugin nativo.
  */
-async function shareViaWebApi(blob: Blob, filename: string, title: string): Promise<boolean> {
-  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return false
+async function shareViaWebApi(blob: Blob, filename: string, title: string): Promise<ShareResult> {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return 'fail'
 
   const type = mimeFor(filename, blob)
   const file = new File([blob], filename, { type })
   const withFiles = { files: [file], title, text: title }
 
-  try {
-    if (typeof navigator.canShare === 'function' && !navigator.canShare(withFiles)) {
-      return false
+  if (typeof navigator.canShare === 'function') {
+    try {
+      if (navigator.canShare(withFiles)) {
+        await navigator.share(withFiles)
+        return 'ok'
+      }
+    } catch (error) {
+      if (isShareCanceled(error)) return 'cancel'
     }
+  }
+
+  // Vários WebViews no Android reportam canShare=false mesmo suportando arquivos.
+  try {
     await navigator.share(withFiles)
-    return true
+    return 'ok'
   } catch (error) {
-    if (isShareCanceled(error)) return true
-    return false
+    if (isShareCanceled(error)) return 'cancel'
+    return 'fail'
+  }
+}
+
+async function shareViaBlobUrl(blob: Blob, title: string): Promise<ShareResult> {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return 'fail'
+  const url = URL.createObjectURL(blob)
+  try {
+    await navigator.share({ title, text: title, url })
+    return 'ok'
+  } catch (error) {
+    if (isShareCanceled(error)) return 'cancel'
+    return 'fail'
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 5_000)
   }
 }
 
@@ -169,7 +194,7 @@ async function shareViaFilesystem(
 
 /**
  * Desktop: download no navegador/Electron.
- * Mobile: Web Share (sem plugin) → Filesystem+Share se o APK tiver → download/abrir blob.
+ * Mobile: abre o compartilhamento nativo (WhatsApp etc.) com o arquivo — sem baixar antes.
  */
 export async function exportFile(blob: Blob, filename: string, title: string): Promise<void> {
   const safeName = sanitizeFilename(filename)
@@ -181,14 +206,18 @@ export async function exportFile(blob: Blob, filename: string, title: string): P
   }
 
   // 1) Web Share com File — funciona nativo no Android mesmo sem @capacitor/filesystem
-  if (await shareViaWebApi(typed, safeName, title)) return
+  const webFile = await shareViaWebApi(typed, safeName, title)
+  if (webFile === 'ok' || webFile === 'cancel') return
 
-  // 2) Plugins nativos (APKs novos com Filesystem/Share)
+  // 2) Web Share com URL do blob (fallback em WebViews mais antigos)
+  const webUrl = await shareViaBlobUrl(typed, title)
+  if (webUrl === 'ok' || webUrl === 'cancel') return
+
+  // 3) Plugins nativos (APKs com Filesystem/Share)
   if (await isNativeCapacitor()) {
     const native = await shareViaFilesystem(typed, safeName, title)
     if (native === 'ok') return
   }
 
-  // 3) Último recurso: dispara download / abre o arquivo no WebView
-  downloadBlob(typed, safeName)
+  throw new Error('Não foi possível abrir o compartilhamento. Atualize o app FLOW e tente de novo.')
 }
