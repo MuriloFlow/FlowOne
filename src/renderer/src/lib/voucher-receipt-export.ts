@@ -7,7 +7,7 @@ import { isMobileShell } from '@/lib/is-mobile-shell'
 
 const PAGE_W = 210
 const RECEIPT_W = 1600
-const RECEIPT_H = 920
+const RECEIPT_H = 980
 
 function ensureRoundRect(
   ctx: CanvasRenderingContext2D
@@ -88,8 +88,8 @@ function fitText(
 }
 
 function drawUnderline(ctx: CanvasRenderingContext2D, x: number, y: number, width: number): void {
-  ctx.strokeStyle = '#888888'
-  ctx.lineWidth = 2
+  ctx.strokeStyle = '#9A9A9A'
+  ctx.lineWidth = 1.75
   ctx.beginPath()
   ctx.moveTo(x, y)
   ctx.lineTo(x + Math.max(0, width), y)
@@ -106,159 +106,163 @@ async function receiptImage(row: VoucherRow, number: string, signatureDataUrl: s
   if (!ctx) throw new Error('Não foi possível montar o recibo.')
   ensureRoundRect(ctx)
 
-  const pad = 42
-  const boxX = pad
-  const boxY = pad
-  const boxW = RECEIPT_W - pad * 2
-  const boxH = RECEIPT_H - pad * 2
   const valueLabel = formatBRLFromCents(row.dayTotalCents)
 
   ctx.fillStyle = '#FFFFFF'
   ctx.fillRect(0, 0, RECEIPT_W, RECEIPT_H)
 
-  // Moldura externa — estilo boleto
+  // Título acima da moldura (estilo boleto)
+  ctx.fillStyle = '#A3A3A3'
+  ctx.font = `600 22px ${FONT}`
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillText('RECIBO DE PAGAMENTO', 48, 36)
+
+  const padX = 42
+  const boxX = padX
+  const boxY = 52
+  const boxW = RECEIPT_W - padX * 2
+  const boxH = RECEIPT_H - boxY - 36
+
   ctx.strokeStyle = '#111111'
-  ctx.lineWidth = 7
-  ctx.roundRect(boxX, boxY, boxW, boxH, 26)
+  ctx.lineWidth = 6
+  ctx.roundRect(boxX, boxY, boxW, boxH, 22)
   ctx.stroke()
 
-  // Cabeçalho interno
-  const headX = boxX + 32
-  const headY = boxY + 28
-  const headW = boxW - 64
-  const headH = 112
-  ctx.lineWidth = 4
-  ctx.roundRect(headX, headY, headW, headH, 20)
+  // Cabeçalho interno em 3 colunas medidas
+  const headX = boxX + 28
+  const headY = boxY + 26
+  const headW = boxW - 56
+  const headH = 108
+  ctx.lineWidth = 3.5
+  ctx.roundRect(headX, headY, headW, headH, 16)
   ctx.stroke()
 
-  const headPad = 36
+  const headPad = 28
   const headLeft = headX + headPad
   const headRight = headX + headW - headPad
-  const headBaseline = headY + headH / 2 + 18
+  const headMidY = headY + headH / 2 + 16
 
-  // RECIBO (esquerda)
+  // VALOR à direita (reserva largura primeiro)
   ctx.fillStyle = '#111111'
-  ctx.font = `900 62px ${FONT}`
-  ctx.textBaseline = 'alphabetic'
-  ctx.fillText('RECIBO', headLeft, headBaseline)
-  const reciboW = ctx.measureText('RECIBO').width
-
-  // VALOR (direita) — medido primeiro para reservar espaço
-  ctx.font = `700 28px ${FONT}`
+  ctx.font = `700 30px ${FONT}`
   const valorText = `VALOR  ${valueLabel}`
   const valorW = ctx.measureText(valorText).width
-  ctx.fillText(valorText, headRight - valorW, headBaseline)
+  ctx.fillText(valorText, headRight - valorW, headMidY)
 
-  // Nº no centro, entre RECIBO e VALOR, sem colidir
-  const numLeft = headLeft + reciboW + 40
-  const numRight = headRight - valorW - 40
-  const numMaxW = Math.max(80, numRight - numLeft)
-  ctx.font = `700 30px ${FONT}`
+  // RECIBO à esquerda
+  ctx.font = `900 58px ${FONT}`
+  ctx.fillText('RECIBO', headLeft, headMidY)
+  const reciboW = ctx.measureText('RECIBO').width
+
+  // Nº no meio, com gap seguro dos dois lados
+  const gap = 36
+  const numLeft = headLeft + reciboW + gap
+  const numRight = headRight - valorW - gap
+  const numMaxW = Math.max(60, numRight - numLeft)
+  let numSize = 28
+  ctx.font = `700 ${numSize}px ${FONT}`
   const numLabel = `Nº ${number}`
+  while (numSize > 18 && ctx.measureText(numLabel).width > numMaxW) {
+    numSize -= 1
+    ctx.font = `700 ${numSize}px ${FONT}`
+  }
   const numW = Math.min(ctx.measureText(numLabel).width, numMaxW)
-  const numX = numLeft + (numMaxW - numW) / 2
-  fitText(ctx, numLabel, numX, headBaseline, numMaxW, 'left')
+  fitText(ctx, numLabel, numLeft + (numMaxW - numW) / 2, headMidY, numMaxW, 'left')
 
   // Corpo
-  let y = headY + headH + 58
-  const contentLeft = boxX + 48
-  const contentRight = boxX + boxW - 48
+  let y = headY + headH + 56
+  const contentLeft = boxX + 44
+  const contentRight = boxX + boxW - 44
   const contentW = contentRight - contentLeft
+  const rowGap = 64
 
-  const rowGap = 62
-
-  // Recebi (emos) de ________
   ctx.fillStyle = '#222222'
-  ctx.font = `500 29px ${FONT}`
+  ctx.font = `500 28px ${FONT}`
   const recebiLabel = 'Recebi (emos) de'
   ctx.fillText(recebiLabel, contentLeft, y)
   const recebiW = ctx.measureText(`${recebiLabel} `).width
   ctx.fillStyle = '#111111'
-  ctx.font = `700 29px ${FONT}`
+  ctx.font = `700 28px ${FONT}`
   fitText(ctx, 'FLOW — Central de Gestão e Operações', contentLeft + recebiW, y, contentW - recebiW - 4)
-  drawUnderline(ctx, contentLeft + recebiW, y + 12, contentW - recebiW)
+  drawUnderline(ctx, contentLeft + recebiW, y + 14, contentW - recebiW)
   y += rowGap
 
-  // a quantia de ________
   ctx.fillStyle = '#222222'
-  ctx.font = `500 29px ${FONT}`
+  ctx.font = `500 28px ${FONT}`
   const quantiaLabel = 'a quantia de'
   ctx.fillText(quantiaLabel, contentLeft, y)
   const quantiaW = ctx.measureText(`${quantiaLabel} `).width
   ctx.fillStyle = '#111111'
-  ctx.font = `800 34px ${FONT}`
+  ctx.font = `800 32px ${FONT}`
   ctx.fillText(valueLabel, contentLeft + quantiaW, y)
-  drawUnderline(ctx, contentLeft + quantiaW, y + 12, Math.max(240, ctx.measureText(valueLabel).width + 28))
+  drawUnderline(ctx, contentLeft + quantiaW, y + 14, Math.max(260, ctx.measureText(valueLabel).width + 36))
   y += rowGap
 
-  // Referente a ________
   ctx.fillStyle = '#222222'
-  ctx.font = `500 28px ${FONT}`
+  ctx.font = `500 27px ${FONT}`
   const refLabel = 'Referente a'
   ctx.fillText(refLabel, contentLeft, y)
   const refW = ctx.measureText(`${refLabel} `).width
-  ctx.font = `600 28px ${FONT}`
+  ctx.font = `600 27px ${FONT}`
   fitText(ctx, 'vale-alimentação e vale-transporte.', contentLeft + refW, y, contentW - refW - 4)
-  drawUnderline(ctx, contentLeft + refW, y + 12, contentW - refW)
+  drawUnderline(ctx, contentLeft + refW, y + 14, contentW - refW)
   y += rowGap
 
-  ctx.font = `500 28px ${FONT}`
+  ctx.font = `500 27px ${FONT}`
   ctx.fillText('E para clareza firmo (amos) o presente.', contentLeft, y)
-  y += 54
+  y += 52
 
   const date = new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: 'long',
     year: 'numeric'
   }).format(new Date())
-  ctx.font = `500 25px ${FONT}`
+  ctx.font = `500 24px ${FONT}`
   ctx.fillStyle = '#333333'
   ctx.fillText(`São Paulo, ${date}.`, contentLeft, y)
-  drawUnderline(ctx, contentLeft, y + 12, contentW)
-  y += 72
+  drawUnderline(ctx, contentLeft, y + 14, contentW)
+  y += 78
 
-  // Assinatura — faixa alta + assinatura um pouco maior
+  // Assinatura — faixa alta, assinatura um pouco maior, sem tocar Emitente
   const sigLabelY = y
-  const sigLineY = y + 108
+  const sigLineY = y + 122
   ctx.fillStyle = '#222222'
-  ctx.font = `600 28px ${FONT}`
+  ctx.font = `600 27px ${FONT}`
   ctx.fillText('Assinatura', contentLeft, sigLabelY)
 
-  const sigLineStart = contentLeft + 190
+  const sigLineStart = contentLeft + 186
   const sigLineWidth = contentRight - sigLineStart
   drawUnderline(ctx, sigLineStart, sigLineY, sigLineWidth)
 
   try {
     const signature = await loadImage(signatureDataUrl)
-    const maxSigW = sigLineWidth * 0.88
-    const maxSigH = 118
+    const maxSigW = sigLineWidth * 0.92
+    const maxSigH = 136
     const scale = Math.min(maxSigW / Math.max(1, signature.width), maxSigH / Math.max(1, signature.height))
     const sigW = signature.width * scale
     const sigH = signature.height * scale
     const sigX = sigLineStart + (sigLineWidth - sigW) / 2
-    // Apoia a base da assinatura na linha, sem descer no Emitente
-    const sigY = sigLineY - sigH + 4
-    ctx.drawImage(signature, sigX, Math.max(sigLabelY + 8, sigY), sigW, sigH)
+    const sigY = Math.max(sigLabelY + 10, sigLineY - sigH + 6)
+    ctx.drawImage(signature, sigX, sigY, sigW, sigH)
   } catch {
     /* ok */
   }
 
-  y = sigLineY + 48
+  y = sigLineY + 56
 
-  // Emitente
   ctx.fillStyle = '#222222'
-  ctx.font = `600 28px ${FONT}`
+  ctx.font = `600 27px ${FONT}`
   ctx.fillText('Emitente', contentLeft, y)
   const emitenteW = ctx.measureText('Emitente').width
-  const emitenteX = contentLeft + emitenteW + 28
+  const emitenteX = contentLeft + emitenteW + 26
   ctx.fillStyle = '#111111'
-  ctx.font = `700 28px ${FONT}`
+  ctx.font = `700 27px ${FONT}`
   fitText(ctx, 'FLOW — Central de Gestão e Operações', emitenteX, y, contentRight - emitenteX)
-  drawUnderline(ctx, emitenteX, y + 12, contentRight - emitenteX)
-  y += 52
+  drawUnderline(ctx, emitenteX, y + 14, contentRight - emitenteX)
+  y += 54
 
   ctx.fillStyle = '#333333'
-  ctx.font = `600 24px ${FONT}`
+  ctx.font = `600 23px ${FONT}`
   ctx.fillText(`CPF ${row.cpf ? formatCpf(row.cpf) : 'não informado'}`, contentLeft, y)
   fitText(ctx, 'RG conforme documento anexo', contentRight, y, 520, 'right')
 
@@ -304,7 +308,7 @@ export async function exportVoucherReceipts(rows: VoucherRow[]): Promise<void> {
     )
 
     const rgRatio = rg.width / Math.max(1, rg.height)
-    const rgH = Math.min(78, 140 / rgRatio)
+    const rgH = Math.min(72, 140 / rgRatio)
     const rgW = rgH * rgRatio
     const rgX = (PAGE_W - rgW) / 2
 
@@ -313,12 +317,9 @@ export async function exportVoucherReceipts(rows: VoucherRow[]): Promise<void> {
     pdf.text('RG — DOCUMENTO DE IDENTIDADE', 14, 36)
     pdf.addImage(rgData, 'JPEG', rgX, 39, rgW, rgH, undefined, 'FAST')
 
-    const receiptY = 39 + rgH + 9
-    // Mantém proporção do canvas (1600x920) → altura ~104mm em 182mm de largura
+    const receiptY = 39 + rgH + 6
     const receiptW = 182
     const receiptH = (receiptW * RECEIPT_H) / RECEIPT_W
-    pdf.setFontSize(8.5)
-    pdf.text('RECIBO DE PAGAMENTO', 14, receiptY - 3)
     pdf.addImage(receiptData, 'PNG', 14, receiptY, receiptW, receiptH, undefined, 'FAST')
   }
 

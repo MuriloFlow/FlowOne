@@ -1,5 +1,6 @@
 export const Capacitor = {
-  isNativePlatform: () => false
+  isNativePlatform: () => false,
+  isPluginAvailable: () => false
 }
 
 export const CapacitorHttp = {
