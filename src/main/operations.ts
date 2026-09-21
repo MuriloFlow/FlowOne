@@ -777,8 +777,14 @@ export function registerOperationsIpc(): void {
     const actor = await resolveActor()
     if (!payload || typeof payload !== 'object') throw new Error('CPF inválido.')
     const body = payload as Record<string, unknown>
+    const rawCpf =
+      typeof body.cpf === 'string'
+        ? body.cpf
+        : body.cpf && typeof body.cpf === 'object' && 'cpf' in (body.cpf as object)
+          ? String((body.cpf as { cpf?: unknown }).cpf ?? '')
+          : ''
     const storeId = resolveStoreFilter(actor, body.storeId ?? null)
-    return lookupSorteioClient(asString(body.cpf, 'CPF'), storeId)
+    return lookupSorteioClient(asString(rawCpf, 'CPF'), storeId)
   })
 
   handle('operations:sorteio-board', async (payload) => {

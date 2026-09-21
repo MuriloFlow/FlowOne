@@ -103,25 +103,34 @@ export function operations(): OperationsApi {
     },
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
     updateVoucher: (input) => api.updateVoucher(input),
-    lookupSorteioClient: (cpf, storeId) =>
-      invokeOperation('lookupSorteioClient', 'operations:sorteio-lookup', {
-        cpf,
-        storeId: storeId === undefined ? getCurrentStoreId() : storeId
-      }),
-    listSorteioBoard: (storeId) =>
-      invokeOperation('listSorteioBoard', 'operations:sorteio-board', {
-        storeId: storeId === undefined ? getCurrentStoreId() : storeId
-      }),
-    registerSorteioClient: (input) =>
-      invokeOperation('registerSorteioClient', 'operations:sorteio-register', {
-        ...input,
-        storeId: input.storeId || getCurrentStoreId()
-      }),
-    addSorteioVale: (input) =>
-      invokeOperation('addSorteioVale', 'operations:sorteio-add-vale', {
-        ...input,
-        storeId: input.storeId || getCurrentStoreId()
-      }),
+    lookupSorteioClient: (cpf, storeId) => {
+      const resolved = storeId === undefined ? getCurrentStoreId() : storeId
+      if (typeof api.lookupSorteioClient === 'function') {
+        return api.lookupSorteioClient(cpf, resolved)
+      }
+      return invokeOperation('lookupSorteioClient', 'operations:sorteio-lookup', { cpf, storeId: resolved })
+    },
+    listSorteioBoard: (storeId) => {
+      const resolved = storeId === undefined ? getCurrentStoreId() : storeId
+      if (typeof api.listSorteioBoard === 'function') {
+        return api.listSorteioBoard(resolved)
+      }
+      return invokeOperation('listSorteioBoard', 'operations:sorteio-board', { storeId: resolved })
+    },
+    registerSorteioClient: (input) => {
+      const payload = { ...input, storeId: input.storeId || getCurrentStoreId() || input.storeId }
+      if (typeof api.registerSorteioClient === 'function') {
+        return api.registerSorteioClient(payload)
+      }
+      return invokeOperation('registerSorteioClient', 'operations:sorteio-register', payload)
+    },
+    addSorteioVale: (input) => {
+      const payload = { ...input, storeId: input.storeId || getCurrentStoreId() || input.storeId }
+      if (typeof api.addSorteioVale === 'function') {
+        return api.addSorteioVale(payload)
+      }
+      return invokeOperation('addSorteioVale', 'operations:sorteio-add-vale', payload)
+    },
     listFlowUsers: () => invokeOperation('listFlowUsers', 'operations:users'),
     upsertFlowUser: (input) => invokeOperation('upsertFlowUser', 'operations:user-upsert', input),
     getActorScope: () => invokeOperation('getActorScope', 'operations:scope')

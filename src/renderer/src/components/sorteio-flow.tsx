@@ -49,8 +49,12 @@ export function SorteioFlow({ storeId, embedded = false, onStepChange, onFinishe
     if (busy) return
     setError(null)
     const digits = onlyCpfDigits(cpf)
+    if (digits.length < 11) {
+      setError('Digite o CPF completo (11 dígitos).')
+      return
+    }
     if (!isValidCpf(digits)) {
-      setError('Informe um CPF válido.')
+      setError('CPF inválido. Confira os números e tente de novo.')
       return
     }
     setBusy(true)
@@ -152,21 +156,29 @@ export function SorteioFlow({ storeId, embedded = false, onStepChange, onFinishe
             <Input
               value={cpf}
               inputMode="numeric"
+              autoComplete="off"
               autoFocus
               placeholder="000.000.000-00"
-              onChange={(event) => setCpf(formatCpf(event.target.value))}
+              maxLength={14}
+              onChange={(event) => {
+                setError(null)
+                setCpf(formatCpf(event.target.value))
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void goFromCpf()
               }}
-              className="h-11 w-full max-w-full rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[15px]"
+              className="h-11 w-full max-w-full rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[15px] tracking-wide"
             />
+            <p className="text-[11.5px] text-[#F0EFEC]/32">
+              {onlyCpfDigits(cpf).length}/11 · se já existir, soma +1 vale automaticamente
+            </p>
           </div>
           <div className="flex justify-end">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || onlyCpfDigits(cpf).length < 11}
               onClick={() => void goFromCpf()}
-              className="h-10 rounded-[10px] bg-[#F0EFEC] px-5 text-[13px] text-[#111111] disabled:opacity-50"
+              className="h-10 min-w-[108px] rounded-[10px] bg-[#F0EFEC] px-5 text-[13px] text-[#111111] disabled:opacity-45"
             >
               {busy ? 'Verificando…' : 'Próximo'}
             </button>
@@ -207,6 +219,22 @@ export function SorteioFlow({ storeId, embedded = false, onStepChange, onFinishe
 
       {step === 'vale' ? (
         <div className="space-y-3">
+          {existing ? (
+            <div className="rounded-[12px] border border-white/[0.06] bg-white/[0.03] px-3.5 py-3">
+              <p className="text-[13.5px] text-[#F0EFEC]/88">{existing.name}</p>
+              <p className="mt-0.5 text-[12px] text-[#F0EFEC]/40">
+                {existing.cpfFormatted} · já tem{' '}
+                <span className="text-[#F0EFEC]/70">
+                  {existing.chances} {existing.chances === 1 ? 'vale' : 'vales'}
+                </span>
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-[12px] border border-white/[0.06] bg-white/[0.03] px-3.5 py-3">
+              <p className="text-[13.5px] text-[#F0EFEC]/88">{name.trim() || 'Novo cliente'}</p>
+              <p className="mt-0.5 text-[12px] text-[#F0EFEC]/40">Primeiro cadastro · escolha o vale abaixo</p>
+            </div>
+          )}
           <div className="space-y-2">
             {SORTEIO_VALE_TYPES.map((item) => {
               const selected = valeType === item.id
@@ -240,7 +268,7 @@ export function SorteioFlow({ storeId, embedded = false, onStepChange, onFinishe
           <FooterNav
             onBack={() => setStep(existing ? 'cpf' : 'cadastro')}
             onNext={() => void submitVale()}
-            nextLabel={busy ? 'Salvando…' : 'Confirmar'}
+            nextLabel={busy ? 'Salvando…' : 'Confirmar vale'}
             nextDisabled={busy || !valeType}
           />
         </div>
@@ -256,16 +284,17 @@ export function SorteioFlow({ storeId, embedded = false, onStepChange, onFinishe
             <p className="mt-1 text-[12.5px] text-[#F0EFEC]/40">
               {result.client.cpfFormatted} · {result.client.phoneFormatted}
             </p>
-            <p className="mt-4 text-[28px] font-medium tracking-tight text-[#F0EFEC]">
-              {result.client.chances}
-              <span className="ml-2 text-[14px] font-normal text-[#F0EFEC]/45">
-                {result.client.chances === 1 ? 'vale / chance' : 'vales / chances'}
-              </span>
-            </p>
-            <p className="mt-2 text-[12.5px] text-[#F0EFEC]/38">
-              {result.isNewClient ? 'Primeiro cadastro · ' : '+1 · '}
+            <div className="mt-5 rounded-[14px] border border-[#F0EFEC]/10 bg-[#F0EFEC]/05 px-8 py-4">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-[#F0EFEC]/35">Chances no sorteio</p>
+              <p className="mt-1 text-[36px] font-medium leading-none tracking-tight text-[#F0EFEC]">
+                {result.client.chances}
+              </p>
+            </div>
+            <p className="mt-3 text-[12.5px] text-[#F0EFEC]/38">
+              {result.isNewClient ? 'Cadastro novo · ' : '+1 vale · '}
               {result.vale.valeLabel}
             </p>
+            <p className="mt-1 text-[12px] text-[#F0EFEC]/28">Pode falar esse total pro cliente agora.</p>
           </div>
           <div className="flex justify-end">
             <button

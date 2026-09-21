@@ -89,10 +89,23 @@ const flow: FlowApi = {
     listVouchers: (storeId?: string | null) =>
       ipcRenderer.invoke('operations:vouchers', { storeId: storeId ?? null }),
     updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input),
-    lookupSorteioClient: (cpf, storeId) =>
-      ipcRenderer.invoke('operations:sorteio-lookup', { cpf, storeId: storeId ?? null }),
-    listSorteioBoard: (storeId?: string | null) =>
-      ipcRenderer.invoke('operations:sorteio-board', { storeId: storeId ?? null }),
+    lookupSorteioClient: (cpf, storeId) => {
+      if (cpf && typeof cpf === 'object' && 'cpf' in (cpf as object)) {
+        const body = cpf as { cpf: string; storeId?: string | null }
+        return ipcRenderer.invoke('operations:sorteio-lookup', {
+          cpf: body.cpf,
+          storeId: body.storeId ?? storeId ?? null
+        })
+      }
+      return ipcRenderer.invoke('operations:sorteio-lookup', { cpf, storeId: storeId ?? null })
+    },
+    listSorteioBoard: (storeId?: string | null) => {
+      if (storeId && typeof storeId === 'object' && 'storeId' in (storeId as object)) {
+        const body = storeId as { storeId?: string | null }
+        return ipcRenderer.invoke('operations:sorteio-board', { storeId: body.storeId ?? null })
+      }
+      return ipcRenderer.invoke('operations:sorteio-board', { storeId: storeId ?? null })
+    },
     registerSorteioClient: (input) => ipcRenderer.invoke('operations:sorteio-register', input),
     addSorteioVale: (input) => ipcRenderer.invoke('operations:sorteio-add-vale', input),
     listFlowUsers: () => ipcRenderer.invoke('operations:users'),
