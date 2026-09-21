@@ -116,6 +116,24 @@ async function latestMobileManifest(): Promise<MobileManifest | null> {
     console.warn('[live-update] manifest', error)
   }
 
+  try {
+    const xml = await nativeGet(`https://github.com/${OWNER}/${REPO}/releases.atom`, 'application/atom+xml')
+    const tags = [...xml.matchAll(/releases\/tag\/(v[0-9.]+)/g)].map((match) => match[1])
+    const unique = [...new Set(tags)].slice(0, 8)
+    for (const tag of unique) {
+      try {
+        const parsed = parseYml(
+          await nativeGet(`https://github.com/${OWNER}/${REPO}/releases/download/${tag}/latest-mobile.yml`)
+        )
+        if (parsed?.url) return parsed
+      } catch {
+        /* release sem OTA */
+      }
+    }
+  } catch (error) {
+    console.warn('[live-update] atom', error)
+  }
+
   return null
 }
 
@@ -167,6 +185,11 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
       /* segue */
     }
     await CapacitorUpdater.set({ id: bundle.id })
+    try {
+      await CapacitorUpdater.reload()
+    } catch {
+      /* o próximo cold start abre o bundle */
+    }
   } catch (error) {
     applying = false
     try {

@@ -61,11 +61,6 @@ jobs:
           }
           $b64 = [Convert]::ToBase64String($bytes)
           $tag = "v$version"
-          $view = gh release view $tag --json tagName 2>$null
-          if (-not $view) {
-            $latest = gh api repos/MuriloFlow/FlowOne/releases/latest --jq .tag_name
-            if ($latest) { $tag = $latest }
-          }
           $yml = @(
             "version: $version"
             "path: mobile-www.zip"
@@ -74,10 +69,14 @@ jobs:
             "releaseDate: $([DateTime]::UtcNow.ToString('o'))"
           ) -join "`n"
           [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'latest-mobile.yml'), "$yml`n")
-          if (-not (gh release view $tag --json tagName 2>$null)) {
-            gh release create $tag --title $tag --notes "FLOW $version"
+          $view = gh release view $tag --json tagName 2>$null
+          if (-not $view) {
+            gh release create $tag --title "FLOW $version" --notes "FLOW $version" --latest
+          } else {
+            gh release edit $tag --latest --notes "FLOW $version"
           }
           gh release upload $tag mobile-www.zip latest-mobile.yml --clobber
+          gh release view $tag --json assets --jq ".assets[].name"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify mobile OTA assets
