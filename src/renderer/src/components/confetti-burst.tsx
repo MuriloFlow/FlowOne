@@ -25,7 +25,8 @@ export function ConfettiBurst({ active, durationMs = 2200 }: ConfettiBurstProps)
     resize()
 
     const colors = ['#F0EFEC', '#E8C547', '#7DD3A7', '#6BB3F0', '#F0A0A0', '#C4B5FD']
-    const pieces = Array.from({ length: 56 }, () => ({
+    const count = durationMs > 3000 ? 140 : 56
+    const pieces = Array.from({ length: count }, () => ({
       x: Math.random() * canvas.clientWidth,
       y: -20 - Math.random() * 80,
       w: 4 + Math.random() * 6,

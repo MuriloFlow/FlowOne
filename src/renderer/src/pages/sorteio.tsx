@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Download, History, Lock, Ticket, Trash2, UserPlus } from 'lucide-react'
+import { Download, History, Lock, Sparkles, Ticket, Trash2, UserPlus } from 'lucide-react'
 import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
+import { pickSorteioWinner, SorteioDrawOverlay } from '@/components/sorteio-draw'
 import { SorteioFlow, sorteioDialogTitle, type SorteioStep } from '@/components/sorteio-flow'
 import { DangerConfirmButton } from '@/components/ui/danger-confirm-button'
 import { Dialog } from '@/components/ui/dialog'
@@ -22,7 +23,8 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [historyUnlocked, setHistoryUnlocked] = useState(false)
-  const [askingPassword, setAskingPassword] = useState(false)
+  const [passwordFor, setPasswordFor] = useState<'history' | 'draw' | null>(null)
+  const [drawWinner, setDrawWinner] = useState<SorteioClient | null>(null)
   const [query, setQuery] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [flowKey, setFlowKey] = useState(0)
@@ -66,6 +68,22 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
       .toLowerCase()
       .includes(term)
   })
+
+  async function beginDraw(): Promise<void> {
+    try {
+      const current = board ?? (await operations().listSorteioBoard(storeId))
+      if (!board) setBoard(current)
+      const winner = pickSorteioWinner(current.clients)
+      if (!winner) {
+        setError('Não há clientes com vale para sortear.')
+        return
+      }
+      setError(null)
+      setDrawWinner(winner)
+    } catch (err) {
+      setError(operationError(err))
+    }
+  }
 
   function openCreate(): void {
     if (!storeId) {
@@ -148,20 +166,20 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  disabled={!canExport || exporting}
-                  onClick={() => void exportPhones()}
-                  className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-[#F0EFEC] text-[13px] text-[#111111] disabled:opacity-45"
+                  onClick={() => setPasswordFor('draw')}
+                  className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-[#F0EFEC] text-[13px] text-[#111111]"
                 >
-                  <Download className="size-3.5" strokeWidth={1.8} />
-                  {exporting ? 'Exportando…' : 'Exportar'}
+                  <Sparkles className="size-3.5" strokeWidth={1.8} />
+                  Sortear
                 </button>
                 <button
                   type="button"
-                  onClick={openCreate}
-                  className="flex h-11 items-center justify-center gap-2 rounded-[10px] border border-white/[0.08] text-[13px] text-[#F0EFEC]/75"
+                  disabled={!canExport || exporting}
+                  onClick={() => void exportPhones()}
+                  className="flex h-11 items-center justify-center gap-2 rounded-[10px] border border-white/[0.08] text-[13px] text-[#F0EFEC]/75 disabled:opacity-45"
                 >
-                  <UserPlus className="size-3.5" strokeWidth={1.8} />
-                  Cadastrar
+                  <Download className="size-3.5" strokeWidth={1.8} />
+                  {exporting ? 'Exportando…' : 'Exportar'}
                 </button>
               </div>
             </header>
@@ -200,11 +218,19 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
             )}
             <button
               type="button"
+              onClick={() => setPasswordFor('draw')}
+              className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] bg-[#F0EFEC] text-[14px] text-[#111111]"
+            >
+              <Sparkles className="size-4" strokeWidth={1.8} />
+              Sortear
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 if (historyUnlocked) setMobileHistory(true)
-                else setAskingPassword(true)
+                else setPasswordFor('history')
               }}
-              className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-white/[0.06] text-[13px] text-[#F0EFEC]/55"
+              className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-white/[0.06] text-[13px] text-[#F0EFEC]/55"
             >
               <History className="size-3.5" strokeWidth={1.8} />
               Ver histórico
@@ -221,6 +247,14 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPasswordFor('draw')}
+                className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+              >
+                <Sparkles className="size-3.5" strokeWidth={1.8} />
+                Sortear
+              </button>
               {historyUnlocked && canExport ? (
                 <button
                   type="button"
@@ -235,7 +269,7 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
               <button
                 type="button"
                 onClick={openCreate}
-                className="h-8 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+                className="h-8 rounded-[8px] border border-white/[0.08] px-3.5 text-[13px] text-[#F0EFEC]/75"
               >
                 Cadastrar
               </button>
@@ -255,7 +289,7 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
               </p>
               <button
                 type="button"
-                onClick={() => setAskingPassword(true)}
+                onClick={() => setPasswordFor('history')}
                 className="mt-5 flex h-9 items-center gap-2 rounded-[8px] bg-[#F0EFEC] px-4 text-[13px] text-[#111111]"
               >
                 <History className="size-3.5" strokeWidth={1.8} />
@@ -333,17 +367,27 @@ export function SorteioPage({ storeId = null }: SorteioPageProps) {
       </Dialog>
 
       <PasswordConfirmationDialog
-        open={askingPassword}
-        title="Abrir histórico do sorteio"
-        description="Digite a senha da conta FLOW para visualizar, exportar ou excluir cadastros."
-        confirmLabel="Liberar histórico"
-        onClose={() => setAskingPassword(false)}
+        open={passwordFor !== null}
+        title={passwordFor === 'draw' ? 'Sortear' : 'Abrir histórico do sorteio'}
+        description={
+          passwordFor === 'draw'
+            ? 'Digite a senha da conta FLOW para sortear o ganhador.'
+            : 'Digite a senha da conta FLOW para visualizar, exportar ou excluir cadastros.'
+        }
+        confirmLabel={passwordFor === 'draw' ? 'Sortear' : 'Liberar histórico'}
+        onClose={() => setPasswordFor(null)}
         onConfirmed={() => {
-          setHistoryUnlocked(true)
-          setAskingPassword(false)
-          if (mobile) setMobileHistory(true)
+          const purpose = passwordFor
+          setPasswordFor(null)
+          if (purpose === 'history') {
+            setHistoryUnlocked(true)
+            if (mobile) setMobileHistory(true)
+            return
+          }
+          if (purpose === 'draw') void beginDraw()
         }}
       />
+      {drawWinner ? <SorteioDrawOverlay winner={drawWinner} onClose={() => setDrawWinner(null)} /> : null}
     </div>
   )
 }
