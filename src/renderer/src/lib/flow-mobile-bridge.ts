@@ -120,6 +120,10 @@ function createOperations(prefs: Prefs): OperationsApi {
     deleteAttendanceEvent: (id, storeId) => callOp('deleteAttendanceEvent', { id, storeId }),
     listVouchers: (storeId) => callOp('listVouchers', withStore(storeId)),
     updateVoucher: (input) => callOp('updateVoucher', input),
+    lookupSorteioClient: (cpf, storeId) => callOp('lookupSorteioClient', withStore(storeId, { cpf })),
+    listSorteioBoard: (storeId) => callOp('listSorteioBoard', withStore(storeId)),
+    registerSorteioClient: (input) => callOp('registerSorteioClient', input),
+    addSorteioVale: (input) => callOp('addSorteioVale', input),
     listFlowUsers: () => callOp('listFlowUsers'),
     upsertFlowUser: (input) => callOp('upsertFlowUser', input),
     getActorScope: () => callOp('getActorScope')

@@ -1,6 +1,7 @@
 declare module '@capacitor/core' {
   export const Capacitor: {
     isNativePlatform: () => boolean
+    isPluginAvailable: (name: string) => boolean
   }
   export const CapacitorHttp: {
     get: (options: {

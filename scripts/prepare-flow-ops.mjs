@@ -14,6 +14,7 @@ function rewriteShared(src) {
     .replaceAll("from './attendance'", "from './attendance.ts'")
     .replaceAll("from './schedules'", "from './schedules.ts'")
     .replaceAll("from './vouchers'", "from './vouchers.ts'")
+    .replaceAll("from './sorteio'", "from './sorteio.ts'")
     .replaceAll("from './operations'", "from './operations.ts'")
     .replaceAll("from './kobbi'", "from './kobbi.ts'")
 }
@@ -33,6 +34,7 @@ const sharedFiles = [
   'attendance.ts',
   'schedules.ts',
   'vouchers.ts',
+  'sorteio.ts',
   'operations.ts',
   'kobbi.ts'
 ]
@@ -53,6 +55,7 @@ const mainFiles = [
   'attendance.ts',
   'schedules.ts',
   'vouchers.ts',
+  'sorteio.ts',
   'users.ts'
 ]
 for (const file of mainFiles) {

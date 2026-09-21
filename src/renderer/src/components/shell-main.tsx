@@ -11,6 +11,7 @@ import { SchedulesPage } from '@/pages/schedules'
 import { StoresPage } from '@/pages/stores'
 import { UsersPage } from '@/pages/users'
 import { VouchersPage } from '@/pages/vouchers'
+import { SorteioPage } from '@/pages/sorteio'
 import type { AuthUser } from '@/lib/auth'
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { DEFAULT_NAV_ID, getNavItem, type NavId } from '@/lib/navigation'
@@ -69,6 +70,7 @@ export function ShellMain({
     !mobile &&
     activeId !== 'overview' &&
     activeId !== 'vouchers' &&
+    activeId !== 'sorteio' &&
     activeId !== 'finance' &&
     activeId !== 'cards' &&
     activeId !== 'stores' &&
@@ -136,6 +138,7 @@ export function ShellMain({
               ) : null}
               {activeId === 'cards' ? <CardsPage storeId={storeId} /> : null}
               {activeId === 'vouchers' ? <VouchersPage storeId={storeId} /> : null}
+              {activeId === 'sorteio' ? <SorteioPage storeId={storeId} /> : null}
               {activeId === 'stores' ? (
                 <StoresPage
                   storeId={storeId}

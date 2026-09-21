@@ -7,6 +7,7 @@ import vouchersIcon from '@/assets/icons/valor.svg'
 import storesIcon from '@/assets/icons/unidades.svg'
 import schedulesIcon from '@/assets/icons/Data.svg'
 import reportsIcon from '@/assets/icons/Docs.svg'
+import sorteioIcon from '@/assets/icons/Ticket.svg'
 
 export type NavId =
   | 'overview'
@@ -14,6 +15,7 @@ export type NavId =
   | 'cards'
   | 'finance'
   | 'vouchers'
+  | 'sorteio'
   | 'stores'
   | 'schedules'
   | 'attendance'
@@ -32,6 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'cards', label: 'Cartões', icon: cardsIcon },
   { id: 'finance', label: 'Financeiro', icon: financeIcon },
   { id: 'vouchers', label: 'Vales e pagamentos', icon: vouchersIcon },
+  { id: 'sorteio', label: 'Sorteio', icon: sorteioIcon },
   { id: 'stores', label: 'Unidades', icon: storesIcon },
   { id: 'schedules', label: 'Escalas e horários', icon: schedulesIcon },
   { id: 'attendance', label: 'Atestados e Equipe', icon: employeesIcon },

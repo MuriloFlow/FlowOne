@@ -46,6 +46,12 @@ import {
   deleteAttendanceEvent as removeAttendanceEvent
 } from './attendance.ts'
 import { deleteVoucher, listVoucherBoard, upsertVoucher } from './vouchers.ts'
+import {
+  addSorteioVale,
+  listSorteioBoard,
+  lookupSorteioClient,
+  registerSorteioClient
+} from './sorteio.ts'
 import { listFlowUsers as loadFlowUsers, upsertFlowUser as saveFlowUser } from './users.ts'
 import { sendKobbi } from './kobbi.ts'
 import type {
@@ -72,6 +78,7 @@ import {
 import { SCHEDULE_TEAMS } from './_shared/schedules.ts'
 import { canCreateStores, canEditStoreDesk, canManageFlowUsers, isFlowRole } from './_shared/roles.ts'
 import { normalizeStoreId } from './_shared/store-scope.ts'
+import type { SorteioValeTypeId } from './_shared/sorteio.ts'
 import log from './log.ts'
 
 function asString(value: unknown, field: string): string {
@@ -698,6 +705,54 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
       status,
       signature: typeof body.signature === 'string' ? body.signature : undefined
     })
+  },
+
+  async lookupSorteioClient(payload) {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('CPF inválido.')
+    const body = payload as Record<string, unknown>
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null)
+    return lookupSorteioClient(asString(body.cpf, 'CPF'), storeId)
+  },
+
+  async listSorteioBoard(payload) {
+    const actor = await resolveActor()
+    const storeId = resolveStoreFilter(actor, payload)
+    return listSorteioBoard(storeId)
+  },
+
+  async registerSorteioClient(payload) {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Dados do cadastro inválidos.')
+    const body = payload as Record<string, unknown>
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null) ?? asString(body.storeId, 'Unidade')
+    return registerSorteioClient(
+      {
+        storeId,
+        cpf: asString(body.cpf, 'CPF'),
+        name: asString(body.name, 'Nome'),
+        phone: asString(body.phone, 'Telefone'),
+        valeType: asString(body.valeType, 'Tipo de vale') as SorteioValeTypeId,
+        valeLabel: typeof body.valeLabel === 'string' ? body.valeLabel : null
+      },
+      actor.userId
+    )
+  },
+
+  async addSorteioVale(payload) {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Dados do vale inválidos.')
+    const body = payload as Record<string, unknown>
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null) ?? asString(body.storeId, 'Unidade')
+    return addSorteioVale(
+      {
+        storeId,
+        cpf: asString(body.cpf, 'CPF'),
+        valeType: asString(body.valeType, 'Tipo de vale') as SorteioValeTypeId,
+        valeLabel: typeof body.valeLabel === 'string' ? body.valeLabel : null
+      },
+      actor.userId
+    )
   },
 
   async listFlowUsers() {

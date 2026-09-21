@@ -103,6 +103,25 @@ export function operations(): OperationsApi {
     },
     listVouchers: (storeId) => api.listVouchers(storeId === undefined ? getCurrentStoreId() : storeId),
     updateVoucher: (input) => api.updateVoucher(input),
+    lookupSorteioClient: (cpf, storeId) =>
+      invokeOperation('lookupSorteioClient', 'operations:sorteio-lookup', {
+        cpf,
+        storeId: storeId === undefined ? getCurrentStoreId() : storeId
+      }),
+    listSorteioBoard: (storeId) =>
+      invokeOperation('listSorteioBoard', 'operations:sorteio-board', {
+        storeId: storeId === undefined ? getCurrentStoreId() : storeId
+      }),
+    registerSorteioClient: (input) =>
+      invokeOperation('registerSorteioClient', 'operations:sorteio-register', {
+        ...input,
+        storeId: input.storeId || getCurrentStoreId()
+      }),
+    addSorteioVale: (input) =>
+      invokeOperation('addSorteioVale', 'operations:sorteio-add-vale', {
+        ...input,
+        storeId: input.storeId || getCurrentStoreId()
+      }),
     listFlowUsers: () => invokeOperation('listFlowUsers', 'operations:users'),
     upsertFlowUser: (input) => invokeOperation('upsertFlowUser', 'operations:user-upsert', input),
     getActorScope: () => invokeOperation('getActorScope', 'operations:scope')

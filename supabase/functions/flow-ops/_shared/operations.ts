@@ -424,6 +424,10 @@ export type OperationsApi = {
     status?: import('./vouchers').VoucherStatus
     signature?: string
   }) => Promise<void>
+  lookupSorteioClient: (cpf: string, storeId?: string | null) => Promise<import('./sorteio').SorteioLookup>
+  listSorteioBoard: (storeId?: string | null) => Promise<import('./sorteio').SorteioBoard>
+  registerSorteioClient: (input: import('./sorteio').SorteioRegisterInput) => Promise<import('./sorteio').SorteioConfirmResult>
+  addSorteioVale: (input: import('./sorteio').SorteioAddValeInput) => Promise<import('./sorteio').SorteioConfirmResult>
   listFlowUsers: () => Promise<FlowLauncherUser[]>
   upsertFlowUser: (input: FlowLauncherUserWrite) => Promise<FlowLauncherUser>
   getActorScope: () => Promise<ActorScopeView>
