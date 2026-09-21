@@ -6,6 +6,8 @@ import { exportFile } from '@/lib/native-export'
 import { isMobileShell } from '@/lib/is-mobile-shell'
 
 const PAGE_W = 210
+const RECEIPT_W = 1600
+const RECEIPT_H = 980
 
 function ensureRoundRect(
   ctx: CanvasRenderingContext2D
@@ -50,7 +52,6 @@ function loadImage(source: string): Promise<HTMLImageElement> {
   })
 }
 
-/** Reduz foto do RG para caber no PDF sem estourar memória no mobile. */
 async function compressedJpeg(source: string, maxEdge = 1400, quality = 0.82): Promise<string> {
   const image = await loadImage(source)
   const scale = Math.min(1, maxEdge / Math.max(image.width, image.height))
@@ -67,79 +68,180 @@ async function compressedJpeg(source: string, maxEdge = 1400, quality = 0.82): P
   return canvas.toDataURL('image/jpeg', quality)
 }
 
-function receiptImage(row: VoucherRow, number: string): string {
+function fitText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  align: CanvasTextAlign = 'left'
+): void {
+  ctx.save()
+  ctx.textAlign = align
+  let content = text
+  if (ctx.measureText(content).width > maxWidth) {
+    while (content.length > 1 && ctx.measureText(`${content}…`).width > maxWidth) {
+      content = content.slice(0, -1)
+    }
+    content = `${content}…`
+  }
+  ctx.fillText(content, x, y)
+  ctx.restore()
+}
+
+function drawUnderline(ctx: CanvasRenderingContext2D, x: number, y: number, width: number): void {
+  ctx.strokeStyle = '#9A9A9A'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(x, y)
+  ctx.lineTo(x + width, y)
+  ctx.stroke()
+}
+
+async function receiptImage(row: VoucherRow, number: string, signatureDataUrl: string): Promise<string> {
   const canvas = document.createElement('canvas')
-  canvas.width = isMobileShell() ? 1200 : 1600
-  canvas.height = isMobileShell() ? 645 : 860
+  canvas.width = RECEIPT_W
+  canvas.height = RECEIPT_H
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Não foi possível montar o recibo.')
   ensureRoundRect(ctx)
-  const w = canvas.width
-  const h = canvas.height
-  const s = w / 1600
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, w, h)
+
+  const pad = 48
+  const innerX = pad
+  const innerY = pad
+  const innerW = RECEIPT_W - pad * 2
+  const innerH = RECEIPT_H - pad * 2
+
+  ctx.fillStyle = '#FFFFFF'
+  ctx.fillRect(0, 0, RECEIPT_W, RECEIPT_H)
+
   ctx.strokeStyle = '#171717'
-  ctx.lineWidth = 7 * s
-  ctx.roundRect(14 * s, 14 * s, w - 28 * s, h - 28 * s, 28 * s)
+  ctx.lineWidth = 6
+  ctx.roundRect(innerX, innerY, innerW, innerH, 24)
   ctx.stroke()
-  ctx.lineWidth = 4 * s
-  ctx.roundRect(35 * s, 35 * s, w - 70 * s, 100 * s, 22 * s)
+
+  // Header band
+  const headerY = innerY + 28
+  const headerH = 108
+  ctx.lineWidth = 3.5
+  ctx.roundRect(innerX + 28, headerY, innerW - 56, headerH, 18)
   ctx.stroke()
-  ctx.font = `900 ${68 * s}px Arial, sans-serif`
-  ctx.fillStyle = '#111'
-  ctx.fillText('RECIBO', 64 * s, 105 * s)
-  ctx.font = `700 ${36 * s}px Arial, sans-serif`
-  ctx.fillText('Nº', 530 * s, 95 * s)
-  ctx.fillText(number, 600 * s, 95 * s)
-  ctx.fillText('VALOR', 940 * s, 95 * s)
-  ctx.font = `700 ${42 * s}px Arial, sans-serif`
-  ctx.fillText(formatBRLFromCents(row.dayTotalCents), 1120 * s, 95 * s)
-  ctx.font = `500 ${32 * s}px Arial, sans-serif`
-  ctx.fillText('Recebi (emos) de', 66 * s, 215 * s)
-  ctx.font = `700 ${33 * s}px Arial, sans-serif`
-  ctx.fillText('FLOW — Central de Gestão e Operações', 365 * s, 215 * s)
-  ctx.strokeStyle = '#777'
-  ctx.lineWidth = 2 * s
-  ctx.beginPath()
-  ctx.moveTo(360 * s, 225 * s)
-  ctx.lineTo(1515 * s, 225 * s)
-  ctx.stroke()
-  ctx.font = `500 ${32 * s}px Arial, sans-serif`
-  ctx.fillStyle = '#111'
-  ctx.fillText('a quantia de', 66 * s, 290 * s)
-  ctx.font = `700 ${40 * s}px Arial, sans-serif`
-  ctx.fillText(formatBRLFromCents(row.dayTotalCents), 310 * s, 290 * s)
-  ctx.font = `500 ${31 * s}px Arial, sans-serif`
-  ctx.fillText('Referente a vale-alimentação e vale-transporte.', 66 * s, 390 * s)
-  ctx.beginPath()
-  ctx.moveTo(65 * s, 410 * s)
-  ctx.lineTo(1515 * s, 410 * s)
-  ctx.stroke()
-  ctx.fillText('E para clareza firmo (amos) o presente.', 66 * s, 468 * s)
-  const date = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())
-  ctx.font = `500 ${27 * s}px Arial, sans-serif`
-  ctx.fillText(`São Paulo, ${date}.`, 66 * s, 540 * s)
-  ctx.beginPath()
-  ctx.moveTo(65 * s, 562 * s)
-  ctx.lineTo(1515 * s, 562 * s)
-  ctx.stroke()
-  ctx.font = `600 ${31 * s}px Arial, sans-serif`
-  ctx.fillText('Assinatura', 66 * s, 650 * s)
-  ctx.beginPath()
-  ctx.moveTo(265 * s, 658 * s)
-  ctx.lineTo(1515 * s, 658 * s)
-  ctx.stroke()
-  ctx.fillText('Emitente', 66 * s, 720 * s)
-  ctx.font = `700 ${30 * s}px Arial, sans-serif`
-  ctx.fillText('FLOW — Central de Gestão e Operações', 265 * s, 720 * s)
-  ctx.beginPath()
-  ctx.moveTo(265 * s, 728 * s)
-  ctx.lineTo(1515 * s, 728 * s)
-  ctx.stroke()
-  ctx.font = `600 ${29 * s}px Arial, sans-serif`
-  ctx.fillText(`CPF ${row.cpf ? formatCpf(row.cpf) : 'não informado'}`, 66 * s, 790 * s)
-  ctx.fillText('RG conforme documento anexo', 770 * s, 790 * s)
+
+  const headerPad = innerX + 52
+  const headerMidY = headerY + headerH / 2 + 8
+  const valueLabel = formatBRLFromCents(row.dayTotalCents)
+  const rightBlockX = innerX + innerW - 52
+
+  ctx.fillStyle = '#111111'
+  ctx.font = '900 56px Arial, sans-serif'
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillText('RECIBO', headerPad, headerMidY)
+
+  ctx.fillStyle = '#666666'
+  ctx.font = '600 17px Arial, sans-serif'
+  fitText(ctx, 'Nº', rightBlockX, headerY + 34, 500, 'right')
+  ctx.fillStyle = '#111111'
+  ctx.font = '700 24px Arial, sans-serif'
+  fitText(ctx, number, rightBlockX, headerY + 62, 500, 'right')
+  ctx.font = '800 28px Arial, sans-serif'
+  fitText(ctx, `VALOR  ${valueLabel}`, rightBlockX, headerY + 96, 500, 'right')
+
+  let y = headerY + headerH + 56
+  const contentLeft = innerX + 44
+  const contentRight = innerX + innerW - 44
+  const contentW = contentRight - contentLeft
+
+  // Line: Recebi de
+  ctx.fillStyle = '#333333'
+  ctx.font = '500 28px Arial, sans-serif'
+  ctx.fillText('Recebi (emos) de', contentLeft, y)
+  const recebiW = ctx.measureText('Recebi (emos) de ').width
+  ctx.fillStyle = '#111111'
+  ctx.font = '700 28px Arial, sans-serif'
+  fitText(ctx, 'FLOW — Central de Gestão e Operações', contentLeft + recebiW, y, contentW - recebiW - 8)
+  drawUnderline(ctx, contentLeft + recebiW, y + 10, contentW - recebiW)
+  y += 64
+
+  // Line: quantia
+  ctx.fillStyle = '#333333'
+  ctx.font = '500 28px Arial, sans-serif'
+  ctx.fillText('a quantia de', contentLeft, y)
+  const quantiaW = ctx.measureText('a quantia de ').width
+  ctx.fillStyle = '#111111'
+  ctx.font = '800 34px Arial, sans-serif'
+  ctx.fillText(valueLabel, contentLeft + quantiaW, y)
+  drawUnderline(ctx, contentLeft + quantiaW, y + 10, Math.max(220, ctx.measureText(valueLabel).width + 24))
+  y += 64
+
+  // Referente
+  ctx.fillStyle = '#333333'
+  ctx.font = '500 27px Arial, sans-serif'
+  ctx.fillText('Referente a vale-alimentação e vale-transporte.', contentLeft, y)
+  drawUnderline(ctx, contentLeft, y + 12, contentW)
+  y += 58
+
+  ctx.fillText('E para clareza firmo (amos) o presente.', contentLeft, y)
+  y += 52
+
+  const date = new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  }).format(new Date())
+  ctx.font = '500 24px Arial, sans-serif'
+  ctx.fillStyle = '#444444'
+  ctx.fillText(`São Paulo, ${date}.`, contentLeft, y)
+  drawUnderline(ctx, contentLeft, y + 12, contentW)
+  y += 70
+
+  // Signature block — reserved band so ink never hits Emitente
+  const sigBandTop = y
+  const sigBandH = 168
+  const sigLabelY = sigBandTop + 28
+  const sigLineY = sigBandTop + 118
+
+  ctx.fillStyle = '#333333'
+  ctx.font = '600 26px Arial, sans-serif'
+  ctx.fillText('Assinatura', contentLeft, sigLabelY)
+
+  const sigLineStart = contentLeft + 180
+  const sigLineWidth = contentRight - sigLineStart
+  drawUnderline(ctx, sigLineStart, sigLineY, sigLineWidth)
+
+  try {
+    const signature = await loadImage(signatureDataUrl)
+    const maxSigW = sigLineWidth * 0.72
+    const maxSigH = 88
+    const scale = Math.min(maxSigW / signature.width, maxSigH / signature.height, 1)
+    const sigW = signature.width * scale
+    const sigH = signature.height * scale
+    const sigX = sigLineStart + (sigLineWidth - sigW) / 2
+    const sigY = sigLineY - sigH + 6
+    ctx.drawImage(signature, sigX, sigY, sigW, sigH)
+  } catch {
+    /* assinatura opcional na imagem — PDF já valida existência */
+  }
+
+  y = sigBandTop + sigBandH + 8
+
+  // Emitente
+  ctx.fillStyle = '#333333'
+  ctx.font = '600 26px Arial, sans-serif'
+  ctx.fillText('Emitente', contentLeft, y)
+  const emitenteLabelW = ctx.measureText('Emitente').width
+  const emitenteValueX = contentLeft + emitenteLabelW + 28
+  ctx.fillStyle = '#111111'
+  ctx.font = '700 26px Arial, sans-serif'
+  fitText(ctx, 'FLOW — Central de Gestão e Operações', emitenteValueX, y, contentRight - emitenteValueX)
+  drawUnderline(ctx, emitenteValueX, y + 10, contentRight - emitenteValueX)
+  y += 52
+
+  // Footer docs
+  ctx.fillStyle = '#444444'
+  ctx.font = '600 24px Arial, sans-serif'
+  ctx.fillText(`CPF ${row.cpf ? formatCpf(row.cpf) : 'não informado'}`, contentLeft, y)
+  fitText(ctx, 'RG conforme documento anexo', contentRight, y, 520, 'right')
+
   return canvas.toDataURL('image/png')
 }
 
@@ -175,11 +277,14 @@ export async function exportVoucherReceipts(rows: VoucherRow[]): Promise<void> {
 
     const rgData = await compressedJpeg(row.rgImage!, isMobileShell() ? 1200 : 1600, 0.8)
     const rg = await loadImage(rgData)
-    const receipt = await loadImage(receiptImage(row, row.receiptNumber ?? String(index + 1).padStart(5, '0')))
-    const signature = await loadImage(row.paymentSignature!)
+    const receiptData = await receiptImage(
+      row,
+      row.receiptNumber ?? String(index + 1).padStart(5, '0'),
+      row.paymentSignature!
+    )
 
     const rgRatio = rg.width / Math.max(1, rg.height)
-    const rgH = Math.min(105, 168 / rgRatio)
+    const rgH = Math.min(88, 150 / rgRatio)
     const rgW = rgH * rgRatio
     const rgX = (PAGE_W - rgW) / 2
 
@@ -188,11 +293,12 @@ export async function exportVoucherReceipts(rows: VoucherRow[]): Promise<void> {
     pdf.text('RG — DOCUMENTO DE IDENTIDADE', 14, 39)
     pdf.addImage(rgData, 'JPEG', rgX, 43, rgW, rgH, undefined, 'FAST')
 
-    const receiptY = 43 + rgH + 11
+    const receiptY = 43 + rgH + 10
+    const receiptH = Math.min(118, 280 - receiptY)
     pdf.setFontSize(9)
     pdf.text('RECIBO DE PAGAMENTO', 14, receiptY - 3)
-    pdf.addImage(receipt, 'PNG', 14, receiptY, 182, 97, undefined, 'FAST')
-    pdf.addImage(signature, 'PNG', 48, receiptY + 67, 145, 17, undefined, 'FAST')
+    // Assinatura já está dentro do canvas — sem overlay que invade Emitente
+    pdf.addImage(receiptData, 'PNG', 14, receiptY, 182, receiptH, undefined, 'FAST')
   }
 
   const blob = pdf.output('blob')
