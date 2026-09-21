@@ -19,6 +19,8 @@ function SignaturePad({ onReady }: { onReady: (value: string | null) => void }) 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
   const hasInk = useRef(false)
+  const lastPoint = useRef<{ x: number; y: number } | null>(null)
+  const resizeFrame = useRef<number | null>(null)
 
   const setup = () => {
     const canvas = canvasRef.current
@@ -29,18 +31,30 @@ function SignaturePad({ onReady }: { onReady: (value: string | null) => void }) 
     canvas.height = Math.max(1, Math.round(bounds.height * scale))
     const context = canvas.getContext('2d')
     if (!context) return
-    context.scale(scale, scale)
+    context.setTransform(scale, 0, 0, scale, 0, 0)
     context.lineCap = 'round'
     context.lineJoin = 'round'
-    context.lineWidth = 2.2
+    context.lineWidth = 2.35
     context.strokeStyle = '#121212'
+    context.imageSmoothingEnabled = true
   }
 
   useEffect(() => {
     setup()
-    const observer = new ResizeObserver(setup)
+    const observer = new ResizeObserver(() => {
+      // ResizeObserver pode disparar diversas vezes durante a rotação. Não
+      // recriamos o canvas no meio de um traço.
+      if (drawing.current || resizeFrame.current !== null) return
+      resizeFrame.current = window.requestAnimationFrame(() => {
+        resizeFrame.current = null
+        setup()
+      })
+    })
     if (canvasRef.current) observer.observe(canvasRef.current)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (resizeFrame.current !== null) window.cancelAnimationFrame(resizeFrame.current)
+    }
   }, [])
 
   const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -54,26 +68,58 @@ function SignaturePad({ onReady }: { onReady: (value: string | null) => void }) 
     event.currentTarget.setPointerCapture(event.pointerId)
     const next = point(event)
     drawing.current = true
+    lastPoint.current = next
     context.beginPath()
-    context.moveTo(next.x, next.y)
+    context.arc(next.x, next.y, context.lineWidth / 2, 0, Math.PI * 2)
+    context.fillStyle = '#121212'
+    context.fill()
+    hasInk.current = true
   }
+
+  const drawTo = (next: { x: number; y: number }) => {
+    const canvas = canvasRef.current
+    const context = canvas?.getContext('2d')
+    const previous = lastPoint.current
+    if (!context || !previous) return
+    const middle = { x: (previous.x + next.x) / 2, y: (previous.y + next.y) / 2 }
+    context.beginPath()
+    context.moveTo(previous.x, previous.y)
+    context.quadraticCurveTo(previous.x, previous.y, middle.x, middle.y)
+    context.stroke()
+    lastPoint.current = next
+    hasInk.current = true
+  }
+
   const move = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawing.current) return
-    const context = canvasRef.current?.getContext('2d')
-    if (!context) return
-    const next = point(event)
-    context.lineTo(next.x, next.y)
-    context.stroke()
-    hasInk.current = true
-    onReady(canvasRef.current!.toDataURL('image/png'))
+    // Eventos coalescidos preservam os pontos físicos da caneta/dedo mesmo
+    // quando a tela está ocupada, removendo o aspecto quebrado do risco.
+    const coalesced = event.nativeEvent.getCoalescedEvents?.() ?? [event.nativeEvent]
+    for (const pointer of coalesced) {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const rect = canvas.getBoundingClientRect()
+      drawTo({ x: pointer.clientX - rect.left, y: pointer.clientY - rect.top })
+    }
   }
-  const stop = () => { drawing.current = false }
+  const stop = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawing.current) return
+    drawing.current = false
+    lastPoint.current = null
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      // Alguns WebViews já liberam a captura antes do pointerup.
+    }
+    if (hasInk.current && canvasRef.current) onReady(canvasRef.current.toDataURL('image/png'))
+  }
   const clear = () => {
     const canvas = canvasRef.current
     const context = canvas?.getContext('2d')
     if (!canvas || !context) return
     context.clearRect(0, 0, canvas.width, canvas.height)
     hasInk.current = false
+    lastPoint.current = null
     onReady(null)
   }
 
@@ -87,11 +133,13 @@ function SignaturePad({ onReady }: { onReady: (value: string | null) => void }) 
       </div>
       <canvas
         ref={canvasRef}
-        className="h-[250px] w-full touch-none cursor-crosshair"
+        className="h-[250px] w-full touch-none cursor-crosshair overscroll-none select-none"
+        style={{ touchAction: 'none' }}
         onPointerDown={start}
         onPointerMove={move}
         onPointerUp={stop}
         onPointerCancel={stop}
+        onContextMenu={(event) => event.preventDefault()}
       />
     </div>
   )
