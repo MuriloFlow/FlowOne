@@ -83,10 +83,6 @@ export function createMainWindow(): BrowserWindow {
     mainWindow?.show()
   })
 
-  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    console.log(`[renderer console L${line}] ${message}`)
-  })
-
   mainWindow.on('maximize', () => {
     if (mainWindow) emitWindowState(mainWindow)
   })
