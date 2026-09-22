@@ -1,10 +1,14 @@
 import { supabase } from '@/lib/supabase'
+import { currentAccessToken } from '@/lib/auth'
 
 const OPS_URL =
   import.meta.env.VITE_FLOW_OPS_URL?.trim() ||
   `${String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')}/functions/v1/flow-ops`
 
 async function accessToken(): Promise<string> {
+  const active = currentAccessToken()
+  if (active) return active
+
   const { data } = await supabase.auth.getSession()
   if (data.session?.access_token) return data.session.access_token
 

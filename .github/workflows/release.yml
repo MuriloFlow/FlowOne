@@ -101,7 +101,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish desktop installer
-        if: always() && steps.bump.outcome == 'success'
+        if: ${{ false }}
         run: npm run dist:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

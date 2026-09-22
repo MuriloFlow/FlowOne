@@ -145,6 +145,7 @@ export async function signInWithEmailPassword(emailInput: string, passwordInput:
     throw new AuthFlowError('invalid_credentials', nextLock ?? 'E-mail ou senha inválidos.')
   }
 
+  activeAccessToken = data.session.access_token
   const sessionId = createSessionId()
   await persistLocalSession(sessionId, data.session)
   await registerFlowSession(sessionId, String(data.session.refresh_token ?? ''), ip, userAgent)
@@ -229,12 +230,18 @@ function restoreFailureMessage(reason?: string): string {
 let authSyncStarted = false
 let signingOut = false
 let restoring = false
+let activeAccessToken: string | null = null
+
+export function currentAccessToken(): string | null {
+  return activeAccessToken
+}
 
 async function syncRefreshedTokens(session: {
   access_token: string
   refresh_token?: string | null
   expires_at?: number
 }): Promise<void> {
+  activeAccessToken = session.access_token
   if (signingOut || restoring || !window.flow || !session.refresh_token) return
   const existing = await window.flow.auth.readSession()
   if (!existing) return
@@ -278,6 +285,7 @@ export async function restoreSession(): Promise<AuthUser | null> {
       throw new AuthFlowError('session_expired', 'Sua sessão expirou. Entre novamente.')
     }
 
+    activeAccessToken = data.session.access_token
     const sessionId = persisted.sessionId
     await persistLocalSession(sessionId, data.session)
 
@@ -343,6 +351,7 @@ export async function signOut(): Promise<void> {
     await supabase.auth.signOut()
     await window.flow?.auth.clearSession()
   } finally {
+    activeAccessToken = null
     signingOut = false
   }
 }

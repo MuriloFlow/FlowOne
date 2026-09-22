@@ -184,12 +184,7 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
     } catch {
       /* segue */
     }
-    await CapacitorUpdater.set({ id: bundle.id })
-    try {
-      await CapacitorUpdater.reload()
-    } catch {
-      /* o próximo cold start abre o bundle */
-    }
+    await CapacitorUpdater.next({ id: bundle.id })
   } catch (error) {
     applying = false
     try {
@@ -205,7 +200,6 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
         version: manifest.version
       })
       await CapacitorUpdater.next({ id: bundle.id })
-      await CapacitorUpdater.reload()
     } catch (fallbackError) {
       console.warn('[live-update] apply', error, fallbackError)
     }
