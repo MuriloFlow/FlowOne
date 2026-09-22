@@ -9,6 +9,10 @@ const repoRoot = path.resolve(mobileDir, '..')
 const rendererRoot = path.resolve(repoRoot, 'src/renderer')
 const rendererSrc = path.resolve(rendererRoot, 'src')
 const mobileModules = path.resolve(mobileDir, 'node_modules')
+const rendererMain = path.resolve(rendererSrc, 'main.tsx')
+const mobileRuntime = path.resolve(mobileDir, 'src/mobile-runtime.ts')
+const MOBILE_RUNTIME_ID = 'virtual:flow-mobile-runtime'
+const RESOLVED_MOBILE_RUNTIME_ID = `\0${MOBILE_RUNTIME_ID}`
 
 const VPS_URL = 'https://flowone.db.flwdesk.com'
 const VPS_ANON_KEY =
@@ -19,12 +23,44 @@ function isLegacySupabaseHost(url?: string) {
   return url.includes('supabase.co') || url.includes('2.25.237.179')
 }
 
+function normalizedId(id: string): string {
+  return id.split('?')[0].replace(/\\/g, '/')
+}
+
+function mobileRuntimePlugin() {
+  return {
+    name: 'flow-mobile-runtime',
+    enforce: 'pre' as const,
+    resolveId(id: string) {
+      return id === MOBILE_RUNTIME_ID ? RESOLVED_MOBILE_RUNTIME_ID : null
+    },
+    load(id: string) {
+      if (id !== RESOLVED_MOBILE_RUNTIME_ID) return null
+      return `export { installMobileRuntime } from ${JSON.stringify(mobileRuntime)}`
+    },
+    transform(code: string, id: string) {
+      if (normalizedId(id) !== normalizedId(rendererMain)) return null
+      const bridgeReady = 'await installFlowMobileBridge()'
+      if (!code.includes(bridgeReady)) {
+        throw new Error('O ponto de inicialização do bridge móvel não foi encontrado.')
+      }
+      return code.replace(
+        bridgeReady,
+        `${bridgeReady}\n    const { installMobileRuntime } = await import('${MOBILE_RUNTIME_ID}')\n    await installMobileRuntime()`
+      )
+    }
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, mobileDir, 'VITE_')
   const supabaseUrl = isLegacySupabaseHost(env.VITE_SUPABASE_URL) ? VPS_URL : env.VITE_SUPABASE_URL
   const supabaseAnonKey =
     !env.VITE_SUPABASE_ANON_KEY || isLegacySupabaseHost(env.VITE_SUPABASE_URL) ? VPS_ANON_KEY : env.VITE_SUPABASE_ANON_KEY
-  const flowOpsUrl = env.VITE_FLOW_OPS_URL?.includes('supabase.co') || !env.VITE_FLOW_OPS_URL
+  const flowOpsUrl =
+    env.VITE_FLOW_OPS_URL?.includes('supabase.co') ||
+    env.VITE_FLOW_OPS_URL?.includes('2.25.237.179') ||
+    !env.VITE_FLOW_OPS_URL
     ? `${VPS_URL}/functions/v1/flow-ops`
     : env.VITE_FLOW_OPS_URL
 
@@ -33,6 +69,7 @@ export default defineConfig(({ mode }) => {
     envDir: mobileDir,
     publicDir: false,
     plugins: [
+      mobileRuntimePlugin(),
       react(),
       tailwindcss(),
       {
