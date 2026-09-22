@@ -101,6 +101,12 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': rendererSrc,
+        // O CSS compartilhado mora fora de /mobile. Fixar estes imports no
+        // node_modules móvel evita que o runner Linux procure dependências no
+        // diretório do renderer e interrompa a publicação OTA.
+        tailwindcss: path.resolve(mobileModules, 'tailwindcss'),
+        'tw-animate-css': path.resolve(mobileModules, 'tw-animate-css'),
+        '@fontsource/inter': path.resolve(mobileModules, '@fontsource/inter'),
         '@capacitor/core': path.resolve(mobileModules, '@capacitor/core'),
         '@capacitor/preferences': path.resolve(mobileModules, '@capacitor/preferences'),
         '@capacitor/app': path.resolve(mobileModules, '@capacitor/app'),
