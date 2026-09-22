@@ -79,7 +79,7 @@ export default defineConfig(({ mode }) => {
             .replace('<html lang="pt-BR" class="dark">', '<html lang="pt-BR" class="dark flow-mobile-shell">')
             .replace(
               /<meta\s+http-equiv="Content-Security-Policy"[\s\S]*?\/>/,
-              `<meta http-equiv="Content-Security-Policy" content="default-src * data: blob: capacitor: https: 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; connect-src *; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval'; font-src * data:;" />`
+              `<meta http-equiv="Content-Security-Policy" content="default-src * data: blob: capacitor: https: 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; connect-src 'self' https://*.supabase.co https://*.supabase.in https://*.db.flwdesk.com https://flowone.db.flwdesk.com https://cardplus.db.flwdesk.com wss://*.supabase.co wss://*.supabase.in wss://*.db.flwdesk.com *; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval'; font-src * data:;" />`
             )
             .replace(
               '</head>',

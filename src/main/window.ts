@@ -38,10 +38,12 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow
 }
 
+const SUPABASE_ALLOWED_HOSTS =
+  "https://*.supabase.co https://*.supabase.in https://*.db.flwdesk.com https://flowone.db.flwdesk.com https://cardplus.db.flwdesk.com wss://*.supabase.co wss://*.supabase.in wss://*.db.flwdesk.com"
 const RENDERER_CSP_PROD =
-  "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:* https://api.ipify.org; font-src 'self' data:;"
+  `default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ${SUPABASE_ALLOWED_HOSTS} https: wss: http://127.0.0.1:* http://localhost:* https://api.ipify.org; font-src 'self' data:;`
 const RENDERER_CSP_DEV =
-  "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:* ws://localhost:* https://api.ipify.org; font-src 'self' data:;"
+  `default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ${SUPABASE_ALLOWED_HOSTS} https: wss: http://127.0.0.1:* http://localhost:* ws://localhost:* https://api.ipify.org; font-src 'self' data:;`
 const RENDERER_CSP = app.isPackaged ? RENDERER_CSP_PROD : RENDERER_CSP_DEV
 
 function applyRendererCsp(): void {
