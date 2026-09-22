@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Activity, Banknote, CreditCard, Gauge, Percent, Users } from 'lucide-react'
 import { CardsChart } from '@/components/cards-chart'
 import { MetricCard } from '@/components/metric-card'
@@ -19,7 +19,7 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     let active = true
     setLoading(true)
     void operations()
@@ -41,6 +41,8 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
     }
   }, [storeId])
 
+  useEffect(() => load(), [load])
+
   return (
     <div className="flex flex-col">
       <header className="mb-6">
@@ -58,6 +60,14 @@ export function OverviewPage({ user, storeId = null }: OverviewPageProps) {
         <div className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] px-5 py-5">
           <p className="text-[14px] text-[#F0EFEC]/78">Não deu para abrir o recorte agora</p>
           <p className="mt-1.5 text-[13px] text-[#F0EFEC]/46">{error}</p>
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            className="mt-4 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-[13px] font-semibold text-[#F0EFEC]/90 transition hover:bg-white/[0.1] disabled:opacity-50"
+          >
+            {loading ? 'Tentando...' : 'Tentar de novo'}
+          </button>
         </div>
       ) : loading || !data ? (
         <OverviewSkeleton />

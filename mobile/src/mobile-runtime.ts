@@ -1,4 +1,5 @@
 import { supabase } from '../../src/renderer/src/lib/supabase'
+import { OpsUnavailableError } from '../../src/renderer/src/lib/flow-ops-client'
 
 type StoredSession = {
   accessToken: string
@@ -80,6 +81,8 @@ async function renewMobileSession(forceRefresh = false): Promise<void> {
 
 function recoverMobileSession(): Promise<void> {
   if (!recoveryPromise) {
+    // A recuperação SEMPRE força a renovação do token: se chegou aqui, a
+    // sessão atual já falhou em pelo menos uma chamada.
     recoveryPromise = renewMobileSession(true).finally(() => {
       recoveryPromise = null
     })
@@ -123,12 +126,9 @@ function isReadConnectionIssue(error: unknown): boolean {
   return /network|offline|timeout|failed to fetch|sem conex[aã]o|servidor flow n[aã]o respondeu/i.test(message)
 }
 
-function shouldRetryReadOperation(name: PropertyKey, error: unknown): boolean {
-  return typeof name === 'string' && READ_OPERATIONS.has(name) && isReadConnectionIssue(error)
-}
-
-function waitForConnectionRetry(): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, 450))
+function waitForConnectionRetry(attempt: number): Promise<void> {
+  const backoffMs = 600 * attempt
+  return new Promise((resolve) => window.setTimeout(resolve, backoffMs))
 }
 
 function wrapMobileOperations(): void {
@@ -145,17 +145,21 @@ function wrapMobileOperations(): void {
       if (wrappers.has(property)) return wrappers.get(property)
 
       const wrapped = async (...args: unknown[]) => {
-        try {
-          return await original.apply(target, args)
-        } catch (error) {
-          if (isSessionIssue(error)) {
-            await recoverMobileSession()
-          } else if (shouldRetryReadOperation(property, error)) {
-            await waitForConnectionRetry()
-          } else {
-            throw error
+        const isRead = typeof property === 'string' && READ_OPERATIONS.has(property)
+        // Leituras recuperam sozinhas de sessão/conexão; escritas só tentam
+        // de novo quando o problema foi de sessão.
+        const maxAttempts = isRead ? 3 : 2
+        for (let attempt = 1; ; attempt += 1) {
+          try {
+            return await original.apply(target, args)
+          } catch (error) {
+            const sessionProblem = isSessionIssue(error)
+            const connectionProblem = error instanceof OpsUnavailableError || isReadConnectionIssue(error)
+            const canRetry = attempt < maxAttempts && (sessionProblem || (isRead && connectionProblem))
+            if (!canRetry) throw error
+            if (sessionProblem) await recoverMobileSession()
+            else await waitForConnectionRetry(attempt)
           }
-          return original.apply(target, args)
         }
       }
       wrappers.set(property, wrapped)

@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
       error instanceof Error && error.message.trim()
         ? error.message
         : 'Não foi possível concluir esta operação.'
-    const unauthorized = /sessão inválida|inativa|não possui acesso/i.test(message)
+    const unauthorized = /sess[aã]o inv[aá]lida|inativa|n[aã]o possui acesso/i.test(message)
     return jsonResponse(req, { ok: false, error: message }, unauthorized ? 401 : 400)
   } finally {
     setCurrentActor(null)

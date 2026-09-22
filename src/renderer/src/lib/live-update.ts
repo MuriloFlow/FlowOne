@@ -169,6 +169,13 @@ async function nativePlatform(): Promise<boolean> {
 
 let applying = false
 
+// Uma tentativa que falha não pode travar as próximas por 15 minutos e não
+// pode disparar downloads repetidos em milessimos: guardamos a última
+// tentativa com resultado.
+const ATTEMPT_COOLDOWN_MS = 5 * 60 * 1000
+let lastAttemptAt = 0
+let lastFailureAt = 0
+
 async function downloadAndApply(manifest: MobileManifest): Promise<void> {
   if (applying) return
   applying = true
@@ -186,27 +193,18 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
     }
     await CapacitorUpdater.next({ id: bundle.id })
   } catch (error) {
+    lastFailureAt = Date.now()
+    console.warn('[live-update] apply', error)
+  } finally {
     applying = false
-    try {
-      const { Preferences } = await import('@capacitor/preferences')
-      await Preferences.remove({ key: LAST_KEY })
-    } catch {
-      /* ignore */
-    }
-    try {
-      const { CapacitorUpdater } = await import('@capgo/capacitor-updater')
-      const bundle = await CapacitorUpdater.download({
-        url: manifest.url,
-        version: manifest.version
-      })
-      await CapacitorUpdater.next({ id: bundle.id })
-    } catch (fallbackError) {
-      console.warn('[live-update] apply', error, fallbackError)
-    }
   }
 }
 
 async function checkAndApply(): Promise<void> {
+  const now = Date.now()
+  if (now - lastAttemptAt < ATTEMPT_COOLDOWN_MS) return
+  if (now - lastFailureAt < ATTEMPT_COOLDOWN_MS) return
+  lastAttemptAt = now
   try {
     const manifest = await latestMobileManifest()
     if (!manifest) return
@@ -214,6 +212,7 @@ async function checkAndApply(): Promise<void> {
     if (!isNewer(manifest.version, current)) return
     await downloadAndApply(manifest)
   } catch (error) {
+    lastFailureAt = Date.now()
     console.warn('[live-update] check', error)
   }
 }

@@ -1,6 +1,7 @@
 import { canLoginWithRole, canViewAllStores, normalizeRole, type FlowRoleId } from './_shared/roles.ts'
 import { normalizeStoreId } from './_shared/store-scope.ts'
 import { getFlowAdminClient } from './supabase-clients.ts'
+import log from './log.ts'
 
 export type ActorScope = {
   userId: string
@@ -71,24 +72,37 @@ function assertJwtFresh(payload: JwtPayload | null): void {
   }
 }
 
+type ResolvedAuthUser = { id: string; email?: string | null }
+
 async function resolveAuthUser(
   flow: ReturnType<typeof getFlowAdminClient>,
   accessToken: string
-): Promise<{ id: string; email?: string | null }> {
+): Promise<ResolvedAuthUser> {
   const payload = decodeJwtPayload(accessToken)
   assertJwtFresh(payload)
+
+  const sub = typeof payload?.sub === 'string' ? payload.sub : ''
 
   const direct = await flow.auth.getUser(accessToken)
   if (direct.data.user) return direct.data.user
 
-  const skew =
-    /issued at future|iat|nbf|clock/i.test(direct.error?.message ?? '') &&
-    typeof payload?.sub === 'string' &&
-    payload.sub.length > 0
+  const directError = direct.error?.message ?? ''
+  log.warn('auth.getUser falhou no flow-ops', {
+    status: direct.error?.status ?? null,
+    message: directError.slice(0, 200),
+    hasSub: Boolean(sub)
+  })
 
-  if (skew) {
-    const admin = await flow.auth.admin.getUserById(payload.sub as string)
+  // Qualquer falha transitória do Auth (rede, clock skew, instabilidade) NÃO
+  // pode derrubar a sessão do usuário: com um JWT assinado e não expirado,
+  // resolvemos o perfil direto pelo `sub` do token.
+  if (sub) {
+    const admin = await flow.auth.admin.getUserById(sub)
     if (admin.data.user) return admin.data.user
+    log.warn('auth.admin.getUserById também falhou', {
+      status: admin.error?.status ?? null,
+      message: (admin.error?.message ?? '').slice(0, 200)
+    })
   }
 
   throw new Error('Sessão inválida.')
