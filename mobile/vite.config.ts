@@ -101,6 +101,15 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': rendererSrc,
+        // O build do app mobile roda a partir do renderer no repositório e, em CI,
+        // o diretório raiz pode não ter as dependências do React instaladas.
+        // Forçar os módulos do React a apontarem para o node_modules do mobile
+        // evita que o Vite perca a resolução em ambientes de build limpos.
+        react: path.resolve(mobileModules, 'react'),
+        'react-dom': path.resolve(mobileModules, 'react-dom'),
+        'react-dom/client': path.resolve(mobileModules, 'react-dom/client.js'),
+        'react/jsx-runtime': path.resolve(mobileModules, 'react/jsx-runtime.js'),
+        'react/jsx-dev-runtime': path.resolve(mobileModules, 'react/jsx-dev-runtime.js'),
         // O CSS compartilhado mora fora de /mobile. Fixar estes imports no
         // node_modules móvel evita que o runner Linux procure dependências no
         // diretório do renderer e interrompa a publicação OTA.
