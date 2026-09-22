@@ -51,6 +51,22 @@ export function preparePackagedEnv() {
     if (fromEnv) values.set(key, fromEnv)
   }
 
+  const isLegacy = (url) => !url || url.includes('supabase.co') || url.includes('2.25.237.179')
+  const vpsAnon =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzkwMDI5NjAwLCJleHAiOjE5NDc3MDk2MDB9.yPgutsfUlQPS6mjSegQU8MRTaPNK9cKqJiSopVh0GDA'
+  const vpsService =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3OTAwMjk2MDAsImV4cCI6MTk0NzcwOTYwMH0.DiNtBP8vUMyrYwv2A_j0TYN8AwbpY3tlIEnVABNrRAw'
+  if (isLegacy(values.get('VITE_SUPABASE_URL'))) {
+    values.set('VITE_SUPABASE_URL', 'https://flowone.db.flwdesk.com')
+    values.set('VITE_SUPABASE_ANON_KEY', vpsAnon)
+    values.set('SUPABASE_SERVICE_ROLE_KEY', vpsService)
+  }
+  if (isLegacy(values.get('CARDPLUS_SUPABASE_URL'))) {
+    values.set('CARDPLUS_SUPABASE_URL', 'https://cardplus.db.flwdesk.com')
+    values.set('CARDPLUS_SUPABASE_ANON_KEY', vpsAnon)
+    values.set('CARDPLUS_SUPABASE_SERVICE_ROLE_KEY', vpsService)
+  }
+
   const missing = required.filter((key) => !values.get(key)?.trim())
   if (missing.length) {
     throw new Error(`Variáveis ausentes para o instalador: ${missing.join(', ')}`)

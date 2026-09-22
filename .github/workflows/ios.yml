@@ -34,9 +34,9 @@ jobs:
       - name: Install mobile deps + sync
         working-directory: mobile
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_FLOW_OPS_URL: ${{ secrets.VITE_FLOW_OPS_URL }}
+          VITE_SUPABASE_URL: https://flowone.db.flwdesk.com
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzkwMDI5NjAwLCJleHAiOjE5NDc3MDk2MDB9.yPgutsfUlQPS6mjSegQU8MRTaPNK9cKqJiSopVh0GDA
+          VITE_FLOW_OPS_URL: https://flowone.db.flwdesk.com/functions/v1/flow-ops
         run: |
           if [ -z "${VITE_FLOW_OPS_URL:-}" ] && [ -n "${VITE_SUPABASE_URL:-}" ]; then
             export VITE_FLOW_OPS_URL="${VITE_SUPABASE_URL%/}/functions/v1/flow-ops"

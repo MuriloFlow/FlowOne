@@ -32,9 +32,9 @@ if (fs.existsSync(iconSrc)) {
 
 const envLocal = path.join(root, '.env.local')
 const envExample = [
-  'VITE_SUPABASE_URL=https://sirupkygppdladkpzytc.supabase.co',
+  'VITE_SUPABASE_URL=https://flowone.db.flwdesk.com',
   'VITE_SUPABASE_ANON_KEY=',
-  'VITE_FLOW_OPS_URL=https://sirupkygppdladkpzytc.supabase.co/functions/v1/flow-ops',
+  'VITE_FLOW_OPS_URL=https://flowone.db.flwdesk.com/functions/v1/flow-ops',
   ''
 ].join('\n')
 fs.writeFileSync(path.join(mobile, '.env.example'), envExample)
@@ -55,9 +55,9 @@ if (fs.existsSync(envLocal)) {
     if (key === 'VITE_SUPABASE_URL' || key === 'VITE_SUPABASE_ANON_KEY') picked[key] = value
   }
   const env = [
-    `VITE_SUPABASE_URL=${picked.VITE_SUPABASE_URL || 'https://sirupkygppdladkpzytc.supabase.co'}`,
+    `VITE_SUPABASE_URL=${picked.VITE_SUPABASE_URL || 'https://flowone.db.flwdesk.com'}`,
     `VITE_SUPABASE_ANON_KEY=${picked.VITE_SUPABASE_ANON_KEY || ''}`,
-    'VITE_FLOW_OPS_URL=https://sirupkygppdladkpzytc.supabase.co/functions/v1/flow-ops',
+    'VITE_FLOW_OPS_URL=https://flowone.db.flwdesk.com/functions/v1/flow-ops',
     ''
   ].join('\n')
   fs.writeFileSync(path.join(mobile, '.env'), env)

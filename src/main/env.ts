@@ -47,10 +47,38 @@ function packagedEnvFiles(): string[] {
   return files
 }
 
+const VPS_FLOW_URL = 'https://flowone.db.flwdesk.com'
+const VPS_CARDPLUS_URL = 'https://cardplus.db.flwdesk.com'
+const VPS_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzkwMDI5NjAwLCJleHAiOjE5NDc3MDk2MDB9.yPgutsfUlQPS6mjSegQU8MRTaPNK9cKqJiSopVh0GDA'
+const VPS_SERVICE_ROLE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3OTAwMjk2MDAsImV4cCI6MTk0NzcwOTYwMH0.DiNtBP8vUMyrYwv2A_j0TYN8AwbpY3tlIEnVABNrRAw'
+
+function isLegacySupabaseHost(url?: string) {
+  if (!url) return true
+  return url.includes('supabase.co') || url.includes('2.25.237.179')
+}
+
+function migrateVpsEnv(): void {
+  if (isLegacySupabaseHost(process.env.VITE_SUPABASE_URL) || isLegacySupabaseHost(process.env.FLOW_SUPABASE_URL)) {
+    process.env.VITE_SUPABASE_URL = VPS_FLOW_URL
+    process.env.FLOW_SUPABASE_URL = VPS_FLOW_URL
+    process.env.VITE_SUPABASE_ANON_KEY = VPS_ANON_KEY
+    process.env.SUPABASE_SERVICE_ROLE_KEY = VPS_SERVICE_ROLE_KEY
+    process.env.VITE_FLOW_OPS_URL = `${VPS_FLOW_URL}/functions/v1/flow-ops`
+  }
+  if (isLegacySupabaseHost(process.env.CARDPLUS_SUPABASE_URL)) {
+    process.env.CARDPLUS_SUPABASE_URL = VPS_CARDPLUS_URL
+    process.env.CARDPLUS_SUPABASE_ANON_KEY = VPS_ANON_KEY
+    process.env.CARDPLUS_SUPABASE_SERVICE_ROLE_KEY = VPS_SERVICE_ROLE_KEY
+  }
+}
+
 export function loadLocalEnv(): void {
   for (const file of packagedEnvFiles()) {
     if (existsSync(file)) applyEnvFile(file)
   }
+  migrateVpsEnv()
 }
 
 export function requiredEnv(name: string): string {

@@ -10,8 +10,23 @@ const rendererRoot = path.resolve(repoRoot, 'src/renderer')
 const rendererSrc = path.resolve(rendererRoot, 'src')
 const mobileModules = path.resolve(mobileDir, 'node_modules')
 
+const VPS_URL = 'https://flowone.db.flwdesk.com'
+const VPS_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzkwMDI5NjAwLCJleHAiOjE5NDc3MDk2MDB9.yPgutsfUlQPS6mjSegQU8MRTaPNK9cKqJiSopVh0GDA'
+
+function isLegacySupabaseHost(url?: string) {
+  if (!url) return true
+  return url.includes('supabase.co') || url.includes('2.25.237.179')
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, mobileDir, 'VITE_')
+  const supabaseUrl = isLegacySupabaseHost(env.VITE_SUPABASE_URL) ? VPS_URL : env.VITE_SUPABASE_URL
+  const supabaseAnonKey =
+    !env.VITE_SUPABASE_ANON_KEY || isLegacySupabaseHost(env.VITE_SUPABASE_URL) ? VPS_ANON_KEY : env.VITE_SUPABASE_ANON_KEY
+  const flowOpsUrl = env.VITE_FLOW_OPS_URL?.includes('supabase.co') || !env.VITE_FLOW_OPS_URL
+    ? `${VPS_URL}/functions/v1/flow-ops`
+    : env.VITE_FLOW_OPS_URL
 
   return {
     root: rendererRoot,
@@ -42,12 +57,9 @@ export default defineConfig(({ mode }) => {
     ],
     define: {
       'import.meta.env.VITE_FLOW_SHELL': JSON.stringify('mobile'),
-      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL ?? ''),
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY ?? ''),
-      'import.meta.env.VITE_FLOW_OPS_URL': JSON.stringify(
-        env.VITE_FLOW_OPS_URL ??
-          `${String(env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')}/functions/v1/flow-ops`
-      )
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl ?? ''),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey ?? ''),
+      'import.meta.env.VITE_FLOW_OPS_URL': JSON.stringify(flowOpsUrl)
     },
     resolve: {
       alias: {
