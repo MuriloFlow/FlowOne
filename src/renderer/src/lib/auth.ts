@@ -127,6 +127,12 @@ export async function signInWithEmailPassword(emailInput: string, passwordInput:
   })
 
   if (error || !data.user || !data.session) {
+    if (isTransientAuthError(error)) {
+      throw new AuthFlowError(
+        'auth_unavailable',
+        'Não foi possível falar com o banco agora. Tente de novo em alguns segundos.'
+      )
+    }
     const afterFailure = await rpc<LockoutState>('flow_auth_check_lockout', { p_email: email })
     const nextLock = lockoutMessage(afterFailure)
     throw new AuthFlowError('invalid_credentials', nextLock ?? 'E-mail ou senha inválidos.')
