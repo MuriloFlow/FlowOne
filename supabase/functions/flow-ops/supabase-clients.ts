@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.57.4'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const clientOptions = {
   auth: { persistSession: false, autoRefreshToken: false }
@@ -7,19 +7,32 @@ const clientOptions = {
 let cardplusClient: SupabaseClient | null = null
 let flowAdminClient: SupabaseClient | null = null
 
-function requiredEnv(name: string, aliases: string[] = []): string {
-  const keys = [name, ...aliases]
-  for (const key of keys) {
-    const value = Deno.env.get(key)?.trim()
+type EdgeRuntime = {
+  Deno?: { env?: { get?: (name: string) => string | undefined } }
+}
+
+function envValue(name: string): string | undefined {
+  return (globalThis as typeof globalThis & EdgeRuntime).Deno?.env?.get?.(name)?.trim() || undefined
+}
+
+function optionalEnv(name: string, aliases: string[] = []): string | undefined {
+  for (const key of [name, ...aliases]) {
+    const value = envValue(key)
     if (value) return value
   }
-  return ''
+  return undefined
+}
+
+function requiredEnv(name: string, aliases: string[] = []): string {
+  const value = optionalEnv(name, aliases)
+  if (value) return value
+  throw new Error(`Missing required flow-ops secret: ${name}`)
 }
 
 export function getCardplusClient(): SupabaseClient {
   if (cardplusClient) return cardplusClient
   // For the multi-tenant VPS setup, CardPlus is on a different database instance accessed via cardplus.db.flwdesk.com
-  const url = requiredEnv('CARDPLUS_SUPABASE_URL') || 'https://cardplus.db.flwdesk.com'
+  const url = optionalEnv('CARDPLUS_SUPABASE_URL', ['CARDPLUS_SUPABASE_PUBLIC_URL']) || 'https://cardplus.db.flwdesk.com'
   const key = requiredEnv('CARDPLUS_SUPABASE_SERVICE_ROLE_KEY', ['SUPABASE_SERVICE_ROLE_KEY'])
   
   if (!key) throw new Error(`Variável CARDPLUS_SUPABASE_SERVICE_ROLE_KEY ausente nos secrets.`)
@@ -61,7 +74,7 @@ export function flowPublicUrl(): string {
 }
 
 export function flowAnonKey(): string | null {
-  return Deno.env.get('SUPABASE_ANON_KEY')?.trim() || Deno.env.get('FLOW_SUPABASE_ANON_KEY')?.trim() || null
+  return envValue('SUPABASE_ANON_KEY') || envValue('FLOW_SUPABASE_ANON_KEY') || null
 }
 
 

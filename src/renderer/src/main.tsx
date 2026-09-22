@@ -11,12 +11,9 @@ async function boot(): Promise<void> {
     const { installFlowMobileBridge } = await import('./lib/flow-mobile-bridge')
     await installFlowMobileBridge()
     const { runSilentUpdate } = await import('./lib/live-update')
-    await Promise.race([
-      runSilentUpdate(),
-      new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 12_000)
-      })
-    ])
+    // An OTA update must not keep the application on the splash screen while
+    // a mobile connection waits for GitHub.
+    void runSilentUpdate()
   }
 
   createRoot(document.getElementById('root')!).render(

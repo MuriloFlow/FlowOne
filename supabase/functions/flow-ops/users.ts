@@ -21,6 +21,12 @@ type ProfileRow = {
   updated_at: string | null
 }
 
+type StoreNameEntry = readonly [string, string]
+
+function toStoreNames(stores: Awaited<ReturnType<typeof listStores>>): Map<string, string> {
+  return new Map<string, string>(stores.map((store): StoreNameEntry => [store.id, store.name]))
+}
+
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -106,7 +112,7 @@ export async function listFlowUsers(): Promise<FlowLauncherUser[]> {
       .select('user_id, email, display_name, role, status, cardplus_store_id, created_at, updated_at')
       .order('display_name')
   ])
-  const storeNames = new Map(stores.map((store) => [store.id, store.name]))
+  const storeNames = toStoreNames(stores)
   if (!full.error) {
     return ((full.data ?? []) as ProfileRow[]).map((row) => toUser(row, storeNames))
   }
@@ -148,7 +154,7 @@ export async function upsertFlowUser(
     }
     await writeProfile(created.data.user.id, parsed)
     const stores = await listStores()
-    return toUser(await loadProfile(created.data.user.id), new Map(stores.map((store) => [store.id, store.name])))
+    return toUser(await loadProfile(created.data.user.id), toStoreNames(stores))
   }
 
   if (input.id === actorUserId && parsed.status === 'inactive') {
@@ -170,7 +176,7 @@ export async function upsertFlowUser(
   }
   await writeProfile(input.id, parsed)
   const stores = await listStores()
-  return toUser(await loadProfile(input.id), new Map(stores.map((store) => [store.id, store.name])))
+  return toUser(await loadProfile(input.id), toStoreNames(stores))
 }
 
 async function writeProfile(
