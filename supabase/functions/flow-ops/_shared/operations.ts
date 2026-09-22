@@ -407,28 +407,28 @@ export type OperationsApi = {
   deleteCard: (id: string) => Promise<void>
   upsertDailySale: (input: DailySaleWriteInput) => Promise<DailySaleRow>
   upsertFinanceDay: (input: FinanceDayWriteInput) => Promise<DailySaleRow>
-  getScheduleBoard: (storeId?: string | null, weekStart?: string | null) => Promise<import('./schedules').ScheduleBoard>
-  saveScheduleSlots: (storeId: string, slots: import('./schedules').ScheduleSlotWrite[], team?: import('./schedules').ScheduleTeam) => Promise<void>
-  resetScheduleSlots: (storeId: string, team?: import('./schedules').ScheduleTeam) => Promise<void>
-  upsertScheduleAssignment: (input: import('./schedules').ScheduleAssignmentWrite) => Promise<void>
+  getScheduleBoard: (storeId?: string | null, weekStart?: string | null) => Promise<import('./schedules.ts').ScheduleBoard>
+  saveScheduleSlots: (storeId: string, slots: import('./schedules.ts').ScheduleSlotWrite[], team?: import('./schedules.ts').ScheduleTeam) => Promise<void>
+  resetScheduleSlots: (storeId: string, team?: import('./schedules.ts').ScheduleTeam) => Promise<void>
+  upsertScheduleAssignment: (input: import('./schedules.ts').ScheduleAssignmentWrite) => Promise<void>
   deleteScheduleAssignment: (id: string, storeId: string) => Promise<void>
-  getAttendanceBoard: (storeId?: string | null, monthKey?: string | null) => Promise<import('./attendance').AttendanceBoard>
-  upsertTeamHeadcount: (input: import('./attendance').TeamHeadcountWrite) => Promise<void>
-  upsertAttendanceEvent: (input: import('./attendance').AttendanceEventWrite) => Promise<import('./attendance').AttendanceEvent>
+  getAttendanceBoard: (storeId?: string | null, monthKey?: string | null) => Promise<import('./attendance.ts').AttendanceBoard>
+  upsertTeamHeadcount: (input: import('./attendance.ts').TeamHeadcountWrite) => Promise<void>
+  upsertAttendanceEvent: (input: import('./attendance.ts').AttendanceEventWrite) => Promise<import('./attendance.ts').AttendanceEvent>
   deleteAttendanceEvent: (id: string, storeId: string) => Promise<void>
-  listVouchers: (storeId?: string | null) => Promise<import('./vouchers').VoucherBoard>
-  listVoucherHistory: (monthKey: string, storeId?: string | null) => Promise<import('./vouchers').VoucherHistoryBoard>
+  listVouchers: (storeId?: string | null) => Promise<import('./vouchers.ts').VoucherBoard>
+  listVoucherHistory: (monthKey: string, storeId?: string | null) => Promise<import('./vouchers.ts').VoucherHistoryBoard>
   updateVoucher: (input: {
     collaboratorId: string
     lunchCents?: number
     transportCents?: number
-    status?: import('./vouchers').VoucherStatus
+    status?: import('./vouchers.ts').VoucherStatus
     signature?: string
   }) => Promise<void>
-  lookupSorteioClient: (cpf: string, storeId?: string | null) => Promise<import('./sorteio').SorteioLookup>
-  listSorteioBoard: (storeId?: string | null) => Promise<import('./sorteio').SorteioBoard>
-  registerSorteioClient: (input: import('./sorteio').SorteioRegisterInput) => Promise<import('./sorteio').SorteioConfirmResult>
-  addSorteioVale: (input: import('./sorteio').SorteioAddValeInput) => Promise<import('./sorteio').SorteioConfirmResult>
+  lookupSorteioClient: (cpf: string, storeId?: string | null) => Promise<import('./sorteio.ts').SorteioLookup>
+  listSorteioBoard: (storeId?: string | null) => Promise<import('./sorteio.ts').SorteioBoard>
+  registerSorteioClient: (input: import('./sorteio.ts').SorteioRegisterInput) => Promise<import('./sorteio.ts').SorteioConfirmResult>
+  addSorteioVale: (input: import('./sorteio.ts').SorteioAddValeInput) => Promise<import('./sorteio.ts').SorteioConfirmResult>
   deleteSorteioClient: (clientId: string) => Promise<void>
   listFlowUsers: () => Promise<FlowLauncherUser[]>
   upsertFlowUser: (input: FlowLauncherUserWrite) => Promise<FlowLauncherUser>

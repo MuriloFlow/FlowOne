@@ -49,7 +49,7 @@ export type ScheduleAssignment = {
   shortName: string
   sortOrder: number
   note: string | null
-  absenceKind?: import('./attendance').AttendanceKind | null
+  absenceKind?: import('./attendance.ts').AttendanceKind | null
 }
 
 export type ScheduleDay = {
