@@ -73,6 +73,14 @@ function readStoredNavId(): string | null {
   }
 }
 
+export function resolveNavId(value: string | null | undefined, role: string): NavId {
+  const safeValue = isValidNavId(value) ? value : DEFAULT_NAV_ID
+  if (!visibleNavItems(role).some((item) => item.id === safeValue)) {
+    return DEFAULT_NAV_ID
+  }
+  return safeValue
+}
+
 export function readSessionNavId(role: string): NavId {
   if (!isRendererReload()) {
     clearSessionNavId()
@@ -80,9 +88,7 @@ export function readSessionNavId(role: string): NavId {
   }
 
   const stored = readStoredNavId()
-  if (!isValidNavId(stored)) return DEFAULT_NAV_ID
-  if (!visibleNavItems(role).some((item) => item.id === stored)) return DEFAULT_NAV_ID
-  return stored
+  return resolveNavId(stored, role)
 }
 
 export function writeSessionNavId(id: NavId): void {
