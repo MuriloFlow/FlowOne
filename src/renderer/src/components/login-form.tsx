@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ComponentPropsWithoutRef, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react'
 import logo from '@/assets/logo.png'
@@ -35,7 +35,7 @@ export function LoginForm({
   className,
   initialError,
   ...props
-}: ComponentProps<'div'> & { initialError?: string | null }) {
+}: ComponentPropsWithoutRef<'div'> & { initialError?: string | null }) {
   const [step, setStep] = useState<Step>('email')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

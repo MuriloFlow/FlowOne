@@ -1,10 +1,10 @@
-import type { ComponentProps, ReactNode } from 'react'
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 
-function FieldGroup({ className, ...props }: ComponentProps<'div'>) {
+function FieldGroup({ className, ...props }: ComponentPropsWithoutRef<'div'>) {
   return (
     <div
       data-slot="field-group"
@@ -34,7 +34,7 @@ function Field({
   className,
   orientation = 'vertical',
   ...props
-}: ComponentProps<'div'> & VariantProps<typeof fieldVariants>) {
+}: ComponentPropsWithoutRef<'div'> & VariantProps<typeof fieldVariants>) {
   return (
     <div
       role="group"
@@ -46,7 +46,7 @@ function Field({
   )
 }
 
-function FieldLabel({ className, ...props }: ComponentProps<typeof Label>) {
+function FieldLabel({ className, ...props }: ComponentPropsWithoutRef<typeof Label>) {
   return (
     <Label
       data-slot="field-label"
@@ -59,7 +59,7 @@ function FieldLabel({ className, ...props }: ComponentProps<typeof Label>) {
   )
 }
 
-function FieldDescription({ className, ...props }: ComponentProps<'p'>) {
+function FieldDescription({ className, ...props }: ComponentPropsWithoutRef<'p'>) {
   return (
     <p
       data-slot="field-description"
@@ -76,7 +76,7 @@ function FieldSeparator({
   children,
   className,
   ...props
-}: ComponentProps<'div'> & { children?: ReactNode }) {
+}: ComponentPropsWithoutRef<'div'> & { children?: ReactNode }) {
   return (
     <div
       data-slot="field-separator"
@@ -96,7 +96,7 @@ function FieldSeparator({
   )
 }
 
-function FieldError({ className, children, ...props }: ComponentProps<'div'>) {
+function FieldError({ className, children, ...props }: ComponentPropsWithoutRef<'div'>) {
   if (!children) return null
   return (
     <div

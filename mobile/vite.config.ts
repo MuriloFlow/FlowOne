@@ -110,6 +110,17 @@ export default defineConfig(({ mode }) => {
         'react-dom/client': path.resolve(mobileModules, 'react-dom/client.js'),
         'react/jsx-runtime': path.resolve(mobileModules, 'react/jsx-runtime.js'),
         'react/jsx-dev-runtime': path.resolve(mobileModules, 'react/jsx-dev-runtime.js'),
+        clsx: path.resolve(mobileModules, 'clsx'),
+        'tailwind-merge': path.resolve(mobileModules, 'tailwind-merge'),
+        'class-variance-authority': path.resolve(mobileModules, 'class-variance-authority'),
+        'lucide-react': path.resolve(mobileModules, 'lucide-react'),
+        'framer-motion': path.resolve(mobileModules, 'framer-motion'),
+        'recharts': path.resolve(mobileModules, 'recharts'),
+        'zod': path.resolve(mobileModules, 'zod'),
+        'jspdf': path.resolve(mobileModules, 'jspdf'),
+        '@supabase/supabase-js': path.resolve(mobileModules, '@supabase/supabase-js'),
+        '@radix-ui/react-label': path.resolve(mobileModules, '@radix-ui/react-label'),
+        '@radix-ui/react-slot': path.resolve(mobileModules, '@radix-ui/react-slot'),
         // O CSS compartilhado mora fora de /mobile. Fixar estes imports no
         // node_modules móvel evita que o runner Linux procure dependências no
         // diretório do renderer e interrompa a publicação OTA.
