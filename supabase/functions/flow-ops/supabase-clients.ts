@@ -19,8 +19,8 @@ function requiredEnv(name: string, aliases: string[] = []): string {
 export function getCardplusClient(): SupabaseClient {
   if (cardplusClient) return cardplusClient
   cardplusClient = createClient(
-    requiredEnv('CARDPLUS_SUPABASE_URL'),
-    requiredEnv('CARDPLUS_SUPABASE_SERVICE_ROLE_KEY'),
+    requiredEnv('CARDPLUS_SUPABASE_URL', ['SUPABASE_PUBLIC_URL', 'SUPABASE_URL']),
+    requiredEnv('CARDPLUS_SUPABASE_SERVICE_ROLE_KEY', ['SUPABASE_SERVICE_ROLE_KEY']),
     clientOptions
   )
   return cardplusClient
@@ -28,7 +28,7 @@ export function getCardplusClient(): SupabaseClient {
 
 export function getFlowAdminClient(): SupabaseClient {
   if (flowAdminClient) return flowAdminClient
-  const url = requiredEnv('FLOW_SUPABASE_URL', ['SUPABASE_URL'])
+  const url = requiredEnv('FLOW_SUPABASE_URL', ['SUPABASE_PUBLIC_URL', 'SUPABASE_URL'])
   const key = requiredEnv('SUPABASE_SERVICE_ROLE_KEY')
   flowAdminClient = createClient(url, key, {
     ...clientOptions,
@@ -43,7 +43,7 @@ export function getFlowAdminClient(): SupabaseClient {
 }
 
 export function flowPublicUrl(): string {
-  return requiredEnv('FLOW_SUPABASE_URL', ['SUPABASE_URL'])
+  return requiredEnv('FLOW_SUPABASE_URL', ['SUPABASE_PUBLIC_URL', 'SUPABASE_URL'])
 }
 
 export function flowAnonKey(): string | null {
