@@ -126,11 +126,15 @@ function fitText(
   ctx.restore()
 }
 
-export async function exportScheduleImage(
+/**
+ * Gera a imagem da escala sem abrir compartilhamento — usado pela tela de
+ * sucesso no mobile, que compartilha (ou oferece download) em seguida.
+ */
+export async function renderScheduleImage(
   board: ScheduleBoard,
   team: ScheduleTeam,
   scope: ScheduleExportScope = {}
-): Promise<void> {
+): Promise<{ blob: Blob; filename: string; title: string }> {
   const allowed = new Set(
     board.people.filter((person) => resolveSchedulePersonTeam(person) === team).map((person) => person.id)
   )
@@ -143,7 +147,7 @@ export async function exportScheduleImage(
         assignments: slot.assignments.filter((item) => allowed.has(item.collaboratorId))
       }))
     }))
-  if (days.length === 0) return
+  if (days.length === 0) throw new Error('Não há escala montada para este período ainda.')
 
   const periods = collectPeriods(days)
   const sections = SCHEDULE_BANDS.map((band) => ({
@@ -179,7 +183,7 @@ export async function exportScheduleImage(
   canvas.width = width * 2
   canvas.height = height * 2
   const ctx = canvas.getContext('2d')
-  if (!ctx) return
+  if (!ctx) throw new Error('Não foi possível gerar a imagem da escala.')
   ctx.scale(2, 2)
 
   const tableLeft = pad
@@ -190,14 +194,14 @@ export async function exportScheduleImage(
   ctx.fillRect(0, 0, width, height)
 
   const single = days[0]
-  const title =
+  const headerTitle =
     days.length === 1 && single
       ? `${board.storeName}  ·  ${scheduleExportLabel(team)}  ·  ${weekdayName(single.weekday)} ${formatDateKey(single.dateKey)}`
       : `${board.storeName}  ·  ${scheduleExportLabel(team)}  ·  Semana ${formatDateKey(board.weekStart)}`
 
   ctx.font = '600 13px Inter, Segoe UI, sans-serif'
   ctx.fillStyle = '#111111'
-  ctx.fillText(title, pad, pad + 16)
+  ctx.fillText(headerTitle, pad, pad + 16)
 
   let y = pad + titleH
   ctx.fillStyle = '#F3F3F0'
@@ -278,10 +282,10 @@ export async function exportScheduleImage(
     ctx.stroke()
   })
 
-  const blob = await new Promise<Blob | null>((resolve) => {
+  const generated = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob((value) => resolve(value), 'image/png')
   })
-  let file = blob
+  let file = generated
   if (!file) {
     const dataUrl = canvas.toDataURL('image/png')
     const response = await fetch(dataUrl)
@@ -294,10 +298,24 @@ export async function exportScheduleImage(
       ? `${single.dateKey}-${weekdayShort(single.weekday)}`
       : board.weekStart
   const filename = `escala-${scheduleExportLabel(team).replace(/\s+/g, '-').toLowerCase()}-${scopeName}.png`
-  const shareTitle = isMobileShell()
+  const title = isMobileShell()
     ? `Escala ${scheduleExportLabel(team)}`
     : 'Exportar escala'
-  await exportFile(file, filename, shareTitle)
+  return { blob: file, filename, title }
+}
+
+/**
+ * Desktop: gera a imagem, baixa e copia para a área de transferência.
+ * No mobile a página usa renderScheduleImage + ExportSuccessSheet para
+ * abrir o compartilhamento nativo do celular.
+ */
+export async function exportScheduleImage(
+  board: ScheduleBoard,
+  team: ScheduleTeam,
+  scope: ScheduleExportScope = {}
+): Promise<void> {
+  const { blob, filename, title } = await renderScheduleImage(board, team, scope)
+  await exportFile(blob, filename, title)
 
   if (
     !isMobileShell() &&
@@ -305,6 +323,6 @@ export async function exportScheduleImage(
     'write' in navigator.clipboard &&
     typeof ClipboardItem !== 'undefined'
   ) {
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': file })]).catch(() => undefined)
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => undefined)
   }
 }

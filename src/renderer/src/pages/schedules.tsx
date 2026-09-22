@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input'
 import { refreshAuthUser } from '@/lib/auth'
 import { currentDateKey, formatDateKey, mondayOf } from '@/lib/format'
 import { operationError, operations } from '@/lib/operations'
-import { exportScheduleImage } from '@/lib/schedule-export'
+import { exportScheduleImage, renderScheduleImage } from '@/lib/schedule-export'
+import { ExportSuccessSheet } from '@/components/export-success-sheet'
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { cn } from '@/lib/utils'
 import {
@@ -49,6 +50,12 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportDateKey, setExportDateKey] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [shareReady, setShareReady] = useState<{
+    token: string
+    blob: Blob
+    fileName: string
+    title: string
+  } | null>(null)
   const [saving, setSaving] = useState(false)
   const [overSlot, setOverSlot] = useState<string | null>(null)
   const [overPool, setOverPool] = useState(false)
@@ -533,11 +540,26 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
                 type="button"
                 disabled={!board || exporting}
                 onClick={() => {
-                  if (!board) return
+                  if (!board || exporting) return
                   setExporting(true)
                   setError(null)
-                  void exportScheduleImage(board, item.id, { dateKey: exportDateKey })
-                    .then(() => setExportOpen(false))
+                  void (async () => {
+                    if (mobile) {
+                      // Mobile: gera a imagem, mostra a tela de sucesso e abre o
+                      // compartilhamento nativo do celular em seguida.
+                      const prepared = await renderScheduleImage(board, item.id, { dateKey: exportDateKey })
+                      setExportOpen(false)
+                      setShareReady({
+                        token: `${item.id}-${exportDateKey ?? 'semana'}-${Date.now()}`,
+                        blob: prepared.blob,
+                        fileName: prepared.filename,
+                        title: prepared.title
+                      })
+                      return
+                    }
+                    await exportScheduleImage(board, item.id, { dateKey: exportDateKey })
+                    setExportOpen(false)
+                  })()
                     .catch((exportError) => {
                       const message = operationError(exportError)
                       if (/share canceled|sharing canceled|cancelad/i.test(message)) {
@@ -552,11 +574,7 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
               >
                 <span>
                   <span className="block text-[13px] text-[#F0EFEC]/78">
-                    {exporting
-                      ? mobile
-                        ? 'Preparando imagem…'
-                        : 'Gerando escala…'
-                      : `Escala de ${item.exportLabel}`}
+                    {exporting ? 'Gerando imagem da escala…' : `Escala de ${item.exportLabel}`}
                   </span>
                   <span className="block text-[11px] text-[#F0EFEC]/32">
                     {exportDateKey
@@ -575,6 +593,19 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
           </div>
         </div>
       </Dialog>
+
+      <ExportSuccessSheet
+        open={Boolean(shareReady)}
+        kind="image"
+        title="Escala gerada!"
+        subtitle="A imagem ficou pronta. Escolha para quem enviar — WhatsApp, Telegram, e-mail…"
+        fileName={shareReady?.fileName ?? ''}
+        shareTitle={shareReady?.title ?? 'Escala'}
+        autoShare
+        autoShareKey={shareReady?.token ?? ''}
+        getBlob={() => shareReady?.blob ?? null}
+        onClose={() => setShareReady(null)}
+      />
     </div>
   )
 }

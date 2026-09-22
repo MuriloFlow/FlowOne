@@ -287,7 +287,11 @@ function drawTitle(pdf: jsPDF, row: VoucherRow): void {
   pdf.setTextColor(25, 25, 25)
 }
 
-export async function exportVoucherReceipts(rows: VoucherRow[]): Promise<void> {
+/**
+ * Monta o PDF dos recibos assinados sem abrir compartilhamento — usado pela
+ * tela de sucesso no mobile (compartilhar ou baixar depois).
+ */
+export async function buildVoucherReceiptsPdf(rows: VoucherRow[]): Promise<{ blob: Blob; filename: string }> {
   const signed = rows.filter((row) => row.status === 'PAGO' && row.paymentSignature)
   if (!signed.length) throw new Error('Não há pagamentos assinados para finalizar.')
   const missing = signed.find((row) => !row.rgImage || !row.cpf)
@@ -325,5 +329,15 @@ export async function exportVoucherReceipts(rows: VoucherRow[]): Promise<void> {
 
   const blob = pdf.output('blob')
   const stamp = new Date().toISOString().slice(0, 10)
-  await exportFile(blob, `recibos-pagamentos-${stamp}.pdf`, 'Finalizar pagamento')
+  return { blob, filename: `recibos-pagamentos-${stamp}.pdf` }
+}
+
+/**
+ * Desktop: gera o PDF e dispara o download.
+ * No mobile a página usa buildVoucherReceiptsPdf + ExportSuccessSheet para
+ * abrir o compartilhamento nativo do celular ou salvar o arquivo.
+ */
+export async function exportVoucherReceipts(rows: VoucherRow[]): Promise<void> {
+  const { blob, filename } = await buildVoucherReceiptsPdf(rows)
+  await exportFile(blob, filename, 'Finalizar pagamento')
 }

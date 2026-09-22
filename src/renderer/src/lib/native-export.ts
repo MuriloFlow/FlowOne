@@ -1,7 +1,7 @@
 import { isMobileShell } from '@/lib/is-mobile-shell'
 
 function sanitizeFilename(filename: string): string {
-  const base = filename.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-')
+  const base = filename.replace(/[\\/:*?\"<>|]+/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-')
   return base.replace(/^\.+/, '') || `flow-${Date.now()}`
 }
 
@@ -75,14 +75,93 @@ async function pluginAvailable(name: string): Promise<boolean> {
   }
 }
 
-type ShareResult = 'ok' | 'cancel' | 'fail'
+/**
+ * O Android encerra a folha de compartilhar se nada responder — e um Share.share
+ * pendurado deixaria o botão carregando para sempre. Limitamos a espera.
+ */
+function withShareTimeout<T>(promise: Promise<T>, ms = 180_000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('O compartilhamento não respondeu.')), ms)
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        window.clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
+type ShareResult = 'ok' | 'cancel' | 'missing' | 'fail'
 
 /**
- * Compartilha via Web Share API (funciona no Android WebView sem plugin Filesystem).
- * É o caminho principal quando o APK instalado não tem o plugin nativo.
+ * Caminho principal no APK: grava em cache via plugin nativo e abre a folha de
+ * compartilhar do Android com o arquivo (WhatsApp, Telegram, e-mail etc.).
+ * Independente do suporte da WebView à Web Share API.
+ */
+async function shareViaNativePlugins(blob: Blob, filename: string, title: string): Promise<ShareResult> {
+  if (!(await pluginAvailable('Filesystem')) || !(await pluginAvailable('Share'))) return 'missing'
+
+  try {
+    const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+      import('@capacitor/filesystem'),
+      import('@capacitor/share')
+    ])
+
+    const path = `FLOW/exports/${Date.now()}-${filename}`
+    const payload = await asBase64(blob)
+    let uri = ''
+    let writeFailure: unknown = null
+
+    for (const directory of [Directory.Cache, Directory.Data]) {
+      try {
+        const written = await Filesystem.writeFile({ path, data: payload, directory, recursive: true })
+        uri = ensureFileUri(written.uri)
+        if (uri.startsWith('file:')) break
+        writeFailure = new Error(`URI inesperada do arquivo: ${written.uri}`)
+      } catch (error) {
+        if (isPluginMissing(error)) return 'missing'
+        writeFailure = error
+      }
+    }
+
+    if (!uri.startsWith('file:')) {
+      console.warn('[flow-export] gravar arquivo falhou', errorMessage(writeFailure))
+      return 'fail'
+    }
+
+    try {
+      await withShareTimeout(Share.share({ title, text: title, files: [uri], dialogTitle: title }))
+      return 'ok'
+    } catch (shareError) {
+      if (isShareCanceled(shareError)) return 'cancel'
+      if (isPluginMissing(shareError)) return 'missing'
+      console.warn('[flow-export] Share.share(files) falhou', errorMessage(shareError))
+      try {
+        await withShareTimeout(Share.share({ title, url: uri, dialogTitle: title }))
+        return 'ok'
+      } catch (urlError) {
+        if (isShareCanceled(urlError)) return 'cancel'
+        console.warn('[flow-export] Share.share(url) falhou', errorMessage(urlError))
+        return 'fail'
+      }
+    }
+  } catch (error) {
+    if (isPluginMissing(error)) return 'missing'
+    console.warn('[flow-export] compartilhamento nativo falhou', errorMessage(error))
+    return 'fail'
+  }
+}
+
+/**
+ * Web Share API com File — funciona no WebView quando o APK não tem os plugins
+ * nativos (instalações antigas recebendo atualização OTA).
  */
 async function shareViaWebApi(blob: Blob, filename: string, title: string): Promise<ShareResult> {
-  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return 'fail'
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return 'missing'
 
   const type = mimeFor(filename, blob)
   const file = new File([blob], filename, { type })
@@ -96,6 +175,7 @@ async function shareViaWebApi(blob: Blob, filename: string, title: string): Prom
       }
     } catch (error) {
       if (isShareCanceled(error)) return 'cancel'
+      console.warn('[flow-export] Web Share (canShare) falhou', errorMessage(error))
     }
   }
 
@@ -105,91 +185,115 @@ async function shareViaWebApi(blob: Blob, filename: string, title: string): Prom
     return 'ok'
   } catch (error) {
     if (isShareCanceled(error)) return 'cancel'
+    console.warn('[flow-export] Web Share (arquivo) falhou', errorMessage(error))
     return 'fail'
   }
 }
 
 async function shareViaBlobUrl(blob: Blob, title: string): Promise<ShareResult> {
-  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return 'fail'
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return 'missing'
   const url = URL.createObjectURL(blob)
   try {
     await navigator.share({ title, text: title, url })
     return 'ok'
   } catch (error) {
     if (isShareCanceled(error)) return 'cancel'
+    console.warn('[flow-export] Web Share (url) falhou', errorMessage(error))
     return 'fail'
   } finally {
     window.setTimeout(() => URL.revokeObjectURL(url), 5_000)
   }
 }
 
-async function shareViaFilesystem(
-  blob: Blob,
-  filename: string,
-  title: string
-): Promise<'ok' | 'missing' | 'fail'> {
-  if (!(await pluginAvailable('Filesystem')) || !(await pluginAvailable('Share'))) {
-    return 'missing'
+/**
+ * Abre o compartilhamento nativo do celular com o arquivo pronto.
+ * Cancelar a folha do Android NÃO é erro — a promessa resolve normalmente.
+ */
+export async function shareFile(blob: Blob, filename: string, title: string): Promise<void> {
+  const safeName = sanitizeFilename(filename)
+  const typed = blob.type ? blob : new Blob([blob], { type: mimeFor(safeName, blob) })
+
+  const strategies: Array<[string, () => Promise<ShareResult>]> = []
+  if (await isNativeCapacitor()) {
+    strategies.push(['nativo', () => shareViaNativePlugins(typed, safeName, title)])
+  }
+  strategies.push(['web-arquivo', () => shareViaWebApi(typed, safeName, title)])
+  strategies.push(['web-url', () => shareViaBlobUrl(typed, title)])
+
+  const attempts: string[] = []
+  for (const [name, run] of strategies) {
+    try {
+      const result = await run()
+      if (result === 'ok' || result === 'cancel') return
+      attempts.push(`${name}=${result}`)
+    } catch (error) {
+      if (isShareCanceled(error)) return
+      attempts.push(`${name}=erro:${errorMessage(error).slice(0, 140)}`)
+    }
   }
 
+  console.warn('[flow-export] nenhuma estratégia de compartilhamento funcionou:', attempts.join(' | '))
+  throw new Error(
+    'Não foi possível abrir o compartilhamento neste aparelho. Atualize o app FLOW e tente de novo — ou use a opção de baixar o arquivo.'
+  )
+}
+
+export type SavedFile = { uri: string; location: string }
+
+/**
+ * Salva o arquivo no armazenamento do celular (opção "Baixar"), com fallback
+ * entre pastas — app-specific não exige permissão nenhuma no Android moderno.
+ */
+export async function saveToDevice(blob: Blob, filename: string): Promise<SavedFile> {
+  const safeName = sanitizeFilename(filename)
+  const typed = blob.type ? blob : new Blob([blob], { type: mimeFor(safeName, blob) })
+
+  if (!(await isNativeCapacitor())) {
+    downloadBlob(typed, safeName)
+    return { uri: '', location: 'Downloads' }
+  }
+
+  let FilesystemModule: typeof import('@capacitor/filesystem')
   try {
-    const [{ Filesystem, Directory }, { Share }] = await Promise.all([
-      import('@capacitor/filesystem'),
-      import('@capacitor/share')
-    ])
+    FilesystemModule = await import('@capacitor/filesystem')
+  } catch (error) {
+    if (isPluginMissing(error)) {
+      throw new Error('Esta versão do app não tem o módulo de arquivos. Atualize o FLOW e tente de novo.')
+    }
+    throw new Error('Não foi possível salvar o arquivo no celular agora.')
+  }
 
-    const path = `FLOW/exports/${Date.now()}-${filename}`
-    let uri = ''
+  const { Filesystem, Directory } = FilesystemModule
+  const payload = await asBase64(typed)
+  const candidates: Array<{ directory: import('@capacitor/filesystem').Directory; location: string }> = [
+    { directory: Directory.Documents, location: 'Documentos/FLOW' },
+    { directory: Directory.External, location: 'Arquivos do FLOW' },
+    { directory: Directory.Cache, location: 'Arquivos do FLOW (temporário)' }
+  ]
 
+  let lastFailure: unknown = null
+  for (const candidate of candidates) {
     try {
       const written = await Filesystem.writeFile({
-        path,
-        data: await asBase64(blob),
-        directory: Directory.Cache,
+        path: `FLOW/${safeName}`,
+        data: payload,
+        directory: candidate.directory,
         recursive: true
       })
-      uri = ensureFileUri(written.uri)
-    } catch (writeError) {
-      if (isPluginMissing(writeError)) return 'missing'
-      try {
-        const written = await Filesystem.writeFile({
-          path,
-          data: await asBase64(blob),
-          directory: Directory.Data,
-          recursive: true
-        })
-        uri = ensureFileUri(written.uri)
-      } catch (fallbackError) {
-        if (isPluginMissing(fallbackError)) return 'missing'
-        return 'fail'
+      return { uri: written.uri, location: candidate.location }
+    } catch (error) {
+      if (isPluginMissing(error)) {
+        lastFailure = error
+        break
       }
+      lastFailure = error
     }
-
-    if (!uri.startsWith('file:')) return 'fail'
-
-    try {
-      await Share.share({
-        title,
-        text: title,
-        files: [uri],
-        dialogTitle: title
-      })
-      return 'ok'
-    } catch (shareError) {
-      if (isShareCanceled(shareError)) return 'ok'
-      if (isPluginMissing(shareError)) return 'missing'
-      try {
-        await Share.share({ title, url: uri, dialogTitle: title })
-        return 'ok'
-      } catch (urlError) {
-        if (isShareCanceled(urlError)) return 'ok'
-        return 'fail'
-      }
-    }
-  } catch (error) {
-    if (isPluginMissing(error)) return 'missing'
-    return 'fail'
   }
+
+  console.warn('[flow-export] salvar arquivo falhou', errorMessage(lastFailure))
+  throw new Error(
+    'Não foi possível salvar no celular agora. Use a opção "Compartilhar" para enviar o arquivo ao app que quiser.'
+  )
 }
 
 /**
@@ -197,27 +301,10 @@ async function shareViaFilesystem(
  * Mobile: abre o compartilhamento nativo (WhatsApp etc.) com o arquivo — sem baixar antes.
  */
 export async function exportFile(blob: Blob, filename: string, title: string): Promise<void> {
-  const safeName = sanitizeFilename(filename)
-  const typed = blob.type ? blob : new Blob([blob], { type: mimeFor(safeName, blob) })
-
   if (!isMobileShell()) {
-    downloadBlob(typed, safeName)
+    const safeName = sanitizeFilename(filename)
+    downloadBlob(blob.type ? blob : new Blob([blob], { type: mimeFor(safeName, blob) }), safeName)
     return
   }
-
-  // 1) Web Share com File — funciona nativo no Android mesmo sem @capacitor/filesystem
-  const webFile = await shareViaWebApi(typed, safeName, title)
-  if (webFile === 'ok' || webFile === 'cancel') return
-
-  // 2) Web Share com URL do blob (fallback em WebViews mais antigos)
-  const webUrl = await shareViaBlobUrl(typed, title)
-  if (webUrl === 'ok' || webUrl === 'cancel') return
-
-  // 3) Plugins nativos (APKs com Filesystem/Share)
-  if (await isNativeCapacitor()) {
-    const native = await shareViaFilesystem(typed, safeName, title)
-    if (native === 'ok') return
-  }
-
-  throw new Error('Não foi possível abrir o compartilhamento. Atualize o app FLOW e tente de novo.')
+  await shareFile(blob, filename, title)
 }

@@ -11,7 +11,8 @@ import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
 import { PaymentSignatureDialog } from '@/components/payment-signature-dialog'
 import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
-import { exportVoucherReceipts } from '@/lib/voucher-receipt-export'
+import { buildVoucherReceiptsPdf, exportVoucherReceipts } from '@/lib/voucher-receipt-export'
+import { ExportSuccessSheet } from '@/components/export-success-sheet'
 import {
   formatVoucherWeekLabel,
   msUntilNextVoucherReset,
@@ -32,6 +33,12 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [signingRow, setSigningRow] = useState<VoucherRow | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [pdfReady, setPdfReady] = useState<{
+    token: string
+    blob: Blob
+    fileName: string
+    title: string
+  } | null>(null)
   const [confirmingExport, setConfirmingExport] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [monthKey, setMonthKey] = useState(currentMonthKey)
@@ -213,7 +220,20 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     if (!board) return
     setExporting(true)
     try {
-      await exportVoucherReceipts(rowsWithSignatures(board.groups.flatMap((group) => group.rows)))
+      const rows = rowsWithSignatures(board.groups.flatMap((group) => group.rows))
+      if (mobile) {
+        // Mobile: gera o PDF e abre a tela de sucesso com compartilhar/baixar.
+        const built = await buildVoucherReceiptsPdf(rows)
+        setPdfReady({
+          token: `${built.filename}-${Date.now()}`,
+          blob: built.blob,
+          fileName: built.filename,
+          title: 'Recibos de vales e pagamentos'
+        })
+        setError(null)
+        return
+      }
+      await exportVoucherReceipts(rows)
       setError(null)
     } catch (exportError) {
       const message = operationError(exportError)
@@ -290,7 +310,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
             onClick={() => setConfirmingExport(true)}
             className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-3 text-[12px] font-medium text-[#111] transition-opacity disabled:opacity-35"
           >
-            <FileDown className="size-3.5" /> {exporting ? 'Gerando...' : mobile ? 'Finalizar' : 'Finalizar pagamento'}
+            <FileDown className="size-3.5" /> {exporting ? 'Gerando PDF…' : mobile ? 'Finalizar' : 'Finalizar pagamento'}
           </button>
         </div>
       </header>
@@ -510,6 +530,20 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
           await finalizePayments()
           setConfirmingExport(false)
         }}
+      />
+
+      <ExportSuccessSheet
+        open={Boolean(pdfReady)}
+        kind="pdf"
+        title="PDF dos vales gerado!"
+        subtitle="Os recibos assinados ficaram prontos. Compartilhe por WhatsApp ou salve no celular."
+        fileName={pdfReady?.fileName ?? ''}
+        shareTitle={pdfReady?.title ?? 'Recibos de vales e pagamentos'}
+        autoShare
+        autoShareKey={pdfReady?.token ?? ''}
+        allowDownload
+        getBlob={() => pdfReady?.blob ?? null}
+        onClose={() => setPdfReady(null)}
       />
     </div>
   )

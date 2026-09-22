@@ -22,11 +22,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - name: Bump installer version
+      - name: Resolve release version
         id: bump
         shell: pwsh
         run: |
-          $version = "1.1.$env:GITHUB_RUN_NUMBER"
+          # A versão da OTA deve acompanhar o app nativo (mobile/package.json);
+          # o sufixo .RUN_NUMBER garante crescimento monotônico a cada build.
+          $mobileVersion = (Get-Content -Raw mobile/package.json | ConvertFrom-Json).version
+          $version = "$mobileVersion.$env:GITHUB_RUN_NUMBER"
           npm version $version --no-git-tag-version --allow-same-version
           git tag "v$version"
           git push origin "v$version"
