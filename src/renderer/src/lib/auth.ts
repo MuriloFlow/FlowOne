@@ -117,6 +117,13 @@ export async function signInWithEmailPassword(emailInput: string, passwordInput:
   if (lockedMessage) throw new AuthFlowError('locked', lockedMessage)
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) {
+    console.error('[auth] signInWithPassword', {
+      status: error.status,
+      message: error.message,
+      url: import.meta.env.VITE_SUPABASE_URL
+    })
+  }
 
   await rpc('flow_auth_record_attempt', {
     p_email: email,
@@ -130,7 +137,7 @@ export async function signInWithEmailPassword(emailInput: string, passwordInput:
     if (isTransientAuthError(error)) {
       throw new AuthFlowError(
         'auth_unavailable',
-        'Não foi possível falar com o banco agora. Tente de novo em alguns segundos.'
+        `Não conectou em ${import.meta.env.VITE_SUPABASE_URL || 'URL vazia'}: ${error?.message || 'falha de rede'}`
       )
     }
     const afterFailure = await rpc<LockoutState>('flow_auth_check_lockout', { p_email: email })

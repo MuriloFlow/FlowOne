@@ -57,7 +57,7 @@ function openLauncherWindow(): void {
   registerUpdater(createMainWindow())
 }
 
-const gotLock = app.requestSingleInstanceLock()
+const gotLock = app.isPackaged ? app.requestSingleInstanceLock() : true
 if (!gotLock) {
   app.quit()
 } else {

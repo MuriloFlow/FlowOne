@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage, session, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -38,7 +38,22 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow
 }
 
+const RENDERER_CSP_PROD =
+  "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:* https://api.ipify.org; font-src 'self' data:;"
+const RENDERER_CSP_DEV =
+  "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:* ws://localhost:* https://api.ipify.org; font-src 'self' data:;"
+const RENDERER_CSP = app.isPackaged ? RENDERER_CSP_PROD : RENDERER_CSP_DEV
+
+function applyRendererCsp(): void {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...details.responseHeaders }
+    headers['Content-Security-Policy'] = [RENDERER_CSP]
+    callback({ responseHeaders: headers })
+  })
+}
+
 export function createMainWindow(): BrowserWindow {
+  applyRendererCsp()
   mainWindow = new BrowserWindow({
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
@@ -57,7 +72,8 @@ export function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      spellcheck: false
+      spellcheck: false,
+      webSecurity: app.isPackaged
     }
   })
 
@@ -65,6 +81,10 @@ export function createMainWindow(): BrowserWindow {
     const icon = loadWindowIcon()
     if (icon) mainWindow?.setIcon(icon)
     mainWindow?.show()
+  })
+
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    console.log(`[renderer console L${line}] ${message}`)
   })
 
   mainWindow.on('maximize', () => {
