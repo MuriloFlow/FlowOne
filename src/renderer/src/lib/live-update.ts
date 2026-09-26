@@ -200,6 +200,32 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
   }
 }
 
+// O pacote anterior falhou e o Android voltou para o builtin (o capacitor-
+// updater faz rollback sozinho quando o notifyAppReady não chega). Sem o
+// reset, o plugin recusa o download da mesma versão e o app nunca se
+// atualiza de novo — o reset limpa o bundle quebrado e libera a retry.
+async function resetIfRolledBack(manifest: MobileManifest): Promise<void> {
+  try {
+    const { CapacitorUpdater } = await import('@capgo/capacitor-updater')
+    const { Preferences } = await import('@capacitor/preferences')
+    const info = await CapacitorUpdater.current()
+    const bundle = info.bundle?.version?.trim()
+    const stored = (await Preferences.get({ key: LAST_KEY })).value
+    if ((!bundle || bundle === 'builtin') && stored && isNewer(stored, manifest.version) === false && isNewer(manifest.version, stored) === false) {
+      await CapacitorUpdater.reset()
+      await Preferences.remove({ key: LAST_KEY })
+      console.warn('[live-update] bundle anterior falhou; reset feito para aplicar', manifest.version)
+      return
+    }
+    if (bundle && bundle !== 'builtin' && isNewer(manifest.version, bundle)) {
+      // Bundle antigo saudável: mantemos como fallback e seguimos.
+      return
+    }
+  } catch {
+    /* plugin indisponível: segue o fluxo normal */
+  }
+}
+
 async function checkAndApply(): Promise<void> {
   const now = Date.now()
   if (now - lastAttemptAt < ATTEMPT_COOLDOWN_MS) return
@@ -210,6 +236,7 @@ async function checkAndApply(): Promise<void> {
     if (!manifest) return
     const current = await runningVersion()
     if (!isNewer(manifest.version, current)) return
+    await resetIfRolledBack(manifest)
     await downloadAndApply(manifest)
   } catch (error) {
     lastFailureAt = Date.now()
@@ -220,9 +247,17 @@ async function checkAndApply(): Promise<void> {
 export async function runSilentUpdate(): Promise<void> {
   if (!(await nativePlatform())) return
 
+  // O notifyAppReady valida o bundle novo logo na primeira execução. Em
+  // Cold Start pesado ele pode ser chamado cedo demais; repetir por alguns
+  // segundos garante que o rollback não dispare por engano.
   try {
     const { CapacitorUpdater } = await import('@capgo/capacitor-updater')
     await CapacitorUpdater.notifyAppReady()
+    for (const delay of [2_000, 5_000, 10_000]) {
+      window.setTimeout(() => {
+        void CapacitorUpdater.notifyAppReady().catch(() => undefined)
+      }, delay)
+    }
   } catch {
     /* o update ainda pode rodar */
   }

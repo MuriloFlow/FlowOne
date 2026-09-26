@@ -297,6 +297,8 @@ export type EmployeeListItem = {
   isActive: boolean
   cardsThisMonth: number
   createdAt: string
+  sundayCycle?: 'A' | 'B' | 'C' | null
+  sundayCycleStart?: string | null
   directorySource?: 'collaborator' | 'app_user'
   isGlobalDesk?: boolean
   globalDeskLabel?: string | null
@@ -306,6 +308,13 @@ export type EmployeeIdentity = {
   collaboratorId: string
   cpf: string | null
   flowRole: string | null
+  sundayCycle?: 'A' | 'B' | 'C' | null
+  sundayCycleStart?: string | null
+}
+
+export type SundayCycleWrite = {
+  collaboratorId: string
+  position: 'FIRST' | 'SECOND' | null
 }
 
 export type EmployeeDocument = {
@@ -391,6 +400,7 @@ export type OperationsApi = {
   saveEmployeeDocument: (input: { collaboratorId: string; rgImage: string | null }) => Promise<EmployeeDocument>
   createEmployee: (input: CreateEmployeeInput) => Promise<EmployeeListItem>
   updateEmployee: (input: UpdateEmployeeInput) => Promise<EmployeeListItem>
+  setSundayCycle: (input: import('./operations').SundayCycleWrite) => Promise<void>
   deleteEmployee: (id: string, storeId?: string | null) => Promise<void>
   getStorePreference: () => Promise<string | null>
   setStorePreference: (storeId: string | null) => Promise<void>

@@ -15,12 +15,14 @@ import { isMobileShell } from '@/lib/is-mobile-shell'
 import { cn } from '@/lib/utils'
 import {
   SCHEDULE_TEAMS,
+  SUNDAY_GROUPS,
   bandLabel,
   formatClock,
   overlappingAssignmentIds,
   resolveSchedulePersonTeam,
   scheduleExportLabel,
   scheduleSlotsForTeam,
+  sundayCycleStatus,
   weekdayName,
   type ScheduleAssignment,
   type ScheduleBoard,
@@ -133,6 +135,24 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
     () => new Set(classifiedPeople.filter((person) => person.team === team).map((person) => person.id)),
     [classifiedPeople, team]
   )
+  const todayKey = currentDateKey()
+  const sundayStatusByPerson = useMemo(() => {
+    const map = new Map<string, { label: string; works: boolean; group: string }>()
+    for (const person of classifiedPeople) {
+      if (person.isSelf) continue
+      const status = sundayCycleStatus(
+        { cycle: person.sundayCycle ?? null, cycleStart: person.sundayCycleStart ?? null },
+        todayKey
+      )
+      if (!status.eligible || !status.group) continue
+      map.set(person.id, {
+        label: status.cycleLabel ?? 'Aguardando',
+        works: status.works,
+        group: status.group
+      })
+    }
+    return map
+  }, [classifiedPeople, todayKey])
   const hourSlots = useMemo(
     () => scheduleSlotsForTeam(board?.days.flatMap((day) => day.slots) ?? [], team),
     [board, team]
@@ -294,6 +314,44 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
         </p>
       ) : null}
 
+      {team !== 'AUXILIAR' && team !== 'ESTOQUE' && sundayStatusByPerson.size > 0 ? (
+        (() => {
+          const sunday = board?.days.find((day) => day.weekday === 7)
+          if (!sunday) return null
+          const off = [...sundayStatusByPerson.entries()]
+            .filter(([id]) => teamRoster.some((person) => person.id === id))
+            .filter(([, status]) => !status.works)
+            .map(([id]) => teamRoster.find((person) => person.id === id)?.shortName ?? '')
+            .filter(Boolean)
+          const working = [...sundayStatusByPerson.entries()]
+            .filter(([, status]) => status.works)
+            .map(([, status]) => status.group)
+          const groupsWorking = SUNDAY_GROUPS.filter((group) => working.includes(group))
+          if (off.length === 0 && groupsWorking.length === 0) return null
+          return (
+            <div className="mb-3 rounded-[12px] border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 text-[12px] leading-relaxed text-[#F0EFEC]/45">
+              <span className="text-[#F0EFEC]/70">Rotação 2x1 do domingo</span>
+              {' — '}
+              {groupsWorking.length > 0 ? (
+                <>
+                  Grupo{' '}
+                  {groupsWorking.map((group, index) => (
+                    <span key={group}>
+                      {index > 0 ? ' · ' : ''}
+                      <span className="text-[#34D399]">{group}</span>
+                    </span>
+                  ))}{' '}
+                  escalado(s){off.length > 0 ? ';' : '.'}
+                </>
+              ) : (
+                'Nenhum grupo escalado'
+              )}
+              {off.length > 0 ? <span> folga de {off.join(', ')}.</span> : null}
+            </div>
+          )
+        })()
+      ) : null}
+
       {board ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {mobile ? null : (
@@ -325,7 +383,12 @@ export function SchedulesPage({ storeId = null }: SchedulesPageProps) {
             </div>
             <div className="flex flex-wrap gap-2">
               {teamPeople.map((person) => (
-                <PersonChip key={person.id} person={person} disabled={!board.canEdit} />
+                <PersonChip
+                  key={person.id}
+                  person={person}
+                  disabled={!board.canEdit}
+                  sunday={team === 'OPERACAO' || team === 'CAIXA' || team === 'VENDEDOR' ? sundayStatusByPerson.get(person.id) : undefined}
+                />
               ))}
               {teamPeople.length === 0 ? (
                 <p className="py-2 text-[12px] text-[#F0EFEC]/32">Ninguém neste time.</p>
@@ -624,11 +687,13 @@ function readDrag(event: React.DragEvent): DragPayload | null {
 function PersonChip({
   person,
   disabled,
-  compact = false
+  compact = false,
+  sunday
 }: {
   person: SchedulePerson
   disabled: boolean
   compact?: boolean
+  sunday?: { label: string; works: boolean; group: string }
 }) {
   return (
     <div
@@ -641,7 +706,8 @@ function PersonChip({
       className={cn(
         'flex items-center gap-2 rounded-[10px] border border-white/[0.05] bg-white/[0.03] px-2 py-1.5',
         compact ? 'min-w-[136px] flex-1' : 'min-w-[148px]',
-        disabled ? 'opacity-50' : 'cursor-grab active:cursor-grabbing hover:bg-white/[0.05]'
+        disabled ? 'opacity-50' : 'cursor-grab active:cursor-grabbing hover:bg-white/[0.05]',
+        sunday && !sunday.works ? 'opacity-45' : null
       )}
     >
       {compact ? null : <GripVertical className="size-3 shrink-0 text-[#F0EFEC]/22" />}
@@ -652,6 +718,11 @@ function PersonChip({
         <span className="block truncate text-[13px] text-[#F0EFEC]/78">{person.shortName}</span>
         <span className="block truncate text-[10px] text-[#F0EFEC]/32">
           {person.isSelf ? 'Você' : person.cardplusRole.trim() || person.roleLabel}
+          {sunday ? (
+            <span className={cn('ml-1 font-medium', sunday.works ? 'text-[#34D399]/80' : 'text-amber-400/80')}>
+              · {sunday.group} · {sunday.label}
+            </span>
+          ) : null}
         </span>
       </span>
     </div>

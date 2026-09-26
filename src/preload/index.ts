@@ -50,6 +50,7 @@ const flow: FlowApi = {
     saveEmployeeDocument: (input) => ipcRenderer.invoke('operations:employee-document-save', input),
     createEmployee: (input: CreateEmployeeInput) => ipcRenderer.invoke('operations:employee-create', input),
     updateEmployee: (input: UpdateEmployeeInput) => ipcRenderer.invoke('operations:employee-update', input),
+    setSundayCycle: (input) => ipcRenderer.invoke('operations:sunday-cycle-set', input),
     deleteEmployee: (id: string, storeId?: string | null) =>
       ipcRenderer.invoke('operations:employee-delete', { id, storeId: storeId ?? null }),
     getStorePreference: () => ipcRenderer.invoke('operations:store-preference', { action: 'read' }),

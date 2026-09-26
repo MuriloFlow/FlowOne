@@ -397,6 +397,8 @@ function toEmployeeItem(
     isActive: row.is_active,
     cardsThisMonth,
     createdAt: row.created_at,
+    sundayCycle: identity?.sundayCycle ?? null,
+    sundayCycleStart: identity?.sundayCycleStart ?? null,
     directorySource: 'collaborator',
     isGlobalDesk: false
   }

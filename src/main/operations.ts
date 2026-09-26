@@ -8,6 +8,7 @@ import {
   getCollaboratorOrNull,
   getEmployee,
   getOverview,
+  listEmployees,
   listStores,
   updateEmployee,
   upsertDailySale
@@ -16,9 +17,10 @@ import { getFinanceBoard, upsertFinanceDayExtras } from './finance-days'
 import { assertCardInStore, createCard, deleteCard, getCardsBoard, transferCard, updateCard } from './cards'
 import { applyOverviewCardOverlay, deleteCardTotalOverride, upsertCardTotalOverride } from './card-overrides'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores'
-import { deleteIdentity, getIdentity, upsertIdentity } from './identities'
+import { deleteIdentity, getIdentity, listIdentities, setSundayCycle, upsertIdentity } from './identities'
 import { deleteEmployeeDocument, getEmployeeDocument, saveEmployeeDocument } from './employee-documents'
 import { invalidateMemo, memo } from './memo'
+import { dateKeyInSaoPaulo } from './dates'
 import { resolveActor, resolveStoreFilter } from './scope'
 import { getScheduleBoard, saveScheduleSlots, resetScheduleSlots, upsertScheduleAssignment, deleteScheduleAssignment } from './schedules'
 import { getAttendanceBoard, upsertTeamHeadcount, upsertAttendanceEvent, deleteAttendanceEvent } from './attendance'
@@ -51,7 +53,7 @@ import {
   type TeamHeadcountRole,
   type TeamHeadcountWrite
 } from '../shared/attendance'
-import { SCHEDULE_TEAMS } from '../shared/schedules'
+import { SCHEDULE_TEAMS, addDaysToDate, nextSundayOf } from '../shared/schedules'
 import { canCreateStores, canEditStoreDesk, canManageFlowUsers, isFlowRole } from '../shared/roles'
 import { normalizeStoreId } from '../shared/store-scope'
 
@@ -264,14 +266,18 @@ export function registerOperationsIpc(): void {
         identity = {
           collaboratorId,
           cpfDigits: deskIdentity.cpfDigits,
-          flowRole: identity?.flowRole ?? deskIdentity.flowRole
+          flowRole: identity?.flowRole ?? deskIdentity.flowRole,
+          sundayCycle: identity?.sundayCycle ?? deskIdentity.sundayCycle,
+          sundayCycleStart: identity?.sundayCycleStart ?? deskIdentity.sundayCycleStart
         }
       }
     }
     return {
       collaboratorId,
       cpf: identity?.cpfDigits ?? null,
-      flowRole: identity?.flowRole ?? null
+      flowRole: identity?.flowRole ?? null,
+      sundayCycle: identity?.sundayCycle ?? null,
+      sundayCycleStart: identity?.sundayCycleStart ?? null
     }
   })
 
@@ -361,6 +367,43 @@ export function registerOperationsIpc(): void {
     bustOperationsCache()
     invalidateMemo('actor')
     return updated
+  })
+
+  handle('operations:sunday-cycle-set', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode editar funcionários.')
+    if (!payload || typeof payload !== 'object') throw new Error('Dados inválidos.')
+    const body = payload as Record<string, unknown>
+    const collaboratorId = asString(body.collaboratorId, 'Funcionário')
+    const position = body.position === 'FIRST' || body.position === 'SECOND' ? body.position : null
+
+    let cycle: 'A' | 'B' | 'C' | null = null
+    let cycleStart: string | null = null
+    if (position) {
+      const today = dateKeyInSaoPaulo()
+      // 1° Domingo: o domingo que vem é o primeiro do ciclo (trabalha este e o
+      // próximo, folga depois). 2° Domingo: o primeiro foi o domingo passado.
+      cycleStart = position === 'FIRST' ? nextSundayOf(today) : nextSundayOf(addDaysToDate(today, -7))
+      const existing = await getIdentity(collaboratorId)
+      if (existing?.sundayCycle) {
+        // Já está na rotação: mantém o grupo para não bagunçar as bandas.
+        cycle = existing.sundayCycle
+      } else {
+        const collaborator = await getCollaboratorOrNull(collaboratorId)
+        const roster = collaborator ? await listEmployees(collaborator.store_id) : []
+        const ids = new Set(roster.map((item) => item.id))
+        const identities = await listIdentities()
+        const counts: Record<'A' | 'B' | 'C', number> = { A: 0, B: 0, C: 0 }
+        for (const [id, record] of identities) {
+          if (id === collaboratorId || !ids.has(id) || !record.sundayCycle) continue
+          counts[record.sundayCycle] += 1
+        }
+        cycle = counts.A <= counts.B && counts.A <= counts.C ? 'A' : counts.B <= counts.C ? 'B' : 'C'
+      }
+    }
+
+    await setSundayCycle({ collaboratorId, cycle, cycleStart })
+    bustOperationsCache()
   })
 
   handle('operations:employee-delete', async (payload) => {

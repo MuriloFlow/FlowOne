@@ -39,6 +39,8 @@ export function operations(): OperationsApi {
       invokeOperation('saveEmployeeDocument', 'operations:employee-document-save', input),
     createEmployee: (input) => api.createEmployee(input),
     updateEmployee: (input) => api.updateEmployee(input),
+    setSundayCycle: (input) =>
+      invokeOperation('setSundayCycle', 'operations:sunday-cycle-set', input),
     deleteEmployee: (id, storeId) =>
       api.deleteEmployee(id, storeId === undefined ? getCurrentStoreId() : storeId),
     getStorePreference: () => api.getStorePreference(),

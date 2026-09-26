@@ -14,6 +14,7 @@ import {
   getCollaboratorOrNull,
   getEmployee as loadEmployee,
   getOverview as loadOverview,
+  listEmployees,
   listStores as loadStores,
   updateEmployee as updateEmployeeRow,
   upsertDailySale as saveDailySale
@@ -29,8 +30,9 @@ import {
 } from './cards.ts'
 import { applyOverviewCardOverlay, deleteCardTotalOverride, upsertCardTotalOverride } from './card-overrides.ts'
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores.ts'
-import { deleteIdentity, getIdentity, upsertIdentity } from './identities.ts'
+import { deleteIdentity, getIdentity, listIdentities, setSundayCycle, upsertIdentity } from './identities.ts'
 import { deleteEmployeeDocument, getEmployeeDocument, saveEmployeeDocument } from './employee-documents.ts'
+import { dateKeyInSaoPaulo } from './dates.ts'
 import { resolveActor, resolveStoreFilter } from './scope.ts'
 import {
   getScheduleBoard as loadScheduleBoard,
@@ -77,6 +79,7 @@ import {
   type TeamHeadcountWrite
 } from './_shared/attendance.ts'
 import { SCHEDULE_TEAMS } from './_shared/schedules.ts'
+import { addDaysToDate, nextSundayOf } from './_shared/schedules.ts'
 import { canCreateStores, canEditStoreDesk, canManageFlowUsers, isFlowRole } from './_shared/roles.ts'
 import { normalizeStoreId } from './_shared/store-scope.ts'
 import type { SorteioValeTypeId } from './_shared/sorteio.ts'
@@ -255,7 +258,9 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
     return {
       collaboratorId,
       cpf: identity?.cpfDigits ?? null,
-      flowRole: identity?.flowRole ?? null
+      flowRole: identity?.flowRole ?? null,
+      sundayCycle: identity?.sundayCycle ?? null,
+      sundayCycleStart: identity?.sundayCycleStart ?? null
     }
   },
 
@@ -337,6 +342,39 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
     }
     // Card+ é operacional. Só Usuários do FLOW pode alterar o perfil autenticado.
     return updated
+  },
+
+  async setSundayCycle(payload) {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode editar funcionários.')
+    if (!payload || typeof payload !== 'object') throw new Error('Dados inválidos.')
+    const body = payload as Record<string, unknown>
+    const collaboratorId = asString(body.collaboratorId, 'Funcionário')
+    const position = body.position === 'FIRST' || body.position === 'SECOND' ? body.position : null
+
+    let cycle: 'A' | 'B' | 'C' | null = null
+    let cycleStart: string | null = null
+    if (position) {
+      const today = dateKeyInSaoPaulo()
+      cycleStart = position === 'FIRST' ? nextSundayOf(today) : nextSundayOf(addDaysToDate(today, -7))
+      const existing = await getIdentity(collaboratorId)
+      if (existing?.sundayCycle) {
+        cycle = existing.sundayCycle
+      } else {
+        const collaborator = await getCollaboratorOrNull(collaboratorId)
+        const roster = collaborator ? await listEmployees(collaborator.store_id) : []
+        const ids = new Set(roster.map((item) => item.id))
+        const identities = await listIdentities()
+        const counts: Record<'A' | 'B' | 'C', number> = { A: 0, B: 0, C: 0 }
+        for (const [id, record] of identities) {
+          if (id === collaboratorId || !ids.has(id) || !record.sundayCycle) continue
+          counts[record.sundayCycle] += 1
+        }
+        cycle = counts.A <= counts.B && counts.A <= counts.C ? 'A' : counts.B <= counts.C ? 'B' : 'C'
+      }
+    }
+
+    await setSundayCycle({ collaboratorId, cycle, cycleStart })
   },
 
   async deleteEmployee(payload) {

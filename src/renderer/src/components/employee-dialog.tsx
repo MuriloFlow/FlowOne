@@ -18,6 +18,11 @@ import {
 import { DEFAULT_EMPLOYEE_ROLE, FLOW_ROLES, isFlowRole, suggestedFlowRole, type FlowRoleId } from '@/lib/roles'
 import { operationError, operations } from '@/lib/operations'
 import { compressAttendancePhoto } from '@/lib/attendance-photo'
+import { sundayCycleStatus } from '../../../shared/schedules'
+
+function todaySaoPaulo(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+}
 
 type EmployeeDialogProps = {
   open: boolean
@@ -61,6 +66,7 @@ export function EmployeeDialog({
   const [cpfUnlocked, setCpfUnlocked] = useState(false)
   const [rgUnlocked, setRgUnlocked] = useState(false)
   const [sensitiveAction, setSensitiveAction] = useState<'cpf' | 'rg' | null>(null)
+  const [sundayPosition, setSundayPosition] = useState<'FIRST' | 'SECOND' | null>(null)
   const documentInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -84,6 +90,7 @@ export function EmployeeDialog({
     setRgImage(null)
     setCpfUnlocked(mode === 'create')
     setRgUnlocked(mode === 'create')
+    setSundayPosition(null)
 
     if (mode === 'edit' && employee) {
       setLoadingIdentity(true)
@@ -94,6 +101,16 @@ export function EmployeeDialog({
           if (identity.flowRole && isFlowRole(identity.flowRole)) {
             setFlowRole(suggestedFlowRole(identity.flowRole, employee.cardplusRole, employee.globalDeskLabel))
           }
+          setSundayPosition(
+            identity.sundayCycleStart
+              ? sundayCycleStatus(
+                  { cycle: identity.sundayCycle ?? null, cycleStart: identity.sundayCycleStart },
+                  todaySaoPaulo()
+                ).cycleLabel === '1° Domingo'
+                ? 'FIRST'
+                : 'SECOND'
+              : null
+          )
         })
         .catch((identityError: unknown) => setError(operationError(identityError)))
         .finally(() => setLoadingIdentity(false))
@@ -149,6 +166,9 @@ export function EmployeeDialog({
         mode === 'create'
           ? await operations().createEmployee(payload)
           : await operations().updateEmployee({ ...payload, id: employee!.id })
+      if (mode === 'edit' && employee) {
+        await operations().setSundayCycle({ collaboratorId: employee.id, position: sundayPosition })
+      }
       if (rgImage !== null || mode === 'edit') {
         await operations().saveEmployeeDocument({ collaboratorId: saved.id, rgImage })
       }
@@ -256,6 +276,25 @@ export function EmployeeDialog({
               ]}
               onChange={(value) => setIsActive(value === 'active')}
             />
+          </div>
+        ) : null}
+
+        {mode === 'edit' ? (
+          <div className="space-y-1.5">
+            <Label className="text-[12px] text-[#F0EFEC]/45">Domingo (rotação 2x1)</Label>
+            <Select
+              value={sundayPosition ?? 'none'}
+              options={[
+                { value: 'none', label: 'Não trabalha domingo' },
+                { value: 'FIRST', label: '1° Domingo — trabalha este, folga no próximo' },
+                { value: 'SECOND', label: '2° Domingo — trabalha este e o próximo' }
+              ]}
+              onChange={(value) => setSundayPosition(value === 'FIRST' || value === 'SECOND' ? value : null)}
+            />
+            <p className="text-[11px] leading-relaxed text-[#F0EFEC]/32">
+              Só vale para Operação, Vendas e Caixa. A escala de domingo se ajusta sozinha:
+              2 domingos trabalhados, 1 de folga, girando entre os grupos A, B e C.
+            </p>
           </div>
         ) : null}
 

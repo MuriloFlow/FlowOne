@@ -220,6 +220,9 @@ function toGlobalEmployee(
       cardplusRole: floorCardPlusRole(matched.cardplusRole),
       cpfMasked: matched.cpfMasked ?? identityMask(accountIdentity) ?? identityMask(matchedIdentity),
       hasCpf: matched.hasCpf || Boolean(accountIdentity?.cpfDigits || matchedIdentity?.cpfDigits),
+      sundayCycle: matched.sundayCycle ?? matchedIdentity?.sundayCycle ?? accountIdentity?.sundayCycle ?? null,
+      sundayCycleStart:
+        matched.sundayCycleStart ?? matchedIdentity?.sundayCycleStart ?? accountIdentity?.sundayCycleStart ?? null,
       isGlobalDesk: true,
       globalDeskLabel: account.roleLabel,
       directorySource: 'collaborator'
@@ -239,6 +242,8 @@ function toGlobalEmployee(
     isActive: account.isActive,
     cardsThisMonth: 0,
     createdAt: account.createdAt,
+    sundayCycle: accountIdentity?.sundayCycle ?? null,
+    sundayCycleStart: accountIdentity?.sundayCycleStart ?? null,
     directorySource: 'app_user',
     isGlobalDesk: true,
     globalDeskLabel: account.roleLabel

@@ -38,6 +38,8 @@ export type SchedulePerson = {
   cardplusRole: string
   team: ScheduleTeam
   isSelf?: boolean
+  sundayCycle?: 'A' | 'B' | 'C' | null
+  sundayCycleStart?: string | null
 }
 
 export type ScheduleAssignment = {
@@ -371,4 +373,214 @@ export function scheduleActorMatchScore(actorName: string, actorEmail: string, p
     score += 50
   }
   return score
+}
+
+// ─── Rotação 2x1 dos domingos (grupos A/B/C) ─────────────────────────────────
+// 2 domingos trabalhados + 1 de folga, girando entre os grupos A, B e C.
+// Trabalham no domingo: Operação, Vendas e Caixa. Estoque e Auxiliar nunca.
+
+export type SundayCycleGroup = 'A' | 'B' | 'C'
+
+export const SUNDAY_GROUPS: readonly SundayCycleGroup[] = ['A', 'B', 'C']
+
+export const SUNDAY_ROTATION_NOTE = '2x1 domingo'
+
+const SUNDAY_WORK_TEAMS: ReadonlySet<ScheduleTeam> = new Set(['OPERACAO', 'CAIXA', 'VENDEDOR'])
+
+export function isSundayWorkTeam(team: ScheduleTeam): boolean {
+  return SUNDAY_WORK_TEAMS.has(team)
+}
+
+function utcDay(dateKey: string): number {
+  const parts = dateKey.split('-').map((part) => Number(part))
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return NaN
+  return Date.UTC(parts[0], parts[1] - 1, parts[2]) / 86_400_000
+}
+
+function keyFromDay(day: number): string {
+  const date = new Date(day * 86_400_000)
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+export function addDaysToDate(dateKey: string, days: number): string {
+  return keyFromDay(utcDay(dateKey) + days)
+}
+
+export function nextMondayOf(dateKey: string): string {
+  const day = utcDay(dateKey)
+  if (!Number.isFinite(day)) return dateKey
+  const weekday = (day + 3) % 7 // 0 = segunda
+  const offset = (7 - weekday) % 7 || 7
+  return keyFromDay(day + offset)
+}
+
+export function nextSundayOf(dateKey: string): string {
+  const day = utcDay(dateKey)
+  if (!Number.isFinite(day)) return dateKey
+  const weekday = (day + 3) % 7 // 6 = domingo
+  const offset = ((6 - weekday + 7) % 7) || 7
+  return keyFromDay(day + offset)
+}
+
+export type SundayCycleInput = {
+  cycle: string | null
+  cycleStart: string | null
+}
+
+export type SundayCycleStatus = {
+  eligible: boolean
+  group: SundayCycleGroup | null
+  works: boolean
+  cycleLabel: '1° Domingo' | '2° Domingo' | null
+}
+
+export const NOT_IN_ROTATION: SundayCycleStatus = {
+  eligible: false,
+  group: null,
+  works: false,
+  cycleLabel: null
+}
+
+// Estado da pessoa HOJE: em que posição do ciclo 2x1 ela está.
+export function sundayCycleStatus(input: SundayCycleInput, todayKey: string): SundayCycleStatus {
+  const cycle = (input.cycle ?? '').trim().toUpperCase()
+  if (!SUNDAY_GROUPS.includes(cycle as SundayCycleGroup) || !input.cycleStart) return NOT_IN_ROTATION
+  const start = utcDay(input.cycleStart)
+  const now = utcDay(todayKey)
+  if (!Number.isFinite(start) || !Number.isFinite(now) || now < start) {
+    return { eligible: true, group: cycle as SundayCycleGroup, works: false, cycleLabel: null }
+  }
+  const weeksIn = Math.floor((now - start) / 7)
+  const step = weeksIn % 3
+  return {
+    eligible: true,
+    group: cycle as SundayCycleGroup,
+    works: step !== 2,
+    cycleLabel: step === 0 ? '1° Domingo' : '2° Domingo'
+  }
+}
+
+export type SundayRotationRow = {
+  id: string
+  name: string
+  shortName: string
+  team: ScheduleTeam
+  cycle: string | null
+  cycleStart: string | null
+}
+
+export type SundayRotationSlot = {
+  id: string
+  band: ScheduleBand
+  sortOrder: number
+  team: ScheduleTeam
+}
+
+export type SundayRotationPlan = {
+  inserts: Array<{ slotId: string; weekday: ScheduleWeekday; collaboratorId: string; note: string | null }>
+  deletes: string[]
+  offNames: string[]
+  covered: boolean
+}
+
+const EMPTY_PLAN: SundayRotationPlan = { inserts: [], deletes: [], offNames: [], covered: true }
+
+// Grupo que cobre cada banda do domingo. Uma banda por grupo mantém a folga
+// previsível: mesmo grupo nunca fica em dois turnos no mesmo domingo.
+export function sundayGroupForBand(band: ScheduleBand): SundayCycleGroup {
+  if (band === 'ABERTURA') return 'A'
+  if (band === 'INTERMEDIARIO') return 'B'
+  return 'C'
+}
+
+// Monta o plano de encaixe/remoção do domingo da semana `weekStart`.
+// `existing` são os encaixes atuais (id do assignment) nos slots de domingo.
+export function planSundayRotation(
+  rows: SundayRotationRow[],
+  slots: SundayRotationSlot[],
+  existing: Array<{ id: string; slotId: string; collaboratorId: string; note?: string | null }>,
+  weekStart: string,
+  todayKey: string
+): SundayRotationPlan {
+  const sundayDay = utcDay(weekStart) + 6
+  if (!Number.isFinite(sundayDay)) return EMPTY_PLAN
+  const sundayKey = keyFromDay(sundayDay)
+  if (utcDay(todayKey) > sundayDay) return EMPTY_PLAN // semana já passou
+  if (slots.length === 0) return EMPTY_PLAN
+
+  const bySlot = new Map<string, Set<string>>()
+  const assignmentIdBy = new Map<string, string>()
+  const noteByAssignment = new Map<string, string | null>()
+  for (const item of existing) {
+    assignmentIdBy.set(`${item.slotId}:${item.collaboratorId}`, item.id)
+    noteByAssignment.set(item.id, item.note ?? null)
+    const set = bySlot.get(item.slotId) ?? new Set<string>()
+    set.add(item.collaboratorId)
+    bySlot.set(item.slotId, set)
+  }
+
+  const orderedSlots = [...slots].sort((left, right) => left.sortOrder - right.sortOrder)
+  const groups = new Map<SundayCycleGroup, SundayRotationRow[]>()
+  const offNames: string[] = []
+  for (const row of rows) {
+    if (!SUNDAY_WORK_TEAMS.has(row.team)) continue
+    // O estado vale no DOMINGO da semana em vista: a semana que o gerente está
+    // montando pode ser futura, e a folga de hoje não é a folga de lá.
+    const status = sundayCycleStatus(row, sundayKey)
+    if (!status.eligible || !status.group) continue
+    if (!status.works) {
+      offNames.push(row.shortName || row.name)
+      continue
+    }
+    const list = groups.get(status.group) ?? []
+    list.push(row)
+    groups.set(status.group, list)
+  }
+
+  const inserts: SundayRotationPlan['inserts'] = []
+  const deletes: string[] = []
+  let uncovered = 0
+  for (const slot of orderedSlots) {
+    const group = sundayGroupForBand(slot.band)
+    // Cada time preenche os PRÓPRIOS horários de domingo: vendedor em slot de
+    // Vendas, caixa em slot de Caixa etc. O grupo decide QUEM, o time decide ONDE.
+    const roster = (groups.get(group) ?? [])
+      .filter((row) => row.team === slot.team)
+      .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
+    const current = bySlot.get(slot.id) ?? new Set<string>()
+    // Limpeza: sai do slot quem está de folga no ciclo, quem trocou de
+    // grupo/time ou quem saiu da rotação (mas só se foi a própria rotação
+    // que o colocou — encaixe manual do gerente é preservado).
+    const expectedIds = new Set(roster.map((row) => row.id))
+    for (const id of current) {
+      if (expectedIds.has(id)) continue
+      const assignmentId = assignmentIdBy.get(`${slot.id}:${id}`)
+      if (!assignmentId) continue
+      const row = rows.find((item) => item.id === id)
+      if (row) {
+        const status = sundayCycleStatus(row, sundayKey)
+        if (!status.works || status.group !== group || row.team !== slot.team) deletes.push(assignmentId)
+      } else if (noteByAssignment.get(assignmentId) === SUNDAY_ROTATION_NOTE) {
+        deletes.push(assignmentId)
+      }
+    }
+    if (roster.length === 0) {
+      uncovered += 1
+      continue
+    }
+    const wanted = Math.max(1, Math.floor(roster.length / Math.min(orderedSlots.length, roster.length)))
+    const already = [...current].filter((id) => expectedIds.has(id))
+    const remaining = Math.max(0, wanted - already.length)
+    const pool = roster.filter((row) => !current.has(row.id) && !inserts.some((item) => item.collaboratorId === row.id))
+    for (let index = 0; index < Math.min(remaining, pool.length); index += 1) {
+      inserts.push({
+        slotId: slot.id,
+        weekday: 7,
+        collaboratorId: pool[index].id,
+        note: SUNDAY_ROTATION_NOTE
+      })
+    }
+    if (already.length + Math.min(remaining, pool.length) < 1) uncovered += 1
+  }
+  return { inserts, deletes, offNames, covered: uncovered === 0 }
 }

@@ -82,6 +82,7 @@ function createOperations(prefs: Prefs): OperationsApi {
     saveEmployeeDocument: (input) => callOp('saveEmployeeDocument', input),
     createEmployee: (input) => callOp('createEmployee', input),
     updateEmployee: (input) => callOp('updateEmployee', input),
+    setSundayCycle: (input) => callOp('setSundayCycle', input),
     deleteEmployee: (id, storeId) => callOp('deleteEmployee', withStore(storeId, { id })),
     getStorePreference: async () => normalizeStoreId((await prefs.get({ key: STORE_KEY })).value),
     setStorePreference: async (storeId) => {

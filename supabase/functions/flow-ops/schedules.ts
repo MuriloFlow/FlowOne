@@ -11,11 +11,14 @@ import {
   bandLabel,
   formatClock,
   compactScheduleKey,
+  isSundayWorkTeam,
+  planSundayRotation,
   scheduleActorMatchScore,
   scheduleDisplayRole,
   scheduleSlotBaseCode,
   scheduleTeamOf,
   shortPersonName,
+  SUNDAY_ROTATION_NOTE,
   teamFromSlotCode,
   weekdayName,
   weekdayShort,
@@ -32,6 +35,7 @@ import {
   type ScheduleWeekday
 } from './_shared/schedules.ts'
 import { attendanceKindLabel } from './_shared/attendance.ts'
+import log from './log.ts'
 
 type SlotRow = {
   id: string
@@ -89,6 +93,8 @@ function asPerson(
     cardplusRole: string
     flowRoleLabel: string
     team: ScheduleTeam
+    sundayCycle?: 'A' | 'B' | 'C' | null
+    sundayCycleStart?: string | null
   },
   extra?: { isSelf?: boolean }
 ): SchedulePerson {
@@ -100,6 +106,8 @@ function asPerson(
     flowRole: item.flowRole,
     cardplusRole: item.cardplusRole,
     team: item.team,
+    sundayCycle: item.sundayCycle ?? null,
+    sundayCycleStart: item.sundayCycleStart ?? null,
     isSelf: extra?.isSelf
   }
 }
@@ -460,6 +468,149 @@ async function ensureWeek(storeId: string, weekStart: string): Promise<string | 
   return previous
 }
 
+// ─── Rotação automática dos domingos (2x1, grupos A/B/C) ────────────────────
+//
+// O gerente marca cada funcionário como "1° Domingo" ou "2° Domingo" em
+// Funcionários. Daí em diante a escala se vira sozinha: nos domingos de cada
+// semana, o grupo A cobre a Abertura, B o Intermediário e C o Fechamento;
+// quem completa 2 domingos trabalhados entra em folga (3º domingo do ciclo)
+// e volta depois. Só Operação, Vendas e Caixa participam — Estoque e
+// Auxiliar nunca trabalham domingo.
+
+async function listIdentityCycles(): Promise<Map<string, { cycle: string | null; cycleStart: string | null }>> {
+  const map = new Map<string, { cycle: string | null; cycleStart: string | null }>()
+  try {
+    const { data, error } = await getFlowAdminClient()
+      .from('flow_employee_identities')
+      .select('cardplus_collaborator_id, sunday_cycle, sunday_cycle_start')
+      .not('sunday_cycle', 'is', null)
+    if (error) return map
+    for (const row of (data ?? []) as Array<{
+      cardplus_collaborator_id: string
+      sunday_cycle: string | null
+      sunday_cycle_start: string | null
+    }>) {
+      map.set(row.cardplus_collaborator_id, {
+        cycle: row.sunday_cycle,
+        cycleStart: row.sunday_cycle_start
+      })
+    }
+  } catch {
+    // Sem a rotação ligada, a escala segue manual como sempre.
+  }
+  return map
+}
+
+async function applySundayRotation(
+  storeId: string,
+  weekStart: string,
+  slots: ScheduleSlot[],
+  people: SchedulePerson[]
+): Promise<void> {
+  const today = dateKeyInSaoPaulo()
+  const sundayDay = utcDay(weekStart) + 6
+  if (!Number.isFinite(sundayDay) || utcDay(today) > sundayDay) return
+  const sundaySlots = slots
+    .filter((slot) => slot.weekday === 7)
+    .map((slot) => ({ id: slot.id, band: slot.band, sortOrder: slot.sortOrder, team: slot.team }))
+  if (sundaySlots.length === 0) return
+
+  const cycles = await listIdentityCycles()
+
+  const flow = getFlowAdminClient()
+  const existingRes = await flow
+    .from('flow_schedule_assignments')
+    .select('id, slot_id, cardplus_collaborator_id, note')
+    .eq('cardplus_store_id', storeId)
+    .eq('week_start', weekStart)
+    .in(
+      'slot_id',
+      sundaySlots.map((slot) => slot.id)
+    )
+  if (existingRes.error) return
+  const existing = (existingRes.data ?? []) as Array<{
+    id: string
+    slot_id: string
+    cardplus_collaborator_id: string
+    note: string | null
+  }>
+  // Ninguém na rotação e nenhum resquício dela nos domingos: nada a fazer.
+  const hasRotationNotes = existing.some((row) => row.note === SUNDAY_ROTATION_NOTE)
+  if (cycles.size === 0 && !hasRotationNotes) return
+
+  const eligible = people.filter(
+    (person) =>
+      isSundayWorkTeam(person.team) &&
+      !person.isSelf &&
+      cycles.has(person.id)
+  )
+  const existingByPerson = new Map(existing.map((row) => [row.cardplus_collaborator_id, row]))
+
+  const rows = eligible.map((person) => {
+    const cycleInfo = cycles.get(person.id)
+    return {
+      id: person.id,
+      name: person.name,
+      shortName: person.shortName,
+      team: person.team,
+      cycle: cycleInfo?.cycle ?? null,
+      cycleStart: cycleInfo?.cycleStart ?? null
+    }
+  })
+  const plan = planSundayRotation(
+    rows,
+    sundaySlots,
+    existing.map((row) => ({ id: row.id, slotId: row.slot_id, collaboratorId: row.cardplus_collaborator_id, note: row.note ?? null })),
+    weekStart,
+    today
+  )
+  log.info('sunday-rotation', JSON.stringify({
+    storeId,
+    weekStart,
+    today,
+    sundaySlots: sundaySlots.length,
+    people: people.length,
+    eligible: eligible.length,
+    rows: rows.map((row) => ({ n: row.shortName, c: row.cycle, s: row.cycleStart, t: row.team })),
+    inserts: plan.inserts.length,
+    deletes: plan.deletes.length
+  }))
+  if (plan.inserts.length === 0 && plan.deletes.length === 0) return
+
+  if (plan.deletes.length) {
+    await flow.from('flow_schedule_assignments').delete().in('id', plan.deletes)
+  }
+  for (const item of plan.inserts) {
+    const previous = existingByPerson.get(item.collaboratorId)
+    if (previous) {
+      const { error } = await flow
+        .from('flow_schedule_assignments')
+        .update({ slot_id: item.slotId, weekday: item.weekday, note: item.note, updated_at: new Date().toISOString() })
+        .eq('id', previous.id)
+      if (error && error.code === '23505') continue
+      if (error) log.error('sunday-rotation update', error.message)
+    } else {
+      const { error } = await flow.from('flow_schedule_assignments').insert({
+        cardplus_store_id: storeId,
+        week_start: weekStart,
+        slot_id: item.slotId,
+        weekday: item.weekday,
+        cardplus_collaborator_id: item.collaboratorId,
+        sort_order: 0,
+        note: item.note
+      })
+      if (error && error.code === '23505') continue
+      if (error) log.error('sunday-rotation insert', error.message)
+    }
+  }
+}
+
+function utcDay(dateKey: string): number {
+  const parts = dateKey.split('-').map((part) => Number(part))
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return NaN
+  return Date.UTC(parts[0], parts[1] - 1, parts[2]) / 86_400_000
+}
+
 export async function getScheduleBoard(
   storeId: string,
   weekStartInput: string | null,
@@ -479,12 +630,19 @@ export async function getScheduleBoard(
     listEmployeeDirectory(),
     loadActorIdentity(userId)
   ])
+  const identityCycles = await listIdentityCycles()
   const people = storePeople
     .filter((item) => item.isActive !== false && item.name.trim().toUpperCase() !== 'CAIXA')
     .map((item) => {
       const team = scheduleTeamOf(item.flowRole, item.cardplusRole, item.cardplusRole)
       if (!team) return null
-      return asPerson({ ...item, team })
+      const cycle = identityCycles.get(item.id)
+      return asPerson({
+        ...item,
+        team,
+        sundayCycle: (cycle?.cycle as 'A' | 'B' | 'C' | null) ?? null,
+        sundayCycleStart: cycle?.cycleStart ?? null
+      })
     })
     .filter((item): item is SchedulePerson => Boolean(item))
   const found = findActorCollaborator(directory, actor) ?? findActorCollaborator(networkPeople, actor)
@@ -513,6 +671,11 @@ export async function getScheduleBoard(
   }
   const absences = await listAttendanceKinds(storeId, dates)
   const names = new Map(people.map((person) => [person.id, person]))
+  try {
+    await applySundayRotation(storeId, weekStart, slots, people)
+  } catch {
+    // A rotação automática nunca pode derrubar a abertura da escala.
+  }
   if (seededTeams.length) {
     try {
       await copySeededTeamAssignments(storeId, weekStart, slots, seededTeams, names)

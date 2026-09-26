@@ -72,6 +72,7 @@ declare module '@capgo/capacitor-updater' {
     next: (options: { id: string }) => Promise<void>
     set: (options: { id: string }) => Promise<void>
     reload: () => Promise<void>
+    reset: (options?: { toLastSuccessful?: boolean }) => Promise<void>
     current: () => Promise<{ bundle?: { id?: string; version?: string }; native?: string }>
   }
 }
