@@ -7,6 +7,7 @@ const CHECK_EVERY_MS = 4_000
 const FOCUS_DEBOUNCE_MS = 600
 const RETRY_DELAYS_MS = [1_500, 3_000, 8_000]
 const BACKGROUND_IDLE_EXIT_MS = 12_000
+const GITHUB_TIMEOUT_MS = 8_000
 const OWNER = 'MuriloFlow'
 const REPO = 'FlowOne'
 
@@ -139,30 +140,67 @@ function isNewer(latest: string, current: string): boolean {
   return false
 }
 
-async function latestPublishedVersion(): Promise<string | null> {
-  const response = await net.fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=10`, {
+async function githubJson(path: string): Promise<unknown> {
+  const response = await net.fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`, {
     headers: {
       Accept: 'application/vnd.github+json',
       'User-Agent': 'FLOW',
       'Cache-Control': 'no-cache'
-    }
+    },
+    signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS)
   })
-  if (!response.ok) return null
-  const releases = (await response.json()) as Array<{
-    draft?: boolean
-    prerelease?: boolean
-    tag_name?: string
-    assets?: Array<{ name?: string }>
-  }>
-  for (const release of releases) {
-    if (release.draft || release.prerelease) continue
-    const assets = release.assets ?? []
-    const hasYml = assets.some((asset) => asset.name === 'latest.yml')
-    const hasExe = assets.some(
-      (asset) => typeof asset.name === 'string' && /^FLOW-Setup-.*\.exe$/i.test(asset.name) && !asset.name.endsWith('.blockmap')
-    )
-    if (!hasYml || !hasExe || !release.tag_name) continue
-    return release.tag_name.replace(/^v/i, '')
+  if (!response.ok) throw new Error(`GitHub ${response.status} ${path}`)
+  return response.json()
+}
+
+function releaseHasInstaller(release: { assets?: Array<{ name?: string }> }): boolean {
+  const assets = release.assets ?? []
+  const hasYml = assets.some((asset) => asset.name === 'latest.yml')
+  const hasExe = assets.some(
+    (asset) => typeof asset.name === 'string' && /^FLOW-Setup-.*\.exe$/i.test(asset.name) && !asset.name.endsWith('.blockmap')
+  )
+  return hasYml && hasExe
+}
+
+/**
+ * Versão desktop mais recente publicada (release com latest.yml + Setup.exe).
+ * Se a API do GitHub estiver indisponível (rate limit/instabilidade), cai para
+ * o atalho /releases/latest/download/latest.yml — os releases espelham o yml,
+ * então dá para seguir checando update mesmo sem API.
+ */
+async function latestPublishedVersion(): Promise<string | null> {
+  try {
+    const releases = (await githubJson('/releases?per_page=10')) as Array<{
+      draft?: boolean
+      prerelease?: boolean
+      tag_name?: string
+      assets?: Array<{ name?: string }>
+    }>
+    for (const release of releases) {
+      if (release.draft || release.prerelease) continue
+      if (!release.tag_name) continue
+      if (releaseHasInstaller(release)) return release.tag_name.replace(/^v/i, '')
+    }
+    return null
+  } catch (error) {
+    log.info('[updater] API GitHub indisponível, usando fallback:', error instanceof Error ? error.message : error)
+  }
+
+  try {
+    const probe = await net.fetch(`https://github.com/${OWNER}/${REPO}/releases/latest/download/latest.yml`, {
+      method: 'HEAD',
+      headers: { 'User-Agent': 'FLOW', 'Cache-Control': 'no-cache' },
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS)
+    })
+    if (probe.ok) {
+      const finalUrl = probe.url || ''
+      const tagMatch = finalUrl.match(/releases\/download\/(v[0-9.]+)\//)
+      if (tagMatch) return tagMatch[1].replace(/^v/i, '')
+      // URL genérica sem tag no final: aponta o feed para a pasta do release.
+      return 'latest'
+    }
+  } catch (error) {
+    log.info('[updater] fallback latest.yml falhou:', error instanceof Error ? error.message : error)
   }
   return null
 }
@@ -170,11 +208,12 @@ async function latestPublishedVersion(): Promise<string | null> {
 async function pointFeedAt(version: string): Promise<void> {
   if (pointedVersion === version) return
   pointedVersion = version
-  autoUpdater.setFeedURL({
-    provider: 'generic',
-    url: `https://github.com/${OWNER}/${REPO}/releases/download/v${version}`
-  })
-  log.info(`[updater] feed v${version}`)
+  const url =
+    version === 'latest'
+      ? `https://github.com/${OWNER}/${REPO}/releases/latest/download`
+      : `https://github.com/${OWNER}/${REPO}/releases/download/v${version}`
+  autoUpdater.setFeedURL({ provider: 'generic', url })
+  log.info(`[updater] feed ${version === 'latest' ? 'latest.yml espelhado' : `v${version}`}`)
 }
 
 function registerListeners(): void {

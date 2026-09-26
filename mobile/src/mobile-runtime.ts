@@ -9,7 +9,7 @@ type StoredSession = {
 }
 
 const UPDATE_NOTICE_KEY = 'flow.mobile.shown-update-version'
-const UPDATE_NOTICE_DURATION_MS = 3_600
+const UPDATE_NOTICE_DURATION_MS = 4_200
 const UPDATE_NOTICE_STYLE_ID = 'flow-mobile-update-notice-style'
 
 let installPromise: Promise<void> | null = null
@@ -200,15 +200,16 @@ function installNoticeStyles(): void {
       bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 14px));
       display: flex;
       align-items: center;
-      gap: 9px;
-      min-width: 208px;
-      padding: 12px 16px;
+      gap: 10px;
+      min-width: 230px;
+      padding: 12px 18px;
       border: 1px solid rgba(110, 231, 183, .34);
-      border-radius: 999px;
+      border-radius: 16px;
       background: #064e3b;
       box-shadow: 0 16px 38px rgba(0, 0, 0, .36);
       color: #ecfdf5;
       font: 600 13px/1 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      cursor: pointer;
       animation: flow-mobile-update-in .34s cubic-bezier(.22, 1, .36, 1) both;
     }
     .flow-mobile-update-notice--leaving {
@@ -216,20 +217,34 @@ function installNoticeStyles(): void {
     }
     .flow-mobile-update-notice__check {
       display: grid;
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       place-items: center;
       border-radius: 50%;
       background: #34d399;
       color: #052e24;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 800;
+    }
+    .flow-mobile-update-notice__text {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .flow-mobile-update-notice__title {
+      font-size: 13px;
+      letter-spacing: .01em;
+    }
+    .flow-mobile-update-notice__sub {
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(236, 253, 245, .72);
     }
   `
   document.head.append(style)
 }
 
-function showUpdateNotice(): void {
+function showUpdateNotice(version: string): void {
   if (document.querySelector('.flow-mobile-update-notice')) return
   installNoticeStyles()
   const notice = document.createElement('div')
@@ -240,15 +255,52 @@ function showUpdateNotice(): void {
   const check = document.createElement('span')
   check.className = 'flow-mobile-update-notice__check'
   check.textContent = '✓'
-  const label = document.createElement('span')
-  label.textContent = 'Atualização completa'
-  notice.append(check, label)
+
+  const text = document.createElement('span')
+  text.className = 'flow-mobile-update-notice__text'
+  const title = document.createElement('span')
+  title.className = 'flow-mobile-update-notice__title'
+  title.textContent = 'FLOW ATUALIZADO'
+  const sub = document.createElement('span')
+  sub.className = 'flow-mobile-update-notice__sub'
+  sub.textContent = `Versão ${version} pronta para uso`
+  text.append(title, sub)
+
+  notice.append(check, text)
+  // Clicar apenas fecha o aviso — o app já está na versão nova.
+  notice.addEventListener('click', () => {
+    notice.classList.add('flow-mobile-update-notice--leaving')
+    window.setTimeout(() => notice.remove(), 300)
+  })
   document.body.append(notice)
 
   window.setTimeout(() => {
     notice.classList.add('flow-mobile-update-notice--leaving')
     window.setTimeout(() => notice.remove(), 300)
   }, UPDATE_NOTICE_DURATION_MS)
+}
+
+// Notificação nativa do Android/iOS: fica na bandeja e abre o app ao tocar.
+async function notifyNativeUpdate(version: string): Promise<void> {
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    const { display } = await LocalNotifications.requestPermissions()
+    if (display !== 'granted') return
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: 20260926,
+          title: 'FLOW ATUALIZADO',
+          body: `Sua versão ${version} foi aplicada com sucesso.`,
+          smallIcon: 'ic_launcher',
+          largeIcon: 'ic_launcher',
+          iconColor: '#34D399'
+        }
+      ]
+    })
+  } catch (error) {
+    console.warn('[mobile-update] notificação nativa', error)
+  }
 }
 
 async function showAppliedUpdateOnce(): Promise<void> {
@@ -267,7 +319,8 @@ async function showAppliedUpdateOnce(): Promise<void> {
     const shown = (await Preferences.get({ key: UPDATE_NOTICE_KEY })).value
     if (shown === version) return
     await Preferences.set({ key: UPDATE_NOTICE_KEY, value: version })
-    showUpdateNotice()
+    showUpdateNotice(version)
+    void notifyNativeUpdate(version)
   } catch (error) {
     console.warn('[mobile-update] aviso de versão', error)
   }

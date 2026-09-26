@@ -35,7 +35,9 @@ export default defineConfig({
         '@capacitor/filesystem': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
         '@capacitor/share': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
         '@capacitor/screen-orientation': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
-        '@capgo/capacitor-updater': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts')
+        '@capgo/capacitor-updater': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
+        '@capgo/capacitor-native-biometric': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts'),
+        '@capacitor/local-notifications': resolve('src/renderer/src/lib/capacitor-desktop-stub.ts')
       }
     },
     plugins: [react(), tailwindcss()],

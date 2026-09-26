@@ -133,12 +133,14 @@ export default defineConfig(({ mode }) => {
         '@capacitor/filesystem': path.resolve(mobileModules, '@capacitor/filesystem'),
         '@capacitor/share': path.resolve(mobileModules, '@capacitor/share'),
         '@capacitor/screen-orientation': path.resolve(mobileModules, '@capacitor/screen-orientation'),
-        '@capgo/capacitor-updater': path.resolve(mobileModules, '@capgo/capacitor-updater')
+        '@capgo/capacitor-updater': path.resolve(mobileModules, '@capgo/capacitor-updater'),
+        '@capgo/capacitor-native-biometric': path.resolve(mobileModules, '@capgo/capacitor-native-biometric'),
+        '@capacitor/local-notifications': path.resolve(mobileModules, '@capacitor/local-notifications')
       },
       dedupe: ['react', 'react-dom', 'lucide-react', 'framer-motion']
     },
     optimizeDeps: {
-      exclude: ['@capacitor/core', '@capacitor/preferences', '@capacitor/app', '@capacitor/filesystem', '@capacitor/share', '@capacitor/screen-orientation', '@capgo/capacitor-updater']
+      exclude: ['@capacitor/core', '@capacitor/preferences', '@capacitor/app', '@capacitor/filesystem', '@capacitor/share', '@capacitor/screen-orientation', '@capgo/capacitor-updater', '@capgo/capacitor-native-biometric', '@capacitor/local-notifications']
     },
     server: {
       port: 5174,

@@ -11,11 +11,12 @@ const required = [
   'VITE_SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
   'CARDPLUS_SUPABASE_URL',
-  'CARDPLUS_SUPABASE_SERVICE_ROLE_KEY',
-  'OPENAI_API_KEY'
+  'CARDPLUS_SUPABASE_SERVICE_ROLE_KEY'
 ]
 
-const optional = ['CARDPLUS_SUPABASE_ANON_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_FALLBACK', 'GITHUB_OWNER', 'GITHUB_REPO']
+// OPENAI_API_KEY ficou opcional: sem ela o instalador sai igual e só a
+// função Kobbi fica indisponível no desktop (erro claro em runtime).
+const optional = ['OPENAI_API_KEY', 'CARDPLUS_SUPABASE_ANON_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_FALLBACK', 'GITHUB_OWNER', 'GITHUB_REPO']
 const skipPack = new Set(['FLOW_BOOTSTRAP_EMAIL', 'FLOW_BOOTSTRAP_PASSWORD'])
 
 function parseEnvText(text) {

@@ -28,6 +28,43 @@ declare module '@capacitor/app' {
   }
 }
 
+declare module '@capgo/capacitor-native-biometric' {
+  export const NativeBiometric: {
+    isAvailable: (options?: { useFallback?: boolean }) => Promise<{
+      isAvailable: boolean
+      biometryType?: number
+      errorCode?: string
+    }>
+    verifyIdentity: (options?: {
+      title?: string
+      subtitle?: string
+      description?: string
+      maxAttempts?: number
+      useFallback?: boolean
+      allowDeviceCredential?: boolean
+    }) => Promise<void>
+  }
+}
+
+declare module '@capacitor/local-notifications' {
+  export const LocalNotifications: {
+    requestPermissions: () => Promise<{ display: 'granted' | 'denied' | 'prompt' }>
+    areEnabled: () => Promise<{ value: boolean }>
+    schedule: (options: {
+      notifications: Array<{
+        id: number
+        title: string
+        body: string
+        schedule?: { at?: Date }
+        smallIcon?: string
+        largeIcon?: string
+        iconColor?: string
+        channelId?: string
+      }>
+    }) => Promise<void>
+  }
+}
+
 declare module '@capgo/capacitor-updater' {
   export const CapacitorUpdater: {
     notifyAppReady: () => Promise<void>
