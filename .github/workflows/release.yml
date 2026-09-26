@@ -139,3 +139,35 @@ jobs:
           path: desktop-publish.log
           if-no-files-found: ignore
 
+      - name: Set up JDK 21 for Android build
+        if: always() && steps.bump.outcome == 'success'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build Android APK
+        if: always() && steps.bump.outcome == 'success'
+        working-directory: mobile
+        shell: pwsh
+        run: |
+          npx cap sync android
+          $gradle = Join-Path (Get-Location) 'android\gradlew.bat'
+          & $gradle -p android assembleRelease --no-daemon
+          $apk = Get-ChildItem 'android\app\build\outputs\apk\release\*.apk' | Select-Object -First 1
+          if (-not $apk) { throw 'APK não gerado' }
+          Copy-Item $apk.FullName ..\flow-release.apk
+          Write-Output "APK: $($apk.Name) ($([Math]::Round($apk.Length/1MB,1)) MB)"
+      - name: Upload APK to release
+        if: always() && steps.bump.outcome == 'success'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path flow-release.apk)) { throw 'flow-release.apk ausente' }
+          $tag = "v$env:OTA_VERSION"
+          # Nome fixo FLOW.apk para a landing de download (link estável no latest).
+          Copy-Item flow-release.apk FLOW.apk -Force
+          gh release upload $tag flow-release.apk FLOW.apk --clobber
+          gh release view $tag --json assets --jq ".assets[].name"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OTA_VERSION: ${{ env.OTA_VERSION }}
+

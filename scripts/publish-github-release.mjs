@@ -166,3 +166,8 @@ if (previous?.id) {
 }
 
 console.log(`Release ${tag} pronto: ${fileName} + latest.yml`)
+
+// Nome fixo FLOW-Setup.exe (sem versão) para a landing page de download —
+// sempre aponta para o instalador mais recente da mesma release.
+console.log('Enviando FLOW-Setup.exe (link estável)')
+await upsertAsset(release, 'FLOW-Setup.exe', exeBytes, 'application/octet-stream')
