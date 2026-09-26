@@ -115,8 +115,11 @@ async function upsertAsset(release, fileName, bytes, contentType) {
   }
 }
 
+// VERSION = versão desktop (3 partes, ex. 1.3.64) usada no nome do exe e no
+// latest.yml; RELEASE_TAG = tag da release compartilhada com a OTA mobile
+// (4 partes, ex. v1.3.0.65), criada antes pelo passo de OTA.
 const version = process.argv[2] || process.env.VERSION || packageVersion()
-const tag = `v${version}`
+const tag = process.env.RELEASE_TAG?.trim() || `v${version}`
 const fileName = `FLOW-Setup-${version}.exe`
 const blockmapName = `${fileName}.blockmap`
 const releaseDir = resolve(root, 'release')

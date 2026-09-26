@@ -26,15 +26,22 @@ jobs:
         id: bump
         shell: pwsh
         run: |
-          # A versão da OTA deve acompanhar o app nativo (mobile/package.json);
-          # o sufixo .RUN_NUMBER garante crescimento monotônico a cada build.
+          # OTA mobile: versão acompanha o app nativo (mobile/package.json) + RUN,
+          # ex. 1.3.0.65 — usada na tag e no latest-mobile.yml.
+          # Desktop: semver de 3 partes (major.minor do package.json raiz + RUN),
+          # ex. 1.3.65 — o electron-builder só aceita 3 partes e o publish procura
+          # FLOW-Setup-<versão-desktop>.exe.
           $mobileVersion = (Get-Content -Raw mobile/package.json | ConvertFrom-Json).version
-          $version = "$mobileVersion.$env:GITHUB_RUN_NUMBER"
-          npm version $version --no-git-tag-version --allow-same-version
-          git tag "v$version"
-          git push origin "v$version"
-          Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
-          Write-Output "VERSION=$version"
+          $otaVersion = "$mobileVersion.$env:GITHUB_RUN_NUMBER"
+          $rootVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $rootParts = $rootVersion.Split('.')
+          $desktopVersion = "$($rootParts[0]).$($rootParts[1]).$env:GITHUB_RUN_NUMBER"
+          npm version $desktopVersion --no-git-tag-version --allow-same-version
+          git tag "v$otaVersion"
+          git push origin "v$otaVersion"
+          Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$desktopVersion"
+          Add-Content -Path $env:GITHUB_ENV -Value "OTA_VERSION=$otaVersion"
+          Write-Output "VERSION=$desktopVersion OTA_VERSION=$otaVersion"
       - name: Build mobile web bundle
         working-directory: mobile
         env:
@@ -51,8 +58,8 @@ jobs:
       - name: Package mobile OTA assets
         shell: pwsh
         run: |
-          $version = $env:VERSION
-          if (-not $version) { throw 'VERSION ausente' }
+          $version = $env:OTA_VERSION
+          if (-not $version) { $version = $env:VERSION }
           $dist = "mobile/dist"
           if (-not (Test-Path $dist)) { throw 'mobile/dist ausente' }
           if (Test-Path mobile-www.zip) { Remove-Item mobile-www.zip }
@@ -112,6 +119,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Publica os assets desktop na MESMA release da OTA (tag 4 partes).
+          RELEASE_TAG: v${{ env.OTA_VERSION }}
           VITE_SUPABASE_URL: https://flowone.db.flwdesk.com
           VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzkwMDI5NjAwLCJleHAiOjE5NDc3MDk2MDB9.yPgutsfUlQPS6mjSegQU8MRTaPNK9cKqJiSopVh0GDA
           SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3OTAwMjk2MDAsImV4cCI6MTk0NzcwOTYwMH0.DiNtBP8vUMyrYwv2A_j0TYN8AwbpY3tlIEnVABNrRAw

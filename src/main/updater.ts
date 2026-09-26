@@ -163,12 +163,13 @@ function releaseHasInstaller(release: { assets?: Array<{ name?: string }> }): bo
 }
 
 /**
- * Versão desktop mais recente publicada (release com latest.yml + Setup.exe).
- * Se a API do GitHub estiver indisponível (rate limit/instabilidade), cai para
- * o atalho /releases/latest/download/latest.yml — os releases espelham o yml,
- * então dá para seguir checando update mesmo sem API.
+ * Update desktop mais recente publicado (release com latest.yml + Setup.exe).
+ * A versão vem SEMPRE do latest.yml (3 partes, ex. 1.3.64) — a tag do release
+ * pode ser 1.3.0.65 porque é compartilhada com a OTA mobile. Sem API do
+ * GitHub (rate limit/instabilidade), cai para o espelho
+ * /releases/latest/download/latest.yml.
  */
-async function latestPublishedVersion(): Promise<string | null> {
+async function latestPublishedUpdate(): Promise<{ version: string; feedTag: string } | null> {
   try {
     const releases = (await githubJson('/releases?per_page=10')) as Array<{
       draft?: boolean
@@ -179,7 +180,9 @@ async function latestPublishedVersion(): Promise<string | null> {
     for (const release of releases) {
       if (release.draft || release.prerelease) continue
       if (!release.tag_name) continue
-      if (releaseHasInstaller(release)) return release.tag_name.replace(/^v/i, '')
+      if (!releaseHasInstaller(release)) continue
+      const ymlVersion = await fetchLatestYmlVersion(release.tag_name).catch(() => null)
+      return { version: ymlVersion ?? release.tag_name.replace(/^v/i, ''), feedTag: release.tag_name }
     }
     return null
   } catch (error) {
@@ -187,33 +190,42 @@ async function latestPublishedVersion(): Promise<string | null> {
   }
 
   try {
-    const probe = await net.fetch(`https://github.com/${OWNER}/${REPO}/releases/latest/download/latest.yml`, {
-      method: 'HEAD',
-      headers: { 'User-Agent': 'FLOW', 'Cache-Control': 'no-cache' },
-      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS)
-    })
-    if (probe.ok) {
-      const finalUrl = probe.url || ''
-      const tagMatch = finalUrl.match(/releases\/download\/(v[0-9.]+)\//)
-      if (tagMatch) return tagMatch[1].replace(/^v/i, '')
-      // URL genérica sem tag no final: aponta o feed para a pasta do release.
-      return 'latest'
-    }
+    const version = await fetchLatestYmlVersion('latest')
+    if (version) return { version, feedTag: 'latest' }
   } catch (error) {
     log.info('[updater] fallback latest.yml falhou:', error instanceof Error ? error.message : error)
   }
   return null
 }
 
-async function pointFeedAt(version: string): Promise<void> {
-  if (pointedVersion === version) return
-  pointedVersion = version
+function parseLatestYmlVersion(text: string): string | null {
+  return text.replace(/^\uFEFF/, '').match(/^version:\s*['"]?([^\s'"]+)/m)?.[1] ?? null
+}
+
+async function fetchLatestYmlVersion(feedTag: string): Promise<string> {
   const url =
-    version === 'latest'
+    feedTag === 'latest'
+      ? `https://github.com/${OWNER}/${REPO}/releases/latest/download/latest.yml`
+      : `https://github.com/${OWNER}/${REPO}/releases/download/${feedTag}/latest.yml`
+  const response = await net.fetch(url, {
+    headers: { 'User-Agent': 'FLOW', 'Cache-Control': 'no-cache' },
+    signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS)
+  })
+  if (!response.ok) throw new Error(`latest.yml HTTP ${response.status}`)
+  const version = parseLatestYmlVersion(await response.text())
+  if (!version) throw new Error('latest.yml sem versão')
+  return version
+}
+
+function pointFeedAt(feedTag: string): void {
+  if (pointedVersion === feedTag) return
+  pointedVersion = feedTag
+  const url =
+    feedTag === 'latest'
       ? `https://github.com/${OWNER}/${REPO}/releases/latest/download`
-      : `https://github.com/${OWNER}/${REPO}/releases/download/v${version}`
+      : `https://github.com/${OWNER}/${REPO}/releases/download/${feedTag}`
   autoUpdater.setFeedURL({ provider: 'generic', url })
-  log.info(`[updater] feed ${version === 'latest' ? 'latest.yml espelhado' : `v${version}`}`)
+  log.info(`[updater] feed ${feedTag}`)
 }
 
 function registerListeners(): void {
@@ -327,10 +339,10 @@ export async function checkForUpdates(options?: { force?: boolean }): Promise<vo
   lastCheckAt = now
   checking = true
   try {
-    const latest = await latestPublishedVersion().catch(() => null)
+    const latest = await latestPublishedUpdate().catch(() => null)
     const current = app.getVersion()
-    if (latest && isNewer(latest, current)) {
-      await pointFeedAt(latest)
+    if (latest && isNewer(latest.version, current)) {
+      pointFeedAt(latest.feedTag)
     }
     await autoUpdater.checkForUpdates()
   } catch (error) {
