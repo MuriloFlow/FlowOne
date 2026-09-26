@@ -105,7 +105,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish desktop installer
         if: always() && steps.bump.outcome == 'success'
-        run: npm run dist:publish
+        shell: pwsh
+        run: |
+          npm run dist:publish 2>&1 | Tee-Object -FilePath desktop-publish.log
+          exit $LASTEXITCODE
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -119,4 +122,11 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           OPENAI_FALLBACK: ${{ secrets.OPENAI_FALLBACK }}
+      - name: Upload desktop publish log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-publish-log
+          path: desktop-publish.log
+          if-no-files-found: ignore
 
