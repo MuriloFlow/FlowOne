@@ -379,7 +379,10 @@ async function receiptImage(row: VoucherRow, number: string, signatureDataUrl: s
   ctx.fillText(year, (yearLineX + yearLineEnd) / 2, dateTextY)
   ctx.textAlign = 'left'
 
-  // Assinatura do funcionário sobre a linha
+  // Assinatura do funcionário sobre a linha — grande e proporcional (a linha
+  // fica por baixo da tinta, como num papel assinado). A área de desenho no
+  // celular é ~2.2:1, então o limite vertical manda; aumentamos de 88px para
+  // 220px e centralizamos horizontalmente sobre a linha.
   const sigLabelY = 846
   ctx.fillStyle = INK
   ctx.font = `500 36px ${FONT}`
@@ -390,12 +393,12 @@ async function receiptImage(row: VoucherRow, number: string, signatureDataUrl: s
   drawUnderline(ctx, sigX, sigLineY, sigLineW)
   try {
     const signature = await loadImage(signatureDataUrl)
-    const maxSigW = sigLineW * 0.9
-    const maxSigH = 88
+    const maxSigW = sigLineW * 0.94
+    const maxSigH = 220
     const scale = Math.min(maxSigW / Math.max(1, signature.width), maxSigH / Math.max(1, signature.height))
     const sigW = signature.width * scale
     const sigH = signature.height * scale
-    ctx.drawImage(signature, sigX + (sigLineW - sigW) / 2, sigLineY - sigH - 4, sigW, sigH)
+    ctx.drawImage(signature, sigX + (sigLineW - sigW) / 2, sigLineY - sigH + 2, sigW, sigH)
   } catch {
     /* assinatura ausente — mantém só a linha */
   }

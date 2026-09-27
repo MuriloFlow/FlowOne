@@ -51,6 +51,13 @@ const flow: FlowApi = {
     createEmployee: (input: CreateEmployeeInput) => ipcRenderer.invoke('operations:employee-create', input),
     updateEmployee: (input: UpdateEmployeeInput) => ipcRenderer.invoke('operations:employee-update', input),
     setSundayCycle: (input) => ipcRenderer.invoke('operations:sunday-cycle-set', input),
+    createSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-create', input),
+    getSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-get', input),
+    joinSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-join', input),
+    pushSignatureStrokes: (input) => ipcRenderer.invoke('operations:signature-session-push', input),
+    finishSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-finish', input),
+    confirmSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-confirm', input),
+    cancelSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-cancel', input),
     deleteEmployee: (id: string, storeId?: string | null) =>
       ipcRenderer.invoke('operations:employee-delete', { id, storeId: storeId ?? null }),
     getStorePreference: () => ipcRenderer.invoke('operations:store-preference', { action: 'read' }),

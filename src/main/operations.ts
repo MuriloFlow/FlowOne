@@ -56,6 +56,18 @@ import {
 import { SCHEDULE_TEAMS, addDaysToDate, nextSundayOf } from '../shared/schedules'
 import { canCreateStores, canEditStoreDesk, canManageFlowUsers, isFlowRole } from '../shared/roles'
 import { normalizeStoreId } from '../shared/store-scope'
+import {
+  cancelSignatureSession,
+  confirmSignatureSession,
+  createSignatureSession,
+  finishSignatureSession,
+  getSignatureSession,
+  joinSignatureSession,
+  pushSignatureStrokes,
+  type SignatureSessionView
+} from './signature-sessions'
+
+export type { SignatureSessionView }
 
 function asString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -404,6 +416,44 @@ export function registerOperationsIpc(): void {
 
     await setSundayCycle({ collaboratorId, cycle, cycleStart })
     bustOperationsCache()
+  })
+
+  handle('operations:signature-session-create', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode abrir assinaturas de pagamento.')
+    return createSignatureSession(payload, actor)
+  })
+
+  handle('operations:signature-session-get', async (payload) => {
+    await resolveActor()
+    return getSignatureSession(payload)
+  })
+
+  handle('operations:signature-session-join', async (payload) => {
+    await resolveActor()
+    return joinSignatureSession(payload)
+  })
+
+  handle('operations:signature-session-push', async (payload) => {
+    await resolveActor()
+    return pushSignatureStrokes(payload)
+  })
+
+  handle('operations:signature-session-finish', async (payload) => {
+    await resolveActor()
+    return finishSignatureSession(payload)
+  })
+
+  handle('operations:signature-session-confirm', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode confirmar assinaturas de pagamento.')
+    return confirmSignatureSession(payload)
+  })
+
+  handle('operations:signature-session-cancel', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode encerrar assinaturas de pagamento.')
+    return cancelSignatureSession(payload)
   })
 
   handle('operations:employee-delete', async (payload) => {

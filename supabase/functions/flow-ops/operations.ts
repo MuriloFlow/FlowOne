@@ -57,6 +57,7 @@ import {
 } from './sorteio.ts'
 import { listFlowUsers as loadFlowUsers, upsertFlowUser as saveFlowUser } from './users.ts'
 import { sendKobbi } from './kobbi.ts'
+import { handleSignatureOp } from './signature-sessions.ts'
 import type {
   CardMonthTotalWrite,
   CardWriteInput,
@@ -836,6 +837,34 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
 
   async kobbiSend(payload) {
     return sendKobbi(payload)
+  },
+
+  async createSignatureSession(payload) {
+    return handleSignatureOp('createSignatureSession', payload)
+  },
+
+  async joinSignatureSession(payload) {
+    return handleSignatureOp('joinSignatureSession', payload)
+  },
+
+  async getSignatureSession(payload) {
+    return handleSignatureOp('getSignatureSession', payload)
+  },
+
+  async pushSignatureStrokes(payload) {
+    return handleSignatureOp('pushSignatureStrokes', payload)
+  },
+
+  async finishSignatureSession(payload) {
+    return handleSignatureOp('finishSignatureSession', payload)
+  },
+
+  async confirmSignatureSession(payload) {
+    return handleSignatureOp('confirmSignatureSession', payload)
+  },
+
+  async cancelSignatureSession(payload) {
+    return handleSignatureOp('cancelSignatureSession', payload)
   }
 }
 

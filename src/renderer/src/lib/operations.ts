@@ -41,6 +41,20 @@ export function operations(): OperationsApi {
     updateEmployee: (input) => api.updateEmployee(input),
     setSundayCycle: (input) =>
       invokeOperation('setSundayCycle', 'operations:sunday-cycle-set', input),
+    createSignatureSession: (input) =>
+      invokeOperation('createSignatureSession', 'operations:signature-session-create', input),
+    getSignatureSession: (input) =>
+      invokeOperation('getSignatureSession', 'operations:signature-session-get', input),
+    joinSignatureSession: (input) =>
+      invokeOperation('joinSignatureSession', 'operations:signature-session-join', input),
+    pushSignatureStrokes: (input) =>
+      invokeOperation('pushSignatureStrokes', 'operations:signature-session-push', input),
+    finishSignatureSession: (input) =>
+      invokeOperation('finishSignatureSession', 'operations:signature-session-finish', input),
+    confirmSignatureSession: (input) =>
+      invokeOperation('confirmSignatureSession', 'operations:signature-session-confirm', input),
+    cancelSignatureSession: (input) =>
+      invokeOperation('cancelSignatureSession', 'operations:signature-session-cancel', input),
     deleteEmployee: (id, storeId) =>
       api.deleteEmployee(id, storeId === undefined ? getCurrentStoreId() : storeId),
     getStorePreference: () => api.getStorePreference(),

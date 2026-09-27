@@ -317,6 +317,28 @@ export type SundayCycleWrite = {
   position: 'FIRST' | 'SECOND' | null
 }
 
+export type SignatureStrokePoint = { x: number; y: number; m?: 1 }
+
+export type SignatureSessionStatus =
+  | 'waiting'
+  | 'linked'
+  | 'signed'
+  | 'confirmed'
+  | 'cancelled'
+  | 'expired'
+
+export type SignatureSessionView = {
+  id: string
+  code: string
+  status: SignatureSessionStatus
+  ownerToken: string | null
+  collaboratorName: string | null
+  amountCents: number | null
+  aspect: number
+  strokes: SignatureStrokePoint[]
+  expiresAt: string
+}
+
 export type EmployeeDocument = {
   collaboratorId: string
   rgImage: string | null
@@ -401,6 +423,23 @@ export type OperationsApi = {
   createEmployee: (input: CreateEmployeeInput) => Promise<EmployeeListItem>
   updateEmployee: (input: UpdateEmployeeInput) => Promise<EmployeeListItem>
   setSundayCycle: (input: import('./operations').SundayCycleWrite) => Promise<void>
+  createSignatureSession: (input: {
+    storeId?: string | null
+    collaboratorId?: string | null
+    collaboratorName?: string | null
+    amountCents?: number | null
+    aspect?: number
+  }) => Promise<import('./operations').SignatureSessionView>
+  getSignatureSession: (input: { code?: string | null; ownerToken?: string | null }) => Promise<import('./operations').SignatureSessionView>
+  joinSignatureSession: (input: { code: string }) => Promise<import('./operations').SignatureSessionView>
+  pushSignatureStrokes: (input: {
+    code: string
+    strokes?: import('./operations').SignatureStrokePoint[]
+    reset?: boolean
+  }) => Promise<import('./operations').SignatureSessionView>
+  finishSignatureSession: (input: { code: string }) => Promise<import('./operations').SignatureSessionView>
+  confirmSignatureSession: (input: { ownerToken?: string | null; code?: string | null }) => Promise<import('./operations').SignatureSessionView>
+  cancelSignatureSession: (input: { ownerToken?: string | null; code?: string | null }) => Promise<import('./operations').SignatureSessionView | null>
   deleteEmployee: (id: string, storeId?: string | null) => Promise<void>
   getStorePreference: () => Promise<string | null>
   setStorePreference: (storeId: string | null) => Promise<void>

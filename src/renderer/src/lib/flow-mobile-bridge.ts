@@ -83,6 +83,13 @@ function createOperations(prefs: Prefs): OperationsApi {
     createEmployee: (input) => callOp('createEmployee', input),
     updateEmployee: (input) => callOp('updateEmployee', input),
     setSundayCycle: (input) => callOp('setSundayCycle', input),
+    createSignatureSession: (input) => callOp('createSignatureSession', input),
+    getSignatureSession: (input) => callOp('getSignatureSession', input),
+    joinSignatureSession: (input) => callOp('joinSignatureSession', input),
+    pushSignatureStrokes: (input) => callOp('pushSignatureStrokes', input),
+    finishSignatureSession: (input) => callOp('finishSignatureSession', input),
+    confirmSignatureSession: (input) => callOp('confirmSignatureSession', input),
+    cancelSignatureSession: (input) => callOp('cancelSignatureSession', input),
     deleteEmployee: (id, storeId) => callOp('deleteEmployee', withStore(storeId, { id })),
     getStorePreference: async () => normalizeStoreId((await prefs.get({ key: STORE_KEY })).value),
     setStorePreference: async (storeId) => {
