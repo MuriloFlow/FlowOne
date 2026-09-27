@@ -15,6 +15,9 @@ const REPO = 'FlowOne'
 const MANIFEST_URL = `https://github.com/${OWNER}/${REPO}/releases/latest/download/latest-mobile.yml`
 const RELEASES_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=20`
 const LAST_KEY = 'flow.mobile.applied-version'
+// Direto: o zip mais recente sem passar pela API do GitHub (que tem limite
+// anônimo de 60 req/h e derrubava a checagem com o polling).
+const LATEST_ZIP_URL = `https://github.com/${OWNER}/${REPO}/releases/latest/download/mobile-www.zip`
 
 function stripBom(text: string): string {
   return text.replace(/^\uFEFF/, '')
@@ -83,6 +86,16 @@ async function nativeGet(url: string, accept?: string): Promise<string> {
 }
 
 async function latestMobileManifest(): Promise<MobileManifest | null> {
+  // 1º caminho (rápido, sem API): o latest-mobile.yml do release vigente.
+  // /releases/latest/download/ segue redirect e não conta no rate limit.
+  try {
+    const fromYml = parseYml(await nativeGet(MANIFEST_URL))
+    if (fromYml?.url) return fromYml
+  } catch (error) {
+    console.warn('[live-update] manifest', error)
+  }
+
+  // 2º caminho: API de releases (quando o yml falha).
   try {
     const releases = JSON.parse(await nativeGet(RELEASES_URL, 'application/vnd.github+json')) as GithubRelease[]
     for (const release of releases) {
@@ -109,29 +122,16 @@ async function latestMobileManifest(): Promise<MobileManifest | null> {
     console.warn('[live-update] github api', error)
   }
 
+  // 3º caminho: baixa o zip direto e descobre a versão depois (não usado
+  // para decidir, só como último recurso com versão desconhecida).
   try {
-    const fromYml = parseYml(await nativeGet(MANIFEST_URL))
-    if (fromYml?.url) return fromYml
-  } catch (error) {
-    console.warn('[live-update] manifest', error)
-  }
-
-  try {
-    const xml = await nativeGet(`https://github.com/${OWNER}/${REPO}/releases.atom`, 'application/atom+xml')
-    const tags = [...xml.matchAll(/releases\/tag\/(v[0-9.]+)/g)].map((match) => match[1])
-    const unique = [...new Set(tags)].slice(0, 8)
-    for (const tag of unique) {
-      try {
-        const parsed = parseYml(
-          await nativeGet(`https://github.com/${OWNER}/${REPO}/releases/download/${tag}/latest-mobile.yml`)
-        )
-        if (parsed?.url) return parsed
-      } catch {
-        /* release sem OTA */
-      }
+    const probe = await nativeGet(LATEST_ZIP_URL, 'application/zip')
+    if (probe && probe.length > 0) {
+      // Sem versão confiável, deixa os outros caminhos decidirem depois.
+      console.warn('[live-update] zip direto alcançável, mas sem versão — aguardando yml')
     }
-  } catch (error) {
-    console.warn('[live-update] atom', error)
+  } catch {
+    /* sem rede */
   }
 
   return null
@@ -172,9 +172,10 @@ let applying = false
 // Uma tentativa que falha não pode travar as próximas por 15 minutos e não
 // pode disparar downloads repetidos em milessimos: guardamos a última
 // tentativa com resultado.
-const ATTEMPT_COOLDOWN_MS = 5 * 60 * 1000
+const ATTEMPT_COOLDOWN_MS = 60 * 1000
 let lastAttemptAt = 0
 let lastFailureAt = 0
+let pendingReload = false
 
 async function downloadAndApply(manifest: MobileManifest): Promise<void> {
   if (applying) return
@@ -191,7 +192,18 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
     } catch {
       /* segue */
     }
+    // next() sóagenda o bundle: ele entra na PRÓXIMA inicialização. Para o
+    // usuário não precisar fechar e abrir o app, recarregamos na hora —
+    // é isso que fazia "não aparecer a notificação/atualização".
     await CapacitorUpdater.next({ id: bundle.id })
+    pendingReload = true
+    window.setTimeout(() => {
+      try {
+        (window.location as unknown as { reload: () => void }).reload()
+      } catch {
+        /* alguns WebViews recusam; o update aplica no próximo open */
+      }
+    }, 1200)
   } catch (error) {
     lastFailureAt = Date.now()
     console.warn('[live-update] apply', error)
@@ -227,6 +239,7 @@ async function resetIfRolledBack(manifest: MobileManifest): Promise<void> {
 }
 
 async function checkAndApply(): Promise<void> {
+  if (pendingReload) return
   const now = Date.now()
   if (now - lastAttemptAt < ATTEMPT_COOLDOWN_MS) return
   if (now - lastFailureAt < ATTEMPT_COOLDOWN_MS) return
@@ -279,5 +292,5 @@ export async function runSilentUpdate(): Promise<void> {
 
   window.setInterval(() => {
     void checkAndApply()
-  }, 30_000)
+  }, 90_000)
 }

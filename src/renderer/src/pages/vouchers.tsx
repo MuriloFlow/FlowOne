@@ -268,8 +268,8 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
 
   return (
     <div className="flex flex-col">
-      <header className="mb-6 flex items-start justify-between gap-4">
-        <div>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
         <h1 className="text-[22px] text-[#F0EFEC]/88">Vales e pagamentos</h1>
         <p className="mt-1 text-[13px] text-[#F0EFEC]/38">
           {storeId
@@ -285,7 +285,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
           ) : null}
         </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex max-w-full shrink-0 items-center gap-2">
           <SignatureLinkButton />
           <button
             type="button"

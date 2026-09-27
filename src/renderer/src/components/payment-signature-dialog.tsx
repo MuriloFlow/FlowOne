@@ -589,10 +589,17 @@ function DesktopSignatureContent({
 }
 
 /* ================================================================== */
-/* Botão do header (desktop) — conectar/gerenciar o vínculo 24h        */
+/* Botão do header (só desktop) — conectar/gerenciar o vínculo 24h     */
+/* No celular NÃO renderiza: o modo assinatura lá é o host fullscreen.  */
 /* ================================================================== */
 
 export function SignatureLinkButton() {
+  const mobile = isMobileShell()
+  if (mobile) return null
+  return <SignatureLinkButtonDesktop />
+}
+
+function SignatureLinkButtonDesktop() {
   const [link, setLocalLink] = useState<SignatureLink | null>(() => getSignatureLink('pc'))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
