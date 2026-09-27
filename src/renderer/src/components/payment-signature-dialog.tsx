@@ -601,69 +601,89 @@ export function SignatureLinkButton() {
 
 function SignatureLinkButtonDesktop() {
   const [link, setLocalLink] = useState<SignatureLink | null>(() => getSignatureLink('pc'))
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
-  const [pendingCode, setPendingCode] = useState<string | null>(null)
   const [justLinked, setJustLinked] = useState(false)
+  const [codeInput, setCodeInput] = useState('')
+  const [connecting, setConnecting] = useState(false)
 
   useEffect(() => subscribeSignatureLink(() => setLocalLink(getSignatureLink('pc'))), [])
 
-  // Painel de pareamento: mostra o código e detecta quando o celular entrar.
+  // Pareamento invertido (celular GERA, PC INSERE): enquanto o painel está
+  // aberto com um código digitado, esperamos o celular aceitar o vínculo —
+  // quando a sessão vira 'linked', o PC salva o mesmo código de 24h.
   useEffect(() => {
-    if (!panelOpen || !pendingCode) return
+    if (!panelOpen || justLinked || link) return
+    const code = codeInput.replace(/\D/g, '')
+    if (code.length !== 4) return
     let stopped = false
     const timer = window.setInterval(async () => {
       if (stopped) return
       try {
-        const session = await operations().getSignatureSession({ code: pendingCode })
+        const session = await operations().getSignatureSession({ code })
         if (stopped) return
-        if (session.status === 'linked') {
-          stopped = true
-          setPendingCode(null)
-          setJustLinked(true)
-          window.setTimeout(() => {
-            setPanelOpen(false)
-            setJustLinked(false)
-          }, 2000)
+        if (session.status === 'linked' || session.status === 'waiting') {
+          // O celular já entrou (join vira linked). Salva o vínculo no PC.
+          if (session.status === 'linked') {
+            stopped = true
+            setSignatureLink('pc', session.code)
+            setLocalLink(getSignatureLink('pc'))
+            setCodeInput('')
+            setJustLinked(true)
+            window.setTimeout(() => {
+              setPanelOpen(false)
+              setJustLinked(false)
+            }, 2000)
+          }
         } else if (session.status === 'expired' || session.status === 'cancelled') {
           stopped = true
-          setPendingCode(null)
-          setError('O código expirou. Gere outro.')
-          clearSignatureLink('pc', pendingCode)
+          setError('Esse código expirou. Peça outro no celular.')
+          setCodeInput('')
         }
       } catch {
-        // rede
+        // rede: tenta no próximo tick
       }
-    }, 900)
+    }, 800)
     return () => {
       stopped = true
       window.clearInterval(timer)
     }
-  }, [panelOpen, pendingCode])
+  }, [panelOpen, justLinked, link, codeInput])
 
-  async function toggle(): Promise<void> {
+  async function submitCode(): Promise<void> {
+    const code = codeInput.replace(/\D/g, '')
+    if (code.length !== 4) {
+      setError('Digite o código de 4 dígitos que aparece no celular.')
+      return
+    }
+    setConnecting(true)
+    setError(null)
+    try {
+      // Valida na hora: join do PC confirma o pareamento e estende 24h.
+      const session = await operations().joinSignatureSession({ code })
+      setSignatureLink('pc', session.code)
+      setLocalLink(getSignatureLink('pc'))
+      setCodeInput('')
+      setJustLinked(true)
+      window.setTimeout(() => {
+        setPanelOpen(false)
+        setJustLinked(false)
+      }, 2000)
+    } catch (joinError) {
+      setError(operationError(joinError))
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  function toggle(): void {
     if (panelOpen) {
       setPanelOpen(false)
       return
     }
-    if (link) {
-      setPanelOpen(true)
-      return
-    }
-    setBusy(true)
     setError(null)
-    try {
-      const session = await operations().createSignatureSession({ aspect: 2.2 })
-      setSignatureLink('pc', session.code)
-      setLocalLink(getSignatureLink('pc'))
-      setPendingCode(session.code)
-      setPanelOpen(true)
-    } catch (connectError) {
-      setError(operationError(connectError))
-    } finally {
-      setBusy(false)
-    }
+    setCodeInput('')
+    setPanelOpen(true)
   }
 
   function unlink(): void {
@@ -678,8 +698,7 @@ function SignatureLinkButtonDesktop() {
     <span className="relative inline-flex">
       <button
         type="button"
-        onClick={() => void toggle()}
-        disabled={busy}
+        onClick={toggle}
         title={
           link
             ? `Celular vinculado (${hoursLeft(link.expiresAt)}h restantes).`
@@ -689,12 +708,12 @@ function SignatureLinkButtonDesktop() {
           ? 'inline-flex h-9 items-center gap-2 rounded-[9px] border border-[#34D399]/25 bg-[#34D399]/10 px-3 text-[12px] font-medium text-[#34D399] transition-colors'
           : 'inline-flex h-9 items-center gap-2 rounded-[9px] border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-medium text-[#F0EFEC]/70 transition-colors hover:text-[#F0EFEC]'}
       >
-        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Smartphone className="size-3.5" />}
+        <Smartphone className="size-3.5" />
         {link ? `Celular · ${hoursLeft(link.expiresAt)}h` : 'Assinatura digital'}
       </button>
 
       {panelOpen ? (
-        <div className="absolute top-full right-0 z-[500] mt-2 w-[248px] rounded-[14px] border border-white/[0.08] bg-[#1A1A1A] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.6)]">
+        <div className="absolute top-full right-0 z-[500] mt-2 w-[260px] rounded-[14px] border border-white/[0.08] bg-[#1A1A1A] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.6)]">
           {justLinked ? (
             <div className="flex flex-col items-center gap-2 py-2 text-center">
               <span className="grid size-9 place-items-center rounded-full bg-[#34D399]/12 text-[#34D399]">
@@ -703,17 +722,43 @@ function SignatureLinkButtonDesktop() {
               <p className="text-[13px] font-medium text-[#34D399]">Celular conectado!</p>
               <p className="text-[11px] text-[#F0EFEC]/40">Válido por 24h.</p>
             </div>
-          ) : pendingCode ? (
-            <div className="flex flex-col items-center gap-2 text-center">
-              <p className="text-[12px] text-[#F0EFEC]/55">Digite no celular o código:</p>
-              <p className="text-[30px] leading-none font-semibold tracking-[0.3em] text-[#F0EFEC] tabular-nums">
-                {pendingCode}
+          ) : !link ? (
+            <div className="flex flex-col gap-2.5">
+              <p className="text-[12px] leading-relaxed text-[#F0EFEC]/55">
+                Abra o app no celular e toque em <span className="text-[#F0EFEC]/85">Assinatura digital</span>.
+                Digite aqui o código de 4 dígitos que aparecer lá.
               </p>
-              <div className="mt-1 flex items-center gap-2 text-[11px] text-[#F0EFEC]/38">
-                <Loader2 className="size-3 animate-spin" /> Aguardando o celular…
+              <div className="flex items-center gap-2">
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={4}
+                  value={codeInput}
+                  onChange={(event) => {
+                    const digits = event.target.value.replace(/\D/g, '').slice(0, 4)
+                    setCodeInput(digits)
+                    setError(null)
+                    if (digits.length === 4) void submitCode()
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void submitCode()
+                  }}
+                  placeholder="0000"
+                  className="h-11 flex-1 rounded-[10px] border border-white/[0.09] bg-white/[0.03] text-center text-[20px] font-semibold tracking-[0.35em] text-[#F0EFEC] outline-none placeholder:text-[#F0EFEC]/18 focus:border-[#F0EFEC]/25"
+                />
+                <button
+                  type="button"
+                  disabled={connecting || codeInput.replace(/\D/g, '').length !== 4}
+                  onClick={() => void submitCode()}
+                  className="inline-flex h-11 items-center rounded-[10px] bg-[#F0EFEC] px-3.5 text-[12px] font-medium text-[#111] disabled:opacity-40"
+                >
+                  {connecting ? <Loader2 className="size-4 animate-spin" /> : 'Conectar'}
+                </button>
               </div>
+              {error ? <p className="text-[11px] text-red-300/85">{error}</p> : null}
             </div>
-          ) : link ? (
+          ) : (
             <div className="flex flex-col items-center gap-2.5 text-center">
               <span className="grid size-9 place-items-center rounded-full bg-[#34D399]/12 text-[#34D399]">
                 <Smartphone className="size-5" strokeWidth={1.8} />
@@ -730,7 +775,7 @@ function SignatureLinkButtonDesktop() {
                 Desvincular
               </button>
             </div>
-          ) : null}
+          )}
         </div>
       ) : null}
 
@@ -760,28 +805,56 @@ function MobilePairScreen({
   onClose: () => void
   onUnlink: () => void
 }) {
-  const [codeInput, setCodeInput] = useState('')
+  const [code, setCode] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [connecting, setConnecting] = useState(false)
+  const [creating, setCreating] = useState(false)
 
-  async function connect(): Promise<void> {
-    const code = codeInput.replace(/\D/g, '')
-    if (code.length !== 4) {
-      setError('Digite o código de 4 dígitos do computador.')
-      return
-    }
-    setConnecting(true)
+  // O CELULAR gera e exibe o código; o PC é quem insere. A sessão nasce
+  // 'waiting' e o PC faz join com esse código para vincular (24h).
+  const createSession = useCallback(async () => {
+    setCreating(true)
     setError(null)
     try {
-      const session = await operations().joinSignatureSession({ code })
-      setSignatureLink('phone', session.code)
-      onPaired(session.code)
-    } catch (joinError) {
-      setError(operationError(joinError))
+      const session = await operations().createSignatureSession({ aspect: 2.2 })
+      setCode(session.code)
+    } catch (createError) {
+      setError(operationError(createError))
     } finally {
-      setConnecting(false)
+      setCreating(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    void createSession()
+  }, [createSession])
+
+  // Quando o PC fizer join (status → linked), salva o vínculo no celular.
+  useEffect(() => {
+    if (!code) return
+    let stopped = false
+    const timer = window.setInterval(async () => {
+      if (stopped) return
+      try {
+        const session = await operations().getSignatureSession({ code })
+        if (stopped) return
+        if (session.status === 'linked') {
+          stopped = true
+          setSignatureLink('phone', code)
+          onPaired(code)
+        } else if (session.status === 'cancelled' || session.status === 'expired') {
+          stopped = true
+          setError('O computador cancelou. Toque para gerar outro código.')
+          setCode(null)
+        }
+      } catch {
+        // rede: tenta no próximo tick
+      }
+    }, 900)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+    }
+  }, [code, onPaired])
 
   return (
     <div className="flex h-full flex-col">
@@ -801,36 +874,31 @@ function MobilePairScreen({
           <Smartphone className="size-7" strokeWidth={1.6} />
         </div>
         <p className="max-w-xs text-[13px] leading-relaxed text-[#F0EFEC]/50">
-          No computador, clique em <span className="text-[#F0EFEC]/80">Assinatura digital</span> ao lado do
-          Histórico. Digite aqui o código que aparecer.
+          No computador, clique em <span className="text-[#F0EFEC]/80">Assinatura digital</span> e digite
+          este código:
         </p>
-        <div className="flex w-full max-w-[300px] items-center gap-2">
-          <input
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={4}
-            value={codeInput}
-            onChange={(event) => {
-              const digits = event.target.value.replace(/\D/g, '').slice(0, 4)
-              setCodeInput(digits)
-              if (digits.length === 4) void connect()
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void connect()
-            }}
-            placeholder="0000"
-            className="h-12 flex-1 rounded-[10px] border border-white/[0.09] bg-white/[0.03] text-center text-[24px] font-semibold tracking-[0.4em] text-[#F0EFEC] outline-none placeholder:text-[#F0EFEC]/18 focus:border-[#F0EFEC]/25"
-          />
-          <button
-            type="button"
-            disabled={connecting || codeInput.replace(/\D/g, '').length !== 4}
-            onClick={() => void connect()}
-            className="inline-flex h-12 items-center rounded-[10px] bg-[#F0EFEC] px-4 text-[13px] font-medium text-[#111] disabled:opacity-40"
-          >
-            {connecting ? <Loader2 className="size-4 animate-spin" /> : 'Conectar'}
-          </button>
+        {creating || !code ? (
+          <Loader2 className="size-6 animate-spin text-[#F0EFEC]/40" />
+        ) : (
+          <p className="text-[56px] leading-none font-semibold tracking-[0.3em] text-[#F0EFEC] tabular-nums">
+            {code}
+          </p>
+        )}
+        <div className="flex items-center gap-2 text-[12px] text-[#F0EFEC]/38">
+          <Loader2 className="size-3.5 animate-spin" /> Aguardando o computador conectar…
         </div>
-        {error ? <p className="text-[12px] text-red-300/85">{error}</p> : null}
+        {error ? (
+          <>
+            <p className="text-[12px] text-red-300/85">{error}</p>
+            <button
+              type="button"
+              onClick={() => void createSession()}
+              className="inline-flex h-10 items-center rounded-[10px] bg-[#F0EFEC] px-4 text-[13px] font-medium text-[#111]"
+            >
+              Gerar novo código
+            </button>
+          </>
+        ) : null}
         {link ? (
           <button
             type="button"

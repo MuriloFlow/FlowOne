@@ -1,7 +1,7 @@
 {
   "name": "flow-mobile",
   "private": true,
-  "version": "1.4.4",
+  "version": "1.4.5",
   "type": "module",
   "description": "FLOW — aplicativo móvel de gestão e operações",
   "scripts": {
