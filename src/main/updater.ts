@@ -3,8 +3,8 @@ import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import type { UpdateStatus } from '../shared/ipc'
 
-const CHECK_EVERY_MS = 4_000
-const FOCUS_DEBOUNCE_MS = 600
+const CHECK_EVERY_MS = 60_000
+const FOCUS_DEBOUNCE_MS = 30_000
 const RETRY_DELAYS_MS = [1_500, 3_000, 8_000]
 const BACKGROUND_IDLE_EXIT_MS = 12_000
 const GITHUB_TIMEOUT_MS = 8_000
@@ -101,7 +101,10 @@ function bindCloseToInstall(window: BrowserWindow): void {
   if (closeBound) return
   closeBound = true
   window.on('close', (event) => {
-    if (currentStatus.state !== 'ready') return
+    // Fechou o app com atualização pronta (ou ainda baixando): instala e
+    // reinicia por conta própria. Na próxima abertura já sobe atualizado —
+    // o usuário nunca precisa clicar em “atualizar”.
+    if (currentStatus.state !== 'ready' && currentStatus.state !== 'downloading') return
     event.preventDefault()
     installReadyUpdate()
   })
@@ -316,6 +319,14 @@ function startUpdater(background: boolean): void {
 /** Inicia o download sem criar BrowserWindow; usado apenas pelo auto-start do Windows. */
 export function startBackgroundUpdater(): void {
   startUpdater(true)
+}
+
+/** true quando há atualização pronta para aplicar (instalou e vai reabrir). */
+export function installPendingUpdateOnQuit(): boolean {
+  if (currentStatus.state !== 'ready') return false
+  currentStatus = { state: 'idle' }
+  autoUpdater.quitAndInstall(true, false)
+  return true
 }
 
 export function registerUpdater(window: BrowserWindow): void {

@@ -589,8 +589,9 @@ function DesktopSignatureContent({
 }
 
 /* ================================================================== */
-/* Botão do header (só desktop) — conectar/gerenciar o vínculo 24h     */
-/* No celular NÃO renderiza: o modo assinatura lá é o host fullscreen.  */
+/* Botão do header + MODAL de vínculo (só desktop). O celular GERA o    */
+/* código; aqui o PC INSERE. Nada de painel dropdown que corta na       */
+/* borda da janela — agora é um Dialog central de verdade.              */
 /* ================================================================== */
 
 export function SignatureLinkButton() {
@@ -602,18 +603,18 @@ export function SignatureLinkButton() {
 function SignatureLinkButtonDesktop() {
   const [link, setLocalLink] = useState<SignatureLink | null>(() => getSignatureLink('pc'))
   const [error, setError] = useState<string | null>(null)
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
   const [justLinked, setJustLinked] = useState(false)
   const [codeInput, setCodeInput] = useState('')
   const [connecting, setConnecting] = useState(false)
 
   useEffect(() => subscribeSignatureLink(() => setLocalLink(getSignatureLink('pc'))), [])
 
-  // Pareamento invertido (celular GERA, PC INSERE): enquanto o painel está
+  // Pareamento invertido (celular GERA, PC INSERE): enquanto o modal está
   // aberto com um código digitado, esperamos o celular aceitar o vínculo —
   // quando a sessão vira 'linked', o PC salva o mesmo código de 24h.
   useEffect(() => {
-    if (!panelOpen || justLinked || link) return
+    if (!modalOpen || justLinked || link) return
     const code = codeInput.replace(/\D/g, '')
     if (code.length !== 4) return
     let stopped = false
@@ -631,7 +632,7 @@ function SignatureLinkButtonDesktop() {
             setCodeInput('')
             setJustLinked(true)
             window.setTimeout(() => {
-              setPanelOpen(false)
+              setModalOpen(false)
               setJustLinked(false)
             }, 2000)
           }
@@ -648,7 +649,7 @@ function SignatureLinkButtonDesktop() {
       stopped = true
       window.clearInterval(timer)
     }
-  }, [panelOpen, justLinked, link, codeInput])
+  }, [modalOpen, justLinked, link, codeInput])
 
   async function submitCode(): Promise<void> {
     const code = codeInput.replace(/\D/g, '')
@@ -666,7 +667,7 @@ function SignatureLinkButtonDesktop() {
       setCodeInput('')
       setJustLinked(true)
       window.setTimeout(() => {
-        setPanelOpen(false)
+        setModalOpen(false)
         setJustLinked(false)
       }, 2000)
     } catch (joinError) {
@@ -676,14 +677,10 @@ function SignatureLinkButtonDesktop() {
     }
   }
 
-  function toggle(): void {
-    if (panelOpen) {
-      setPanelOpen(false)
-      return
-    }
+  function openModal(): void {
     setError(null)
     setCodeInput('')
-    setPanelOpen(true)
+    setModalOpen(true)
   }
 
   function unlink(): void {
@@ -691,17 +688,17 @@ function SignatureLinkButtonDesktop() {
     if (code) void operations().cancelSignatureSession({ code }).catch(() => undefined)
     clearSignatureLink('pc')
     setLocalLink(null)
-    setPanelOpen(false)
+    setModalOpen(false)
   }
 
   return (
-    <span className="relative inline-flex">
+    <>
       <button
         type="button"
-        onClick={toggle}
+        onClick={openModal}
         title={
           link
-            ? `Celular vinculado (${hoursLeft(link.expiresAt)}h restantes).`
+            ? `Celular vinculado (${hoursLeft(link.expiresAt)}h restantes). Clique para gerenciar.`
             : 'Vincular o celular para assinar digitalmente (dura 24h).'
         }
         className={link
@@ -709,25 +706,48 @@ function SignatureLinkButtonDesktop() {
           : 'inline-flex h-9 items-center gap-2 rounded-[9px] border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-medium text-[#F0EFEC]/70 transition-colors hover:text-[#F0EFEC]'}
       >
         <Smartphone className="size-3.5" />
-        {link ? `Celular · ${hoursLeft(link.expiresAt)}h` : 'Assinatura digital'}
+        {link ? `Vinculado · ${hoursLeft(link.expiresAt)}h` : 'Assinatura digital'}
       </button>
 
-      {panelOpen ? (
-        <div className="absolute top-full right-0 z-[500] mt-2 w-[260px] rounded-[14px] border border-white/[0.08] bg-[#1A1A1A] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.6)]">
+      <Dialog
+        open={modalOpen}
+        title="Assinatura digital"
+        description={
+          link
+            ? 'Celular vinculado — todo pagamento aberto no PC abre a assinatura direto no aparelho.'
+            : 'Abra o app no celular, toque em Assinatura digital e digite aqui o código de 4 dígitos.'
+        }
+        onClose={() => setModalOpen(false)}
+      >
+        <div className="px-5 pb-5">
           {justLinked ? (
-            <div className="flex flex-col items-center gap-2 py-2 text-center">
-              <span className="grid size-9 place-items-center rounded-full bg-[#34D399]/12 text-[#34D399]">
-                <Check className="size-5" strokeWidth={2.5} />
+            <div className="flex flex-col items-center gap-2.5 py-6 text-center">
+              <span className="grid size-11 place-items-center rounded-full bg-[#34D399]/12 text-[#34D399]">
+                <Check className="size-6" strokeWidth={2.5} />
               </span>
-              <p className="text-[13px] font-medium text-[#34D399]">Celular conectado!</p>
-              <p className="text-[11px] text-[#F0EFEC]/40">Válido por 24h.</p>
+              <p className="text-[14px] font-medium text-[#34D399]">Celular conectado!</p>
+              <p className="text-[12px] text-[#F0EFEC]/45">Vínculo válido por 24 horas.</p>
             </div>
-          ) : !link ? (
-            <div className="flex flex-col gap-2.5">
-              <p className="text-[12px] leading-relaxed text-[#F0EFEC]/55">
-                Abra o app no celular e toque em <span className="text-[#F0EFEC]/85">Assinatura digital</span>.
-                Digite aqui o código de 4 dígitos que aparecer lá.
+          ) : link ? (
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <span className="grid size-11 place-items-center rounded-full bg-[#34D399]/12 text-[#34D399]">
+                <Smartphone className="size-6" strokeWidth={1.8} />
+              </span>
+              <p className="text-[14px] font-medium text-[#F0EFEC]/88">Celular vinculado</p>
+              <p className="max-w-xs text-[12px] leading-relaxed text-[#F0EFEC]/45">
+                Ao clicar em Pendente → Pago no PC, a tela de assinatura abre no celular na hora.
+                Restam {hoursLeft(link.expiresAt)}h de vínculo.
               </p>
+              <button
+                type="button"
+                onClick={unlink}
+                className="mt-1 h-9 rounded-[9px] border border-red-500/25 px-4 text-[12px] font-medium text-red-300/90 hover:bg-red-500/10"
+              >
+                Desvincular
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <input
                   inputMode="numeric"
@@ -745,46 +765,26 @@ function SignatureLinkButtonDesktop() {
                     if (event.key === 'Enter') void submitCode()
                   }}
                   placeholder="0000"
-                  className="h-11 flex-1 rounded-[10px] border border-white/[0.09] bg-white/[0.03] text-center text-[20px] font-semibold tracking-[0.35em] text-[#F0EFEC] outline-none placeholder:text-[#F0EFEC]/18 focus:border-[#F0EFEC]/25"
+                  className="h-14 flex-1 rounded-[12px] border border-white/[0.09] bg-white/[0.03] text-center text-[26px] font-semibold tracking-[0.35em] text-[#F0EFEC] outline-none placeholder:text-[#F0EFEC]/18 focus:border-[#F0EFEC]/25"
                 />
                 <button
                   type="button"
                   disabled={connecting || codeInput.replace(/\D/g, '').length !== 4}
                   onClick={() => void submitCode()}
-                  className="inline-flex h-11 items-center rounded-[10px] bg-[#F0EFEC] px-3.5 text-[12px] font-medium text-[#111] disabled:opacity-40"
+                  className="inline-flex h-14 items-center gap-2 rounded-[12px] bg-[#F0EFEC] px-4 text-[13px] font-medium text-[#111] disabled:opacity-40"
                 >
-                  {connecting ? <Loader2 className="size-4 animate-spin" /> : 'Conectar'}
+                  {connecting ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />} Conectar
                 </button>
               </div>
-              {error ? <p className="text-[11px] text-red-300/85">{error}</p> : null}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2.5 text-center">
-              <span className="grid size-9 place-items-center rounded-full bg-[#34D399]/12 text-[#34D399]">
-                <Smartphone className="size-5" strokeWidth={1.8} />
-              </span>
-              <p className="text-[13px] font-medium text-[#F0EFEC]/85">Celular vinculado</p>
-              <p className="text-[11px] text-[#F0EFEC]/40">
-                Pagamentos abrem a assinatura direto no aparelho. Restam {hoursLeft(link.expiresAt)}h.
+              {error ? <p className="text-[12px] text-red-300/85">{error}</p> : null}
+              <p className="text-center text-[11px] text-[#F0EFEC]/30">
+                O vínculo dura 24h — sem parear de novo a cada pagamento.
               </p>
-              <button
-                type="button"
-                onClick={unlink}
-                className="mt-1 h-8 rounded-[8px] border border-red-500/20 px-3 text-[12px] text-red-300/85 hover:bg-red-500/10"
-              >
-                Desvincular
-              </button>
             </div>
           )}
         </div>
-      ) : null}
-
-      {error && !panelOpen ? (
-        <span className="absolute top-full right-0 z-50 mt-1 rounded-[8px] border border-red-500/20 bg-[#1A1A1A] px-2 py-1 text-[11px] whitespace-nowrap text-red-300/85">
-          {error}
-        </span>
-      ) : null}
-    </span>
+      </Dialog>
+    </>
   )
 }
 
@@ -1138,7 +1138,34 @@ function MobileDrawScreen({
  * Host global do celular (montado fora do Shell). Pareia uma vez e fica
  * armado por 24h: sempre que o PC "toa" a sessão (novo pagamento), a tela
  * branca de assinatura abre sozinha — inclusive com o app em segundo plano.
+ *
+ * O botão "Assinatura digital" da aba de vales abre este MESMO host em modo
+ * pareamento (via evento), para não existirem dois hosts conflitando.
  */
+const OPEN_PAIR_EVENT = 'flow-signature-open-pair'
+
+/** Botão do header mobile: abre a tela do código de 4 dígitos. */
+export function SignatureMobilePairButton() {
+  if (!isMobileShell()) return null
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        try {
+          window.dispatchEvent(new Event(OPEN_PAIR_EVENT))
+        } catch {
+          /* ignore */
+        }
+      }}
+      title="Vincular este celular ao computador para assinar digitalmente"
+      className="inline-flex h-9 items-center gap-2 rounded-[9px] border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-medium text-[#F0EFEC]/70 transition-colors hover:text-[#F0EFEC]"
+    >
+      <Smartphone className="size-3.5" />
+      Assinatura digital
+    </button>
+  )
+}
+
 export function SignatureMobileHost() {
   const [phase, setPhase] = useState<MobilePhase>('idle')
   const [link, setLocalLink] = useState<SignatureLink | null>(() => getSignatureLink('phone'))
@@ -1149,6 +1176,13 @@ export function SignatureMobileHost() {
   useEffect(() => subscribeSignatureLink(() => setLocalLink(getSignatureLink('phone'))), [])
 
   const closeAll = useCallback(() => setPhase('idle'), [])
+
+  // Botão "Assinatura digital" da aba de vales: abre o pareamento neste host.
+  useEffect(() => {
+    const open = () => setPhase('pair')
+    window.addEventListener(OPEN_PAIR_EVENT, open)
+    return () => window.removeEventListener(OPEN_PAIR_EVENT, open)
+  }, [])
 
   const unlink = useCallback(() => {
     const current = getSignatureLink('phone')

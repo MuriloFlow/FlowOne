@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Banknote, Bus, CheckCircle2, FileDown, History, Utensils } from 'lucide-react'
 import { AnimatedMoney } from '@/components/animated-number'
@@ -9,7 +9,7 @@ import { currentDateKey, currentMonthKey, formatBRLFromCents, formatDateTime, we
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
-import { PaymentSignatureDialog, SignatureLinkButton } from '@/components/payment-signature-dialog'
+import { PaymentSignatureDialog, SignatureLinkButton, SignatureMobilePairButton } from '@/components/payment-signature-dialog'
 import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
 import { buildVoucherReceiptsPdf, exportVoucherReceipts } from '@/lib/voucher-receipt-export'
 import { ExportSuccessSheet } from '@/components/export-success-sheet'
@@ -61,11 +61,21 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     })
   }
 
-  function rowsWithSignatures(rows: VoucherRow[]): VoucherRow[] {
-    return rows.map((row) => ({
-      ...row,
-      paymentSignature: signatureCache[row.collaboratorId] ?? null
-    }))
+  // Assinaturas vistas em tempo real: as que chegam do banco (pagas no celular
+  // ou em outro PC) entram automaticamente; o cache local tem prioridade
+  // (acabou de assinar aqui e o board pode estar um instante atrás).
+  const derivedRows = useMemo(() => {
+    if (!board) return []
+    return board.groups.flatMap((group) =>
+      group.rows.map((row) => ({
+        ...row,
+        paymentSignature: signatureCache[row.collaboratorId] ?? row.paymentSignature ?? null
+      }))
+    )
+  }, [board, signatureCache])
+
+  function rowsWithSignatures(): VoucherRow[] {
+    return derivedRows
   }
 
   async function load(): Promise<VoucherBoard> {
@@ -137,6 +147,25 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     return () => window.clearTimeout(timer)
   }, [storeId])
 
+  // Sincronia em tempo real: assinou no celular → o status PAGO e a assinatura
+  // aparecem aqui no PC sozinhos (e vice-versa), sem apertar nada.
+  useEffect(() => {
+    if (mobile) return
+    const timer = window.setInterval(() => {
+      void load().catch(() => undefined)
+    }, 6_000)
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void load().catch(() => undefined)
+    }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [mobile])
+
   function applyLocal(
     row: VoucherRow,
     next: { lunchCents?: number; transportCents?: number; status?: VoucherStatus; signature?: string }
@@ -155,7 +184,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
             transportCents,
             dayTotalCents: lunchCents + transportCents,
             status: next.status ?? item.status,
-            paymentSignature: null,
+            paymentSignature: next.status === 'PENDENTE' ? null : next.signature ?? item.paymentSignature,
             paidAt: next.status === 'PAGO' ? new Date().toISOString() : next.status === 'PENDENTE' ? null : item.paidAt
           }
         })
@@ -179,6 +208,9 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     const previousCache = signatureCache
     if (next.status === 'PENDENTE') forgetSignature(row.collaboratorId)
     else if (next.signature) rememberSignature(row.collaboratorId, next.signature)
+    else if (next.status === 'PAGO' && row.paymentSignature) {
+      rememberSignature(row.collaboratorId, row.paymentSignature)
+    }
     applyLocal(row, next)
     setBusyId(row.collaboratorId)
     try {
@@ -220,7 +252,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     if (!board) return
     setExporting(true)
     try {
-      const rows = rowsWithSignatures(board.groups.flatMap((group) => group.rows))
+      const rows = rowsWithSignatures()
       if (mobile) {
         // Mobile: gera o PDF e abre a tela de sucesso com compartilhar/baixar.
         const built = await buildVoucherReceiptsPdf(rows)
@@ -287,6 +319,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         </div>
         <div className="flex max-w-full shrink-0 items-center gap-2">
           <SignatureLinkButton />
+          <SignatureMobilePairButton />
           <button
             type="button"
             onClick={() => setHistoryOpen((open) => !open)}
@@ -303,10 +336,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
             type="button"
             disabled={
               exporting ||
-              !board?.groups.some(
-                (group) =>
-                  group.rows.some((row) => row.status === 'PAGO' && Boolean(signatureCache[row.collaboratorId]))
-              )
+              !derivedRows.some((row) => row.status === 'PAGO' && Boolean(row.paymentSignature))
             }
             onClick={() => setConfirmingExport(true)}
             className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-3 text-[12px] font-medium text-[#111] transition-opacity disabled:opacity-35"

@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron'
 import log from 'electron-log'
 import { createMainWindow, getMainWindow, registerWindowIpc } from './window'
 import { clearAuthSession, flushAuthSession, hydrateAuthSession, persistAuthSession, readAuthSession } from './session-store'
-import { registerUpdater, startBackgroundUpdater } from './updater'
+import { installPendingUpdateOnQuit, registerUpdater, startBackgroundUpdater } from './updater'
 import { loadLocalEnv } from './env'
 import { registerKobbiIpc } from './kobbi'
 import { registerOperationsIpc } from './operations'
@@ -97,7 +97,13 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  // Atualização pronta? Aplica e reabre o app já atualizado — sem o usuário
+  // precisar clicar em nada.
+  if (installPendingUpdateOnQuit()) {
+    event.preventDefault()
+    return
+  }
   void flushAuthSession()
 })
 

@@ -167,7 +167,7 @@ export async function listVoucherBoard(storeId?: string | null): Promise<Voucher
   const [{ data, error }, identities, documents] = await Promise.all([
     getFlowAdminClient()
     .from('flow_employee_vouchers')
-    .select('cardplus_collaborator_id, lunch_cents, transport_cents, status, period_key, paid_at, receipt_number'),
+    .select('cardplus_collaborator_id, lunch_cents, transport_cents, status, period_key, paid_at, receipt_number, payment_signature'),
     listIdentities(),
     listEmployeeDocuments()
   ])
@@ -195,7 +195,7 @@ export async function listVoucherBoard(storeId?: string | null): Promise<Voucher
       transportCents,
       dayTotalCents: lunchCents + transportCents,
       status: asStatus(voucher?.status ?? 'PENDENTE'),
-      paymentSignature: null,
+      paymentSignature: asStatus(voucher?.status ?? 'PENDENTE') === 'PAGO' ? voucher?.payment_signature ?? null : null,
       paidAt: voucher?.paid_at ?? null,
       receiptNumber: voucher?.receipt_number ?? null
     }
@@ -225,7 +225,7 @@ export async function upsertVoucher(
   const periodKey = voucherPeriodKey()
   const current = await getFlowAdminClient()
     .from('flow_employee_vouchers')
-    .select('lunch_cents, transport_cents, status, receipt_number, paid_at')
+    .select('lunch_cents, transport_cents, status, receipt_number, paid_at, payment_signature')
     .eq('cardplus_collaborator_id', collaboratorId)
     .maybeSingle()
 
@@ -250,12 +250,23 @@ export async function upsertVoucher(
   if (patch.status === 'PAGO' && !isVoucherSignatureDataUrl(signature ?? '')) {
     throw new Error('A assinatura do recebimento é obrigatória para finalizar o pagamento.')
   }
+  // Só PAGO persiste assinatura. Em upserts que não mexem no status, mantém a
+  // assinatura que já está no banco (o patch não a toca) — nunca zera.
+  const keepingSignature = status === 'PAGO' && !patch.status
+  const paymentSignature = status !== 'PAGO'
+    ? null
+    : isVoucherSignatureDataUrl(signature ?? '')
+      ? signature
+      : keepingSignature
+        ? current.data?.payment_signature ?? null
+        : null
   const paidAt =
     status !== 'PAGO'
       ? null
       : patch.status === 'PAGO'
         ? new Date().toISOString()
         : current.data?.paid_at ?? new Date().toISOString()
+  const paymentSignedAt = paymentSignature ? paidAt : null
   const { error } = await getFlowAdminClient().from('flow_employee_vouchers').upsert(
     {
       cardplus_collaborator_id: collaboratorId,
@@ -264,8 +275,8 @@ export async function upsertVoucher(
       status,
       period_key: periodKey,
       paid_at: paidAt,
-      payment_signature: null,
-      payment_signed_at: null,
+      payment_signature: paymentSignature,
+      payment_signed_at: paymentSignedAt,
       receipt_number: receiptNumber,
       updated_at: new Date().toISOString()
     },

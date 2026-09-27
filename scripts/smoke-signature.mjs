@@ -1,0 +1,89 @@
+// Smoke test E2E das signature sessions + vouchers (leitura do board).
+// Uso: node scripts/smoke-signature.mjs
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const env = {}
+for (const raw of fs.readFileSync(path.join(root, '.env.local'), 'utf8').split(/\r?\n/)) {
+  const line = raw.trim()
+  if (!line || line.startsWith('#') || !line.includes('=')) continue
+  const cut = line.indexOf('=')
+  env[line.slice(0, cut).trim()] = line.slice(cut + 1).trim()
+}
+
+const base = (env.VITE_SUPABASE_URL || '').replace(/\/$/, '')
+const anon = env.VITE_SUPABASE_ANON_KEY
+if (!base || !anon) throw new Error('VITE_SUPABASE_URL/ANON_KEY ausentes no .env.local')
+
+const authRes = await fetch(`${base}/auth/v1/token?grant_type=password`, {
+  method: 'POST',
+  headers: { apikey: anon, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: env.FLOW_BOOTSTRAP_EMAIL, password: env.FLOW_BOOTSTRAP_PASSWORD })
+})
+const auth = await authRes.json()
+if (!authRes.ok || !auth.access_token) throw new Error(`Login falhou (${authRes.status})`)
+
+async function callOp(op, payload) {
+  const res = await fetch(`${base}/functions/v1/flow-ops`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${auth.access_token}`,
+      apikey: anon,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ op, payload })
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json.ok === false) throw new Error(`${op}: ${json.error || res.status}`)
+  return json.data
+}
+
+// 1) create (simula o celular gerando o código)
+const session = await callOp('createSignatureSession', { aspect: 2.2 })
+console.log('create:', session.code, session.status)
+
+// 2) join (simula o PC inserindo o código — vira linked com 24h)
+const joined = await callOp('joinSignatureSession', { code: session.code })
+const hours = joined.expiresAt ? ((new Date(joined.expiresAt) - Date.now()) / 3600000).toFixed(1) : '?'
+console.log('join:', joined.status, `+${hours}h`)
+
+// 3) push de traços (m:1 fecha o traço) + finish
+const strokes = []
+for (let i = 0; i < 10; i += 1) strokes.push({ x: 0.1 + i * 0.05, y: 0.5 })
+strokes.push({ x: -1, y: -1, m: 1 })
+const pushed = await callOp('pushSignatureStrokes', { code: session.code, strokes })
+console.log('push:', pushed.strokes.length, 'pontos')
+const finished = await callOp('finishSignatureSession', { code: session.code })
+console.log('finish:', finished.status)
+
+// 4) confirm
+const confirmed = await callOp('confirmSignatureSession', { code: session.code })
+console.log('confirm:', confirmed.status)
+
+// 5) rejoin recicla a sessão 24h (limpa traços, volta a linked)
+const rejoined = await callOp('joinSignatureSession', { code: session.code })
+console.log('rejoin:', rejoined.status, 'strokes:', rejoined.strokes.length)
+
+// 6) tap (reset) bumpa linked_at e silent não bumpa
+const tapped = await callOp('pushSignatureStrokes', { code: session.code, reset: true })
+console.log('tap linkedAt:', tapped.linkedAt)
+const silent = await callOp('pushSignatureStrokes', { code: session.code, reset: true, silent: true })
+console.log('silent linkedAt igual:', silent.linkedAt === tapped.linkedAt)
+
+// 7) board de vales agora deve trazer paymentSignature das linhas PAGO
+const board = await callOp('listVouchers', {})
+const paid = board.groups.flatMap((group) => group.rows).filter((row) => row.status === 'PAGO')
+console.log(
+  'board:',
+  board.groups.flatMap((group) => group.rows).length,
+  'linhas;',
+  paid.length,
+  'pagas;',
+  paid.filter((row) => row.paymentSignature).length,
+  'com assinatura persistida'
+)
+
+await callOp('cancelSignatureSession', { code: session.code })
+console.log('SMOKE OK')
