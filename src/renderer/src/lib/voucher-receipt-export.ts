@@ -395,12 +395,13 @@ async function receiptImage(row: VoucherRow, number: string, signatureDataUrl: s
     // PNG transparente: a tinta fica por cima da linha, sem cobrir o recibo
     // com um bloco branco (o fundo do PNG pode até não existir).
     const signature = await loadImage(signatureDataUrl)
-    const maxSigW = sigLineW * 0.94
-    const maxSigH = 230
+    const maxSigW = sigLineW * 0.78
+    const maxSigH = 190
     const scale = Math.min(maxSigW / Math.max(1, signature.width), maxSigH / Math.max(1, signature.height))
     const sigW = Math.max(1, Math.round(signature.width * scale))
     const sigH = Math.max(1, Math.round(signature.height * scale))
-    ctx.drawImage(signature, sigX + Math.round((sigLineW - sigW) / 2), sigLineY - sigH + 4, sigW, sigH)
+    // Um pouco mais pra baixo: a base da tinta assenta perto da linha.
+    ctx.drawImage(signature, sigX + Math.round((sigLineW - sigW) / 2), sigLineY - sigH + 26, sigW, sigH)
   } catch {
     /* assinatura ausente — mantém só a linha */
   }

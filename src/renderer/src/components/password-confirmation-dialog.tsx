@@ -165,17 +165,28 @@ export function PasswordConfirmationDialog({
               {error ? <p className="text-[12px] text-red-300/85">{error}</p> : null}
             </motion.div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setError(null)
-                setScreen('password')
-                window.setTimeout(() => inputRef.current?.focus(), 120)
-              }}
-              className="absolute bottom-10 left-1/2 -translate-x-1/2 rounded-[10px] px-4 py-2.5 text-[13px] font-medium text-[#F0EFEC]/55 transition-colors hover:bg-white/[0.05] hover:text-[#F0EFEC]/85"
-            >
-              Tentar com Senha
-            </button>
+            <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
+              {!scanning && !unlocking ? (
+                <button
+                  type="button"
+                  onClick={() => void runBiometric()}
+                  className="inline-flex h-10 items-center gap-2 rounded-[10px] bg-[#F0EFEC] px-5 text-[13px] font-medium text-[#111]"
+                >
+                  <Fingerprint className="size-4" strokeWidth={1.8} /> Tentar novamente
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  setScreen('password')
+                  window.setTimeout(() => inputRef.current?.focus(), 120)
+                }}
+                className="rounded-[10px] px-4 py-2 text-[13px] font-medium text-[#F0EFEC]/55 transition-colors hover:bg-white/[0.05] hover:text-[#F0EFEC]/85"
+              >
+                Tentar com Senha
+              </button>
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
