@@ -201,7 +201,24 @@ function SignaturePad({ onReady }: { onReady: (value: string | null) => void }) 
       ink.current = []
       ink.dirty = true
       const canvas = ink.canvasRef.current
-      if (canvas) onReady(canvas.toDataURL('image/png'))
+      if (canvas) {
+        // Exporta no mesmo pipeline do sync: PNG transparente, recortado na
+        // tinta — o recibo nunca recebe um bloco branco.
+        const bounds = canvas.getBoundingClientRect()
+        const aspect = bounds.width / Math.max(1, bounds.height)
+        const normalized = [...ink.strokes].map((stroke) =>
+          stroke.map((point) => ({
+            x: point.x / Math.max(1, bounds.width),
+            y: point.y / Math.max(1, bounds.height),
+            p: point.p
+          }))
+        )
+        try {
+          onReady(signatureDataUrlFromNormalized(normalized, aspect))
+        } catch {
+          onReady(null)
+        }
+      }
     }
     releasePointer(event)
   }
@@ -296,6 +313,7 @@ type PaymentSignatureDialogProps = {
   onConfirm: (signature: string) => Promise<void> | void
 }
 
+/** Preview grande da assinatura recebida (proporção real do celular). */
 function SyncPreviewCanvas({ strokes, aspect }: { strokes: SignatureStrokePoint[]; aspect: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawnCount = useRef(-1)
@@ -319,7 +337,8 @@ function SyncPreviewCanvas({ strokes, aspect }: { strokes: SignatureStrokePoint[
     paintInkStrokes(ctx, mapped, (7 * bounds.width) / 1000)
   }, [strokes])
 
-  const width = Math.round(Math.min(300, 420 * clampInkValue(aspect || 0.5, 0.3, 1)))
+  // Retângulo largo (proporção real da tela do celular em landscape).
+  const width = Math.min(460, 620 * clampInkValue(aspect || 0.5, 0.35, 1))
   const height = Math.round(width / clampInkValue(aspect || 0.5, 0.3, 4))
   return (
     <div
@@ -344,7 +363,7 @@ function DesktopSignatureContent({
   onConfirm
 }: Omit<PaymentSignatureDialogProps, 'open'>) {
   const [link, setLink] = useState<SignatureLink | null>(() => getSignatureLink('pc'))
-  const [status, setStatus] = useState<string>('linked')
+  const [, setStatus] = useState<string>('linked')
   const [strokes, setStrokes] = useState<SignatureStrokePoint[]>([])
   const [aspect, setAspect] = useState(2.2)
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
@@ -366,13 +385,24 @@ function DesktopSignatureContent({
     setError(null)
   }, [link?.code])
 
+  const phoneSentRef = useRef(false)
+
   useSignaturePoll(link?.code ?? null, 650, (snapshot) => {
     setStatus(snapshot.status)
     setStrokes(snapshot.strokes)
     setAspect(snapshot.aspect)
+    if (snapshot.status === 'signed') phoneSentRef.current = true
+    if (snapshot.status === 'confirmed') phoneSentRef.current = false
     if (snapshot.status === 'cancelled') {
       clearSignatureLink('pc', snapshot.code)
       return
+    }
+    // Depois de confirmado, o PC já recoloca a sessão em prontidão para o
+    // próximo pagamento — o celular volta ao modo aguardando.
+    if (snapshot.status === 'confirmed' && sessionRef.current) {
+      void operations()
+        .pushSignatureStrokes({ code: snapshot.code, reset: true, silent: true })
+        .catch(() => undefined)
     }
   })
 
@@ -388,27 +418,27 @@ function DesktopSignatureContent({
     }
   }, [link, strokes, aspect, signatureUrl])
 
-  // Auto-confirmação: assinatura pronta → confirma o pagamento sozinho.
-  useEffect(() => {
-    if (!link || !signatureUrl || confirmedRef.current || saving) return
-    if (status !== 'signed' && status !== 'confirmed') return
+  // O botão "Confirmar pagamento" só liga depois do ENVIAR do celular
+  // (status signed) com a assinatura já renderizada.
+  const canConfirm = Boolean(link && signatureUrl && phoneSentRef.current && !saving && !autoConfirmed)
+
+  async function confirmReceived(): Promise<void> {
+    if (!link || !signatureUrl || confirmedRef.current) return
     confirmedRef.current = true
     setAutoConfirmed(true)
-    void (async () => {
+    try {
       try {
         await operations().confirmSignatureSession({ code: link.code })
       } catch {
         /* sessão pode já estar confirmada */
       }
-      try {
-        await onConfirm(signatureUrl)
-      } catch (confirmError) {
-        confirmedRef.current = false
-        setAutoConfirmed(false)
-        setError(operationError(confirmError))
-      }
-    })()
-  }, [link, signatureUrl, status, saving, onConfirm])
+      await onConfirm(signatureUrl)
+    } catch (confirmError) {
+      confirmedRef.current = false
+      setAutoConfirmed(false)
+      setError(operationError(confirmError))
+    }
+  }
 
   // Abertura do modal: "toca" a sessão para o celular abrir a tela branca
   // sozinha (com o vínculo de 24h ativo).
@@ -475,13 +505,13 @@ function DesktopSignatureContent({
       </div>
 
       {linked ? (
-        <div className="flex flex-col items-center gap-4 rounded-[14px] border border-white/[0.07] bg-white/[0.02] px-4 py-8">
+        <div className="flex flex-col items-center gap-4 rounded-[14px] border border-white/[0.07] bg-white/[0.02] px-4 py-6">
           {received ? (
             <>
               <SyncPreviewCanvas strokes={strokes} aspect={aspect} />
               <div className="flex items-center gap-2 text-[12px] text-[#34D399]">
                 <Check className="size-4" strokeWidth={2.5} />
-                {autoConfirmed ? 'Assinatura confirmada! Finalizando…' : 'Assinatura recebida. Confirmando…'}
+                {autoConfirmed ? 'Assinatura confirmada! Finalizando…' : 'Assinatura recebida do celular.'}
               </div>
             </>
           ) : (
@@ -496,7 +526,7 @@ function DesktopSignatureContent({
               <div className="text-center">
                 <p className="text-[14px] font-medium text-[#F0EFEC]/85">Aguardando assinatura no celular…</p>
                 <p className="mt-1 text-[12px] text-[#F0EFEC]/40">
-                  Peça para a pessoa assinar com o dedo na tela branca.
+                  Peça para a pessoa assinar com o dedo e tocar em ENVIAR.
                 </p>
               </div>
               {error ? <p className="text-[12px] text-red-300/85">{error}</p> : null}
@@ -528,6 +558,19 @@ function DesktopSignatureContent({
           </div>
         </>
       )}
+
+      {linked ? (
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={!canConfirm}
+            onClick={() => void confirmReceived()}
+            className="inline-flex h-10 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-4 text-[13px] font-medium text-[#111] disabled:opacity-40"
+          >
+            {autoConfirmed ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />} Confirmar pagamento
+          </button>
+        </div>
+      ) : null}
 
       {link ? (
         <p className="mt-3 text-center text-[11px] text-[#F0EFEC]/28">
@@ -795,7 +838,11 @@ function MobilePairScreen({
   )
 }
 
-/** Tela INTEIRA branca para assinar com o dedo, envio em tempo real. */
+/**
+ * Tela INTEIRA branca para assinar com o dedo, envio em tempo real.
+ * A tinta é pintada SINCRONAMENTE no pointermove (rAF só refina) — em WebView
+ * Android sob carga o rAF pode demorar; sem isso a tinta "não sai".
+ */
 function MobileDrawScreen({
   code,
   onSent,
@@ -814,10 +861,28 @@ function MobileDrawScreen({
   const doneRef = useRef(false)
   const resizeFrame = useRef<number | null>(null)
 
+  /** Segmento desenhado na hora, sem esperar o rAF. */
+  const paintSegmentNow = (a: { x: number; y: number; p: number }, b: { x: number; y: number; p: number }) => {
+    const canvas = ink.canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const bounds = canvas.getBoundingClientRect()
+    const scale = canvas.width / Math.max(1, bounds.width)
+    ctx.save()
+    ctx.setTransform(scale, 0, 0, scale, 0, 0)
+    paintInkStrokes(ctx, [[a, b]], 6.5)
+    ctx.restore()
+  }
+
   useEffect(() => {
     ink.setup()
     ink.clear()
+    pendingRef.current = []
+    doneRef.current = false
+    pushingRef.current = false
     setHasInk(false)
+    setError(null)
     const observer = new ResizeObserver(() => {
       if (ink.drawing || resizeFrame.current !== null) return
       resizeFrame.current = window.requestAnimationFrame(() => {
@@ -866,6 +931,7 @@ function MobileDrawScreen({
     ink.drawing = true
     ink.last = { x: point.x, y: point.y }
     ink.dirty = true
+    setHasInk(true)
     pendingRef.current.push({ x: Math.round(point.x * 10000) / 10000, y: Math.round(point.y * 10000) / 10000 })
   }
 
@@ -876,7 +942,10 @@ function MobileDrawScreen({
       const point = normalizedPoint(pointer.clientX, pointer.clientY)
       if (!point) continue
       if (ink.last && Math.hypot(point.x - ink.last.x, point.y - ink.last.y) < 0.0012) continue
+      const previous = { ...point, p: ink.current.length ? ink.current[ink.current.length - 1].p : 0.62 }
       ink.current.push({ ...point, p: pressureOf(pointer) })
+      // Tinta imediata: o Android não espera o próximo frame pra mostrar.
+      paintSegmentNow(previous, { ...point, p: pressureOf(pointer) })
       ink.last = { x: point.x, y: point.y }
       pendingRef.current.push({ x: Math.round(point.x * 10000) / 10000, y: Math.round(point.y * 10000) / 10000 })
     }
@@ -1065,6 +1134,7 @@ export function SignatureMobileHost() {
         armedRef.current = tap
       }
       if (phase === 'waitConfirm' && snapshot.status === 'confirmed') {
+        // PC confirmou → volta ao modo armado aguardando o próximo pagamento.
         setPhase('idle')
       }
     }
@@ -1105,6 +1175,17 @@ export function SignatureMobileHost() {
         .then(({ ScreenOrientation }) => ScreenOrientation.unlock().catch(() => undefined))
         .catch(() => undefined)
     }
+  }, [phase])
+
+  // Fullscreen REAL: esconde todo o app atrás do overlay (a UI por baixo
+  // ficava clicável e atrapalhava X/Limpar/Enviar).
+  useEffect(() => {
+    if (phase === 'draw') {
+      document.documentElement.classList.add('flow-signature-active')
+    } else {
+      document.documentElement.classList.remove('flow-signature-active')
+    }
+    return () => document.documentElement.classList.remove('flow-signature-active')
   }, [phase])
 
   if (phase === 'idle') return null
@@ -1164,12 +1245,12 @@ export function SignatureMobileHost() {
             code={link.code}
             onSent={() => setPhase('waitConfirm')}
             onCancel={async () => {
-              await operations().cancelSignatureSession({ code: link.code }).catch(() => undefined)
-              // Cancelar derruba o vínculo de 24h (sessão encerrada).
-              clearSignatureLink('phone', link.code)
-              setLocalLink(null)
-              armedRef.current = null
-              setPhase('pair')
+              // Cancelar só esta rodada: sessão 24h continua válida para o
+              // próximo pagamento (não desvincula o celular do PC).
+              await operations()
+                .pushSignatureStrokes({ code: link.code, reset: true, silent: true })
+                .catch(() => undefined)
+              setPhase('idle')
             }}
           />
         ) : null}

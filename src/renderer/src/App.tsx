@@ -38,7 +38,7 @@ export function App() {
   return (
     <div
       className={cn(
-        'relative flex flex-col overflow-hidden bg-[#111111] text-foreground',
+        'flow-app-root relative flex flex-col overflow-hidden bg-[#111111] text-foreground',
         mobile ? 'h-dvh' : 'h-screen'
       )}
       style={

@@ -3,6 +3,20 @@
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
 
+/* Modo assinatura no celular: esconde TODA a UI do app atrás do overlay. */
+html.flow-signature-active .flow-app-root {
+  visibility: hidden !important;
+}
+
+html.flow-signature-active {
+  background: #ffffff;
+}
+
+html.flow-signature-active body {
+  background: #ffffff;
+  overscroll-behavior: none;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

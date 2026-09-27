@@ -114,6 +114,13 @@ export function strokesFromFlat(flat: StrokePointNormalized[]): InkPoint[][] {
   return result.filter((stroke) => stroke.length > 0)
 }
 
+/** Reconstrói o espaço normalizado (0..1) de um strokepoint com flag m. */
+export function isStrokeMarker(point: StrokePointNormalized | undefined | null): boolean {
+  if (!point) return false
+  if (point.m === 1) return true
+  return Math.abs(point.x) > 1.5 || Math.abs(point.y) > 1.5
+}
+
 export function clampInkValue(value: number, min: number, max: number): number {
   return clampInk(value, min, max)
 }
@@ -121,8 +128,9 @@ export function clampInkValue(value: number, min: number, max: number): number {
 export const SIGNATURE_INK_COLOR = INK_COLOR
 
 /**
- * Renderiza a assinatura (espaço normalizado) em PNG com fundo branco,
- * recortada na área da tinta com margem — pronto para vale/recibo/PDF.
+ * Renderiza a assinatura (espaço normalizado) em PNG com FUNDO TRANSPARENTE,
+ * recortada na área da tinta com margem — pronto para vale/recibo/PDF sem
+ * cobrir o texto do recibo com um quadrado branco.
  */
 export function signatureDataUrlFromNormalized(
   normalized: InkPoint[][],
@@ -148,21 +156,22 @@ export function signatureDataUrlFromNormalized(
   if (!Number.isFinite(minX) || maxX - minX < 4 || maxY - minY < 4) {
     throw new Error('Assinatura vazia.')
   }
-  const pad = Math.max(24, Math.max(maxX - minX, maxY - minY) * 0.08)
+  const pad = Math.max(20, Math.max(maxX - minX, maxY - minY) * 0.07)
   const x0 = Math.max(0, minX - pad)
   const y0 = Math.max(0, minY - pad)
-  const boxW = Math.min(width - x0, maxX - minX + pad * 2)
-  const boxH = Math.min(height - y0, maxY - minY + pad * 2)
-  const upscale = clampInk(1400 / Math.max(boxW, 1), 1, 3)
+  const boxW = Math.max(4, Math.min(width - x0, maxX - minX + pad * 2))
+  const boxH = Math.max(4, Math.min(height - y0, maxY - minY + pad * 2))
+  // Saída com no máximo ~1000px de largura: nítida no PDF e leve no banco.
+  const outW = Math.round(clampInk(boxW, 240, 1000))
+  const outH = Math.max(1, Math.round((outW * boxH) / boxW))
 
   const canvas = document.createElement('canvas')
-  canvas.width = Math.min(2200, Math.round(boxW * upscale))
-  canvas.height = Math.min(2200, Math.round(boxH * upscale))
+  canvas.width = outW
+  canvas.height = outH
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Não foi possível renderizar a assinatura.')
-  ctx.fillStyle = '#FFFFFF'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.scale(canvas.width / boxW, canvas.height / boxH)
+  // SEM fill de fundo: PNG transparente.
+  ctx.scale(outW / boxW, outH / boxH)
   ctx.translate(-x0, -y0)
   paintInkStrokes(ctx, scaled, 6.5)
   return canvas.toDataURL('image/png')
