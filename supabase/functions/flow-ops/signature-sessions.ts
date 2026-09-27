@@ -26,6 +26,8 @@ export type SignatureSessionView = {
 }
 
 const SESSION_TTL_MINUTES = 15
+// Vínculo PC↔celular dura 24h: o join (re)conecta e estende a validade.
+const LINK_TTL_MINUTES = 24 * 60
 const MAX_POINTS = 6000
 const CODE_ALPHABET = '0123456789'
 
@@ -42,6 +44,7 @@ type SignatureRow = {
   strokes: SignatureStrokePoint[] | null
   created_at: string
   linked_at: string | null
+  linkedAt?: never
   signed_at: string | null
   confirmed_at: string | null
   expires_at: string
@@ -85,7 +88,8 @@ function toView(row: SignatureRow, options?: { withToken?: boolean }): Signature
     amountCents: row.amount_cents ?? null,
     aspect: row.aspect ?? 2.2,
     strokes: Array.isArray(row.strokes) ? row.strokes : [],
-    expiresAt: row.expires_at
+    expiresAt: row.expires_at,
+    linkedAt: row.linked_at ?? null
   }
 }
 
@@ -186,28 +190,34 @@ export async function createSignatureSession(payload: unknown, actor: ActorScope
   throw new Error('Não foi possível gerar um código agora. Tente de novo.')
 }
 
-/** Celular: entra com o código de 4 dígitos e passa a desenhar. */
+/**
+ * PC: conecta (ou reconecta) no celular pelo código. O vínculo dura 24h:
+ * sessões 'signed'/'confirmed' voltam para 'linked' com os traços limpos,
+ * prontas para a próxima assinatura — sem parear de novo.
+ */
 export async function joinSignatureSession(payload: unknown): Promise<SignatureSessionView> {
   const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
   const code = String(body.code ?? '').trim()
-  if (!/^\d{4}$/.test(code)) throw new Error('Digite o código de 4 dígitos mostrado no computador.')
+  if (!/^\d{4}$/.test(code)) throw new Error('Digite o código de 4 dígitos mostrado no celular.')
   const row = await loadByCode(code)
-  if (!row) throw new Error('Código não encontrado. Confira os 4 dígitos no computador.')
-  if (!isFresh(row) || row.status === 'expired' || row.status === 'cancelled') {
-    throw new Error('Este código expirou. Peça um código novo no computador.')
-  }
-  if (row.status === 'waiting') {
-    const { data, error } = await getFlowAdminClient()
-      .from('flow_signature_sessions')
-      .update({ status: 'linked', linked_at: new Date().toISOString() })
-      .eq('id', row.id)
-      .select('*')
-      .single()
-    if (error) throw new Error(`Erro ao vincular o celular: ${error.message}`)
-    log.info('signature-session linked', code)
-    return toView(data as SignatureRow)
-  }
-  return toView(row)
+  if (!row) throw new Error('Código não encontrado. Confira os 4 dígitos no celular.')
+
+  const finished = row.status === 'signed' || row.status === 'confirmed'
+  const keepStrokes = !finished && Array.isArray(row.strokes) ? row.strokes : []
+  const { data, error } = await getFlowAdminClient()
+    .from('flow_signature_sessions')
+    .update({
+      status: 'linked',
+      strokes: keepStrokes,
+      linked_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + LINK_TTL_MINUTES * 60_000).toISOString()
+    })
+    .eq('id', row.id)
+    .select('*')
+    .single()
+  if (error) throw new Error(`Erro ao vincular o celular: ${error.message}`)
+  log.info('signature-session linked', code, row.status)
+  return toView(data as SignatureRow)
 }
 
 /** Celular/PC: estado atual da sessão (polling). */
@@ -233,15 +243,24 @@ export async function pushSignatureStrokes(payload: unknown): Promise<SignatureS
   if (!/^\d{4}$/.test(code)) throw new Error('Sessão de assinatura inválida.')
   const row = await loadByCode(code)
   if (!row) throw new Error('Sessão de assinatura não encontrada.')
-  if (!isFresh(row)) throw new Error('Esta sessão expirou. Peça um código novo no computador.')
+  if (!isFresh(row)) throw new Error('Esta sessão expirou. Peça um código novo no celular.')
   if (row.status === 'confirmed' || row.status === 'cancelled') {
     throw new Error('Esta assinatura já foi concluída no computador.')
   }
 
+  const aspectRaw = Number(body.aspect)
+  const aspectPatch = Number.isFinite(aspectRaw)
+    ? Math.min(4, Math.max(0.25, Math.round(aspectRaw * 100) / 100))
+    : null
+
   if (body.reset === true) {
+    // O reset é o "toque" do PC avisando que um novo pagamento começou:
+    // limpa os traços e bumpa linked_at para o celular abrir a tela branca.
+    // Com silent=true (limpeza interna), não toca no linked_at.
+    const bump = body.silent === true ? {} : { linked_at: new Date().toISOString() }
     const { data, error } = await getFlowAdminClient()
       .from('flow_signature_sessions')
-      .update({ strokes: [], status: 'linked' })
+      .update({ strokes: [], status: 'linked', ...bump, ...(aspectPatch ? { aspect: aspectPatch } : {}) })
       .eq('id', row.id)
       .select('*')
       .single()
@@ -257,7 +276,7 @@ export async function pushSignatureStrokes(payload: unknown): Promise<SignatureS
   const merged = [...existing, ...batch].slice(0, MAX_POINTS)
   const { data, error } = await getFlowAdminClient()
     .from('flow_signature_sessions')
-    .update({ strokes: merged, status: 'linked' })
+    .update({ strokes: merged, status: 'linked', ...(aspectPatch ? { aspect: aspectPatch } : {}) })
     .eq('id', row.id)
     .select('*')
     .single()

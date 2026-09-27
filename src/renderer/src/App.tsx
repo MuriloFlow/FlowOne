@@ -3,6 +3,7 @@ import { UpdateLock } from '@/components/update-lock'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/use-auth'
 import { useUpdater } from '@/hooks/use-updater'
+import { SignatureMobileHost } from '@/components/payment-signature-dialog'
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { cn } from '@/lib/utils'
 import { LoginPage } from '@/pages/login'
@@ -61,6 +62,8 @@ export function App() {
           <LoginPage restoreError={restoreError} />
         )}
       </main>
+      {/* Host do modo assinatura do celular: fora do Shell para cobrir tudo. */}
+      {mobile && user ? <SignatureMobileHost /> : null}
       {mobile ? null : <UpdateLock status={updateStatus} />}
     </div>
   )

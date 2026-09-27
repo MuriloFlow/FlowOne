@@ -337,6 +337,7 @@ export type SignatureSessionView = {
   aspect: number
   strokes: SignatureStrokePoint[]
   expiresAt: string
+  linkedAt: string | null
 }
 
 export type EmployeeDocument = {
@@ -436,6 +437,8 @@ export type OperationsApi = {
     code: string
     strokes?: import('./operations').SignatureStrokePoint[]
     reset?: boolean
+    silent?: boolean
+    aspect?: number
   }) => Promise<import('./operations').SignatureSessionView>
   finishSignatureSession: (input: { code: string }) => Promise<import('./operations').SignatureSessionView>
   confirmSignatureSession: (input: { ownerToken?: string | null; code?: string | null }) => Promise<import('./operations').SignatureSessionView>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Banknote, Bus, CheckCircle2, FileDown, History, Smartphone, Utensils } from 'lucide-react'
+import { Banknote, Bus, CheckCircle2, FileDown, History, Utensils } from 'lucide-react'
 import { AnimatedMoney } from '@/components/animated-number'
 import { MoneyCell } from '@/components/money-cell'
 import { MonthSwitcher } from '@/components/month-switcher'
@@ -9,7 +9,7 @@ import { currentDateKey, currentMonthKey, formatBRLFromCents, formatDateTime, we
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { operationError, operations } from '@/lib/operations'
 import { cn } from '@/lib/utils'
-import { MobileSignatureSyncOverlay, PaymentSignatureDialog } from '@/components/payment-signature-dialog'
+import { PaymentSignatureDialog, SignatureLinkButton } from '@/components/payment-signature-dialog'
 import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
 import { buildVoucherReceiptsPdf, exportVoucherReceipts } from '@/lib/voucher-receipt-export'
 import { ExportSuccessSheet } from '@/components/export-success-sheet'
@@ -46,7 +46,6 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
   const [signatureCache, setSignatureCache] = useState<Record<string, string>>({})
-  const [syncOpen, setSyncOpen] = useState(false)
   const mobile = isMobileShell()
 
   function rememberSignature(collaboratorId: string, signature: string): void {
@@ -287,15 +286,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {mobile ? (
-            <button
-              type="button"
-              onClick={() => setSyncOpen(true)}
-              className="inline-flex h-9 items-center gap-2 rounded-[9px] border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-medium text-[#F0EFEC]/70 transition-colors hover:text-[#F0EFEC]"
-            >
-              <Smartphone className="size-3.5" /> Assinatura digital
-            </button>
-          ) : null}
+          <SignatureLinkButton />
           <button
             type="button"
             onClick={() => setHistoryOpen((open) => !open)}
@@ -530,7 +521,6 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         onClose={() => { if (busyId !== signingRow?.collaboratorId) setSigningRow(null) }}
         onConfirm={confirmPayment}
       />
-      {mobile ? <MobileSignatureSyncOverlay open={syncOpen} onClose={() => setSyncOpen(false)} /> : null}
       <PasswordConfirmationDialog
         open={confirmingExport}
         title="Finalizar pagamento"
