@@ -58,6 +58,8 @@ const flow: FlowApi = {
     finishSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-finish', input),
     confirmSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-confirm', input),
     cancelSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-cancel', input),
+    openSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-open', input),
+    closeSignatureSession: (input) => ipcRenderer.invoke('operations:signature-session-close', input),
     deleteEmployee: (id: string, storeId?: string | null) =>
       ipcRenderer.invoke('operations:employee-delete', { id, storeId: storeId ?? null }),
     getStorePreference: () => ipcRenderer.invoke('operations:store-preference', { action: 'read' }),

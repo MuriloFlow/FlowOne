@@ -338,6 +338,7 @@ export type SignatureSessionView = {
   strokes: SignatureStrokePoint[]
   expiresAt: string
   linkedAt: string | null
+  openCount: number
 }
 
 export type EmployeeDocument = {
@@ -443,6 +444,8 @@ export type OperationsApi = {
   finishSignatureSession: (input: { code: string }) => Promise<import('./operations').SignatureSessionView>
   confirmSignatureSession: (input: { ownerToken?: string | null; code?: string | null }) => Promise<import('./operations').SignatureSessionView>
   cancelSignatureSession: (input: { ownerToken?: string | null; code?: string | null }) => Promise<import('./operations').SignatureSessionView | null>
+  openSignatureSession: (input: { code: string; aspect?: number }) => Promise<import('./operations').SignatureSessionView>
+  closeSignatureSession: (input: { code: string }) => Promise<import('./operations').SignatureSessionView>
   deleteEmployee: (id: string, storeId?: string | null) => Promise<void>
   getStorePreference: () => Promise<string | null>
   setStorePreference: (storeId: string | null) => Promise<void>

@@ -865,6 +865,14 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
 
   async cancelSignatureSession(payload) {
     return handleSignatureOp('cancelSignatureSession', payload)
+  },
+
+  async openSignatureSession(payload) {
+    return handleSignatureOp('openSignatureSession', payload)
+  },
+
+  async closeSignatureSession(payload) {
+    return handleSignatureOp('closeSignatureSession', payload)
   }
 }
 

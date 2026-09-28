@@ -55,6 +55,10 @@ export function operations(): OperationsApi {
       invokeOperation('confirmSignatureSession', 'operations:signature-session-confirm', input),
     cancelSignatureSession: (input) =>
       invokeOperation('cancelSignatureSession', 'operations:signature-session-cancel', input),
+    openSignatureSession: (input) =>
+      invokeOperation('openSignatureSession', 'operations:signature-session-open', input),
+    closeSignatureSession: (input) =>
+      invokeOperation('closeSignatureSession', 'operations:signature-session-close', input),
     deleteEmployee: (id, storeId) =>
       api.deleteEmployee(id, storeId === undefined ? getCurrentStoreId() : storeId),
     getStorePreference: () => api.getStorePreference(),

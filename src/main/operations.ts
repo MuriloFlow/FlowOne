@@ -58,11 +58,13 @@ import { canCreateStores, canEditStoreDesk, canManageFlowUsers, isFlowRole } fro
 import { normalizeStoreId } from '../shared/store-scope'
 import {
   cancelSignatureSession,
+  closeSignatureSession,
   confirmSignatureSession,
   createSignatureSession,
   finishSignatureSession,
   getSignatureSession,
   joinSignatureSession,
+  openSignatureSession,
   pushSignatureStrokes,
   type SignatureSessionView
 } from './signature-sessions'
@@ -442,6 +444,18 @@ export function registerOperationsIpc(): void {
   handle('operations:signature-session-finish', async (payload) => {
     await resolveActor()
     return finishSignatureSession(payload)
+  })
+
+  handle('operations:signature-session-open', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode abrir assinaturas de pagamento.')
+    return openSignatureSession(payload)
+  })
+
+  handle('operations:signature-session-close', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode encerrar assinaturas de pagamento.')
+    return closeSignatureSession(payload)
   })
 
   handle('operations:signature-session-confirm', async (payload) => {

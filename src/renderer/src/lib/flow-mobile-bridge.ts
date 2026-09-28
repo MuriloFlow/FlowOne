@@ -90,6 +90,8 @@ function createOperations(prefs: Prefs): OperationsApi {
     finishSignatureSession: (input) => callOp('finishSignatureSession', input),
     confirmSignatureSession: (input) => callOp('confirmSignatureSession', input),
     cancelSignatureSession: (input) => callOp('cancelSignatureSession', input),
+    openSignatureSession: (input) => callOp('openSignatureSession', input),
+    closeSignatureSession: (input) => callOp('closeSignatureSession', input),
     deleteEmployee: (id, storeId) => callOp('deleteEmployee', withStore(storeId, { id })),
     getStorePreference: async () => normalizeStoreId((await prefs.get({ key: STORE_KEY })).value),
     setStorePreference: async (storeId) => {

@@ -27,6 +27,7 @@ export type SignatureSessionView = {
   strokes: SignatureStrokePoint[]
   expiresAt: string
   linkedAt: string | null
+  openCount: number
 }
 
 const SESSION_TTL_MINUTES = 15
@@ -50,6 +51,7 @@ type SignatureRow = {
   signed_at: string | null
   confirmed_at: string | null
   expires_at: string
+  open_count: number | null
   owner_token?: string | null
 }
 
@@ -93,7 +95,8 @@ function toView(row: SignatureRow, options?: { withToken?: boolean }): Signature
     aspect: row.aspect ?? 2.2,
     strokes: Array.isArray(row.strokes) ? row.strokes : [],
     expiresAt: row.expires_at,
-    linkedAt: row.linked_at ?? null
+    linkedAt: row.linked_at ?? null,
+    openCount: row.open_count ?? 0
   }
 }
 
@@ -180,6 +183,7 @@ export async function createSignatureSession(payload: unknown, actor: ActorScope
         amount_cents: amountCents,
         aspect,
         strokes: [],
+        open_count: 0,
         owner_token: ownerToken,
         expires_at: expiryDate()
       })
@@ -255,10 +259,10 @@ export async function pushSignatureStrokes(payload: unknown): Promise<SignatureS
     : null
 
   if (body.reset === true) {
-    // O reset é o "toque" do PC avisando que um novo pagamento começou:
-    // limpa os traços e bumpa linked_at para o celular abrir a tela branca.
-    // Com silent=true (limpeza interna), não toca no linked_at.
-    const bump = body.silent === true ? {} : { linked_at: new Date().toISOString() }
+    // Modo legado do reset: limpa os traços. Com silent=true é só limpeza
+    // interna (não toca em linked_at/open_count). Sem silent, continua sendo
+    // o "toque" de compatibilidade para clientes antigos.
+    const bump = body.silent === true ? {} : { linked_at: new Date().toISOString(), open_count: (row.open_count ?? 0) + 1 }
     const { data, error } = await getFlowAdminClient()
       .from('flow_signature_sessions')
       .update({ strokes: [], status: 'linked', ...bump, ...(aspectPatch ? { aspect: aspectPatch } : {}) })
@@ -302,6 +306,58 @@ export async function finishSignatureSession(payload: unknown): Promise<Signatur
     .single()
   if (error) throw new Error(`Erro ao finalizar a assinatura: ${error.message}`)
   log.info('signature-session signed', code)
+  return toView(data as SignatureRow)
+}
+
+/**
+ * PC: manda o celular ABRIR a tela branca de assinatura (clique em Pendente → Pago).
+ * Sinal explícito via open_count — o celular dispara quando vê o número mudar.
+ */
+export async function openSignatureSession(payload: unknown): Promise<SignatureSessionView> {
+  const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const code = String(body.code ?? '').trim()
+  if (!/^\d{4}$/.test(code)) throw new Error('Sessão de assinatura inválida.')
+  const row = await loadByCode(code)
+  if (!row) throw new Error('Sessão de assinatura não encontrada.')
+  const aspectRaw = Number(body.aspect)
+  const aspectPatch = Number.isFinite(aspectRaw)
+    ? Math.min(4, Math.max(0.25, Math.round(aspectRaw * 100) / 100))
+    : null
+  const { data, error } = await getFlowAdminClient()
+    .from('flow_signature_sessions')
+    .update({
+      status: 'linked',
+      strokes: [],
+      open_count: (row.open_count ?? 0) + 1,
+      linked_at: new Date().toISOString(),
+      ...(aspectPatch ? { aspect: aspectPatch } : {})
+    })
+    .eq('id', row.id)
+    .select('*')
+    .single()
+  if (error) throw new Error(`Erro ao abrir a assinatura no celular: ${error.message}`)
+  log.info('signature-session open', code)
+  return toView(data as SignatureRow)
+}
+
+/**
+ * PC: fecha a rodada SEM desvincular — o celular volta ao loader standby e a
+ * sessão 24h segue pronta para a próxima assinatura.
+ */
+export async function closeSignatureSession(payload: unknown): Promise<SignatureSessionView> {
+  const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const code = String(body.code ?? '').trim()
+  if (!/^\d{4}$/.test(code)) throw new Error('Sessão de assinatura inválida.')
+  const row = await loadByCode(code)
+  if (!row) throw new Error('Sessão de assinatura não encontrada.')
+  const { data, error } = await getFlowAdminClient()
+    .from('flow_signature_sessions')
+    .update({ status: 'linked', strokes: [], signed_at: null, confirmed_at: null })
+    .eq('id', row.id)
+    .select('*')
+    .single()
+  if (error) throw new Error(`Erro ao encerrar a rodada de assinatura: ${error.message}`)
+  log.info('signature-session close', code, row.status)
   return toView(data as SignatureRow)
 }
 

@@ -72,7 +72,15 @@ console.log('tap linkedAt:', tapped.linkedAt)
 const silent = await callOp('pushSignatureStrokes', { code: session.code, reset: true, silent: true })
 console.log('silent linkedAt igual:', silent.linkedAt === tapped.linkedAt)
 
-// 7) board de vales agora deve trazer paymentSignature das linhas PAGO
+// 7) open (PC manda celular abrir) e close (volta standby sem desvincular)
+const opened = await callOp('openSignatureSession', { code: session.code, aspect: 2.2 })
+console.log('open: openCount', opened.openCount, 'status', opened.status)
+const reopened = await callOp('openSignatureSession', { code: session.code })
+console.log('open de novo: openCount', reopened.openCount, '(deve ser +1)')
+const closed = await callOp('closeSignatureSession', { code: session.code })
+console.log('close:', closed.status, 'strokes:', closed.strokes.length, '(deve seguir linked)')
+
+// 8) board de vales agora deve trazer paymentSignature das linhas PAGO
 const board = await callOp('listVouchers', {})
 const paid = board.groups.flatMap((group) => group.rows).filter((row) => row.status === 'PAGO')
 console.log(
