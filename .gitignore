@@ -25,3 +25,4 @@ mobile/android/local.properties
 mobile/ios/App/Pods
 mobile/ios/App/build
 .tools/
+supabase/.temp/
