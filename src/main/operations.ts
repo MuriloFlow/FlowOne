@@ -25,7 +25,14 @@ import { resolveActor, resolveStoreFilter } from './scope'
 import { getScheduleBoard, saveScheduleSlots, resetScheduleSlots, upsertScheduleAssignment, deleteScheduleAssignment } from './schedules'
 import { getAttendanceBoard, upsertTeamHeadcount, upsertAttendanceEvent, deleteAttendanceEvent } from './attendance'
 import { readStorePreference, writeStorePreference } from './store-preference'
-import { deleteVoucher, listVoucherBoard, listVoucherHistory, upsertVoucher } from './vouchers'
+import {
+  deleteVoucher,
+  getVoucherCloseout,
+  listVoucherBoard,
+  listVoucherHistory,
+  saveVoucherCloseout,
+  upsertVoucher
+} from './vouchers'
 import { addSorteioVale, deleteSorteioClient, listSorteioBoard, lookupSorteioClient, registerSorteioClient } from './sorteio'
 import { listFlowUsers, upsertFlowUser } from './users'
 import type {
@@ -54,6 +61,7 @@ import {
   type TeamHeadcountWrite
 } from '../shared/attendance'
 import { SCHEDULE_TEAMS, addDaysToDate, nextSundayOf } from '../shared/schedules'
+import { voucherPeriodKey } from '../shared/vouchers'
 import { canCreateStores, canEditStoreDesk, canManageFlowUsers, isFlowRole } from '../shared/roles'
 import { normalizeStoreId } from '../shared/store-scope'
 import {
@@ -886,6 +894,32 @@ export function registerOperationsIpc(): void {
       signature: typeof body.signature === 'string' ? body.signature : undefined
     })
     bustOperationsCache()
+  })
+
+  handle('operations:voucher-closeout-get', async (payload) => {
+    const actor = await resolveActor()
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null)
+    const periodKey = typeof body.periodKey === 'string' ? body.periodKey : null
+    return getVoucherCloseout(periodKey ?? voucherPeriodKey(), storeId)
+  })
+
+  handle('operations:voucher-closeout-save', async (payload) => {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode finalizar os pagamentos.')
+    if (!payload || typeof payload !== 'object') throw new Error('Lote de finalização inválido.')
+    const body = payload as Record<string, unknown>
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null)
+    if (!Array.isArray(body.payments) || body.payments.length === 0) {
+      throw new Error('Nenhum pagamento assinado para finalizar.')
+    }
+    const saved = await saveVoucherCloseout({
+      periodKey: typeof body.periodKey === 'string' ? body.periodKey : undefined,
+      storeId,
+      payments: body.payments as Parameters<typeof saveVoucherCloseout>[0]['payments']
+    })
+    bustOperationsCache()
+    return saved
   })
 
   handle('operations:sorteio-lookup', async (payload) => {

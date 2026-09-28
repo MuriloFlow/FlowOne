@@ -17,6 +17,7 @@ import {
   formatVoucherWeekLabel,
   msUntilNextVoucherReset,
   type VoucherBoard,
+  type VoucherCloseout,
   type VoucherHistoryBoard,
   type VoucherRow,
   type VoucherStatus
@@ -46,6 +47,11 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
   const [signatureCache, setSignatureCache] = useState<Record<string, string>>({})
+  // Filtro padrão: somente quem está escalado no domingo atual (todos os cargos).
+  const [sundayOnly, setSundayOnly] = useState(true)
+  const [sundayIds, setSundayIds] = useState<Set<string> | null>(null)
+  // Finalização persistida do domingo (sobrevive a restart; refinalizar é permitido).
+  const [closeout, setCloseout] = useState<VoucherCloseout | null>(null)
   const mobile = isMobileShell()
 
   function rememberSignature(collaboratorId: string, signature: string): void {
@@ -77,6 +83,67 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
   function rowsWithSignatures(): VoucherRow[] {
     return derivedRows
   }
+
+  // Escala do domingo corrente: quem tem encaixe no dia 7 (domingo) da semana.
+  // Falha de rede não esconde ninguém — cai para "todos".
+  useEffect(() => {
+    let active = true
+    void operations()
+      .getScheduleBoard(undefined, null)
+      .then((schedule) => {
+        if (!active) return
+        const sunday = schedule.days.find((day) => day.weekday === 7)
+        const ids = new Set<string>()
+        for (const slot of sunday?.slots ?? []) {
+          for (const assignment of slot.assignments) ids.add(assignment.collaboratorId)
+        }
+        setSundayIds(ids)
+      })
+      .catch(() => {
+        if (active) setSundayIds(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [storeId])
+
+  // Lê a finalização persistida do domingo (nulo se nunca finalizou).
+  useEffect(() => {
+    let active = true
+    void operations()
+      .getVoucherCloseout({})
+      .then((saved) => {
+        if (active) setCloseout(saved)
+      })
+      .catch(() => {
+        if (active) setCloseout(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [board?.periodKey])
+
+  const visibleRows = useMemo(() => {
+    if (!sundayOnly || !sundayIds) return derivedRows
+    return derivedRows.filter((row) => sundayIds.has(row.collaboratorId))
+  }, [derivedRows, sundayOnly, sundayIds])
+
+  const visibleTotals = useMemo(
+    () => ({
+      lunchTotalCents: visibleRows.reduce((total, row) => total + row.lunchCents, 0),
+      transportTotalCents: visibleRows.reduce((total, row) => total + row.transportCents, 0),
+      grandTotalCents: visibleRows.reduce((total, row) => total + row.dayTotalCents, 0)
+    }),
+    [visibleRows]
+  )
+
+  const visibleGroups = useMemo(() => {
+    if (!board) return []
+    if (!sundayOnly || !sundayIds) return board.groups
+    return board.groups
+      .map((group) => ({ ...group, rows: group.rows.filter((row) => sundayIds.has(row.collaboratorId)) }))
+      .filter((group) => group.rows.length > 0)
+  }, [board, sundayOnly, sundayIds])
 
   async function load(): Promise<VoucherBoard> {
     const next = await operations().listVouchers(storeId)
@@ -253,6 +320,35 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     setExporting(true)
     try {
       const rows = rowsWithSignatures()
+      // Persiste a finalização do domingo ANTES de gerar o PDF: status,
+      // assinaturas e documentos ficam no banco e sobrevivem ao restart.
+      // Refinalizar depois simplesmente substitui o lote salvo.
+      const paid = rows.filter((row) => row.status === 'PAGO' && row.paymentSignature)
+      try {
+        const saved = await operations().saveVoucherCloseout({
+          payments: paid.map((row) => ({
+            collaboratorId: row.collaboratorId,
+            name: row.name,
+            storeId: row.storeId,
+            storeName: row.storeName,
+            roleLabel: row.roleLabel,
+            group: row.group,
+            cpf: row.cpf,
+            rgImage: row.rgImage,
+            lunchCents: row.lunchCents,
+            transportCents: row.transportCents,
+            totalCents: row.dayTotalCents,
+            paidAt: row.paidAt,
+            receiptNumber: row.receiptNumber,
+            signature: row.paymentSignature
+          }))
+        })
+        setCloseout(saved)
+      } catch (closeoutError) {
+        // Sem a tabela de closeout o fluxo segue (o PDF ainda é gerado),
+        // mas o aviso aparece para rodar o SQL 0019.
+        setError(operationError(closeoutError))
+      }
       if (mobile) {
         // Mobile: gera o PDF e abre a tela de sucesso com compartilhar/baixar.
         const built = await buildVoucherReceiptsPdf(rows)
@@ -341,7 +437,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
             onClick={() => setConfirmingExport(true)}
             className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-[#F0EFEC] px-3 text-[12px] font-medium text-[#111] transition-opacity disabled:opacity-35"
           >
-            <FileDown className="size-3.5" /> {exporting ? 'Gerando PDF…' : mobile ? 'Finalizar' : 'Finalizar pagamento'}
+            <FileDown className="size-3.5" /> {exporting ? 'Gerando PDF…' : mobile ? 'Finalizar' : closeout ? 'Refinalizar' : 'Finalizar pagamento'}
           </button>
         </div>
       </header>
@@ -377,36 +473,69 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
         <MoneyCard
           compact={mobile}
           label={mobile ? 'Vale-almoço' : 'Total vale-almoço'}
-          cents={board?.lunchTotalCents ?? 0}
+          cents={visibleTotals.lunchTotalCents}
           hint={mobile ? 'Soma da equipe visível' : 'Soma de todos os funcionários visíveis'}
           icon={<Utensils className="size-4" strokeWidth={1.7} />}
         />
         <MoneyCard
           compact={mobile}
           label={mobile ? 'Vale-transporte' : 'Total vale-transporte'}
-          cents={board?.transportTotalCents ?? 0}
+          cents={visibleTotals.transportTotalCents}
           hint={mobile ? 'Soma da equipe visível' : 'Soma de todos os funcionários visíveis'}
           icon={<Bus className="size-4" strokeWidth={1.7} />}
         />
         <MoneyCard
           compact={mobile}
           label="Total geral"
-          cents={board?.grandTotalCents ?? 0}
+          cents={visibleTotals.grandTotalCents}
           hint="Almoço + transporte"
           icon={<Banknote className="size-4" strokeWidth={1.7} />}
         />
       </div>
 
-      {!board || board.groups.length === 0 ? (
+      {/* Toggle do filtro: Escala de Domingo (padrão) | Todos os funcionários. */}
+      <div className="mt-3 flex items-center justify-end gap-2">
+        {!sundayIds ? (
+          <span className="text-[11px] text-[#F0EFEC]/30">Escala do domingo indisponível — mostrando todos.</span>
+        ) : null}
+        <div className="inline-flex rounded-[10px] border border-white/[0.08] bg-white/[0.03] p-0.5">
+          <button
+            type="button"
+            onClick={() => setSundayOnly(true)}
+            className={cn(
+              'h-7 rounded-[8px] px-3 text-[12px] font-medium transition-colors',
+              sundayOnly ? 'bg-[#F0EFEC] text-[#111]' : 'text-[#F0EFEC]/55 hover:text-[#F0EFEC]'
+            )}
+          >
+            Escala de Domingo
+          </button>
+          <button
+            type="button"
+            onClick={() => setSundayOnly(false)}
+            className={cn(
+              'h-7 rounded-[8px] px-3 text-[12px] font-medium transition-colors',
+              !sundayOnly ? 'bg-[#F0EFEC] text-[#111]' : 'text-[#F0EFEC]/55 hover:text-[#F0EFEC]'
+            )}
+          >
+            Todos os funcionários
+          </button>
+        </div>
+      </div>
+
+      {!board || visibleGroups.length === 0 ? (
         <div className="mt-16 flex flex-1 flex-col items-center justify-center text-center">
-          <h2 className="text-[16px] text-[#F0EFEC]/78">Nenhum funcionário nesta unidade</h2>
+          <h2 className="text-[16px] text-[#F0EFEC]/78">
+            {sundayOnly && sundayIds ? 'Nenhum funcionário escalado neste domingo' : 'Nenhum funcionário nesta unidade'}
+          </h2>
           <p className="mt-2 max-w-sm text-[13px] text-[#F0EFEC]/38">
-            Os vales acompanham o cadastro do Card+. Cadastre o funcionário para lançar os valores.
+            {sundayOnly && sundayIds
+              ? 'Toque em “Todos os funcionários” acima para ver a lista completa.'
+              : 'Os vales acompanham o cadastro do Card+. Cadastre o funcionário para lançar os valores.'}
           </p>
         </div>
       ) : (
         <div className={cn('mt-4 space-y-3', mobile ? 'mb-16' : 'mb-[4.5rem]')}>
-          {board.groups.map((group) => (
+          {visibleGroups.map((group) => (
             <section key={group.id} className="overflow-hidden rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]">
               <div className={cn('flex items-center justify-between', mobile ? 'px-4 py-3' : 'px-5 py-3')}>
                 <h2 className="text-[13px] tracking-wide text-[#F0EFEC]/45 uppercase">{group.label}</h2>

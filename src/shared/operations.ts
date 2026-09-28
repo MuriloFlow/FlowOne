@@ -480,6 +480,12 @@ export type OperationsApi = {
     status?: import('./vouchers').VoucherStatus
     signature?: string
   }) => Promise<void>
+  getVoucherCloseout: (input?: { periodKey?: string | null; storeId?: string | null }) => Promise<import('./vouchers').VoucherCloseout | null>
+  saveVoucherCloseout: (input: {
+    periodKey?: string
+    storeId?: string | null
+    payments: Array<import('./vouchers').VoucherCloseoutPayment>
+  }) => Promise<import('./vouchers').VoucherCloseout>
   lookupSorteioClient: (cpf: string, storeId?: string | null) => Promise<import('./sorteio').SorteioLookup>
   listSorteioBoard: (storeId?: string | null) => Promise<import('./sorteio').SorteioBoard>
   registerSorteioClient: (input: import('./sorteio').SorteioRegisterInput) => Promise<import('./sorteio').SorteioConfirmResult>

@@ -32,7 +32,7 @@ import { applyOverviewCardOverlay, deleteCardTotalOverride, upsertCardTotalOverr
 import { createStoreDesk, getStoreBoard, updateStoreDesk } from './stores.ts'
 import { deleteIdentity, getIdentity, listIdentities, setSundayCycle, upsertIdentity } from './identities.ts'
 import { deleteEmployeeDocument, getEmployeeDocument, saveEmployeeDocument } from './employee-documents.ts'
-import { dateKeyInSaoPaulo } from './dates.ts'
+import { dateKeyInSaoPaulo, voucherPeriodKey } from './dates.ts'
 import { resolveActor, resolveStoreFilter } from './scope.ts'
 import {
   getScheduleBoard as loadScheduleBoard,
@@ -47,7 +47,14 @@ import {
   upsertAttendanceEvent as saveAttendanceEvent,
   deleteAttendanceEvent as removeAttendanceEvent
 } from './attendance.ts'
-import { deleteVoucher, listVoucherBoard, listVoucherHistory, upsertVoucher } from './vouchers.ts'
+import {
+  deleteVoucher,
+  getVoucherCloseout,
+  listVoucherBoard,
+  listVoucherHistory,
+  saveVoucherCloseout,
+  upsertVoucher
+} from './vouchers.ts'
 import {
   addSorteioVale,
   deleteSorteioClient,
@@ -753,6 +760,30 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
       transportCents: typeof body.transportCents === 'number' ? body.transportCents : undefined,
       status,
       signature: typeof body.signature === 'string' ? body.signature : undefined
+    })
+  },
+
+  async getVoucherCloseout(payload) {
+    const actor = await resolveActor()
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null)
+    const periodKey = typeof body.periodKey === 'string' ? body.periodKey : undefined
+    return getVoucherCloseout(periodKey ?? voucherPeriodKey(), storeId)
+  },
+
+  async saveVoucherCloseout(payload) {
+    const actor = await resolveActor()
+    if (!canEditStoreDesk(actor.role)) throw new Error('Você não pode finalizar os pagamentos.')
+    if (!payload || typeof payload !== 'object') throw new Error('Lote de finalização inválido.')
+    const body = payload as Record<string, unknown>
+    const storeId = resolveStoreFilter(actor, body.storeId ?? null)
+    if (!Array.isArray(body.payments) || body.payments.length === 0) {
+      throw new Error('Nenhum pagamento assinado para finalizar.')
+    }
+    return saveVoucherCloseout({
+      periodKey: typeof body.periodKey === 'string' ? body.periodKey : undefined,
+      storeId,
+      payments: body.payments as Parameters<typeof saveVoucherCloseout>[0]['payments']
     })
   },
 

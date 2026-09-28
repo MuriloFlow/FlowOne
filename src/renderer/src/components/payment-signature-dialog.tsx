@@ -988,6 +988,10 @@ function MobileDrawScreen({
     ink.drawing = false
     ink.last = null
     if (ink.current.length > 0) {
+      // O traço precisa MORAR no engine (ink.strokes): o loop rAF repinta
+      // [...engine.strokes, engine.current] — sem isso, qualquer repaint
+      // (resize/poll/re-render) apagava o desenho ao soltar o dedo.
+      ink.strokes.push(ink.current)
       strokesRef.current.push(ink.current)
       ink.current = []
       setHasInk(true)
@@ -996,6 +1000,7 @@ function MobileDrawScreen({
     releasePointer(event)
   }
 
+  // Limpar é a ÚNICA ação que apaga a assinatura (canvas + estado de envio).
   const clear = () => {
     ink.clear()
     strokesRef.current = []
@@ -1024,14 +1029,16 @@ function MobileDrawScreen({
         flat.push({ x: -1, y: -1, m: 1 })
       }
       if (flat.length === 0) throw new Error('Desenhe a assinatura antes de enviar.')
+      // Envio em lotes SEM reset: a sessão já foi limpa pelo open do PC.
+      // Um reset não-silent bumpava open_count e o celular remontava esta
+      // tela no meio do envio (tela branca / "não existe assinatura").
       const batchCount = Math.ceil(flat.length / 400)
       for (let index = 0; index < batchCount; index += 1) {
         const batch = flat.slice(index * 400, (index + 1) * 400)
         await operations().pushSignatureStrokes({
           code,
           strokes: batch,
-          aspect,
-          reset: index === 0
+          aspect
         })
       }
       await operations().finishSignatureSession({ code })
@@ -1189,6 +1196,10 @@ export function SignatureMobileHost() {
         if (session.status === 'cancelled' || session.status === 'expired') {
           clearSignatureLink('phone', link.code)
           setLocalLink(null)
+        } else {
+          // Com vínculo ativo, o celular fica no loader standby (não sai
+          // sozinho para a tela de vales — só o X do usuário fecha).
+          setPhase((current) => (current === 'idle' ? 'wait' : current))
         }
       })
       .catch(() => undefined)
@@ -1326,7 +1337,10 @@ export function SignatureMobileHost() {
           <MobileDrawScreen
             key={drawKey || link.code}
             code={link.code}
-            onSent={() => setPhase('waitConfirm')}
+            onSent={() => {
+              openSeenRef.current = Math.max(openSeenRef.current, 0)
+              setPhase('waitConfirm')
+            }}
             onCancel={() => {
               // Volta ao loader standby — a rodada é liberada pelo PC quando
               // fechar o modal (o vínculo 24h segue intacto).

@@ -93,5 +93,24 @@ console.log(
   'com assinatura persistida'
 )
 
+// 9) closeout do domingo (persistência da finalização)
+const savedCloseout = await callOp('saveVoucherCloseout', {
+  payments: paid.map((row) => ({
+    collaboratorId: row.collaboratorId,
+    name: row.name,
+    lunchCents: row.lunchCents,
+    transportCents: row.transportCents,
+    totalCents: row.dayTotalCents,
+    signature: row.paymentSignature
+  }))
+})
+const rereadCloseout = await callOp('getVoucherCloseout', {})
+console.log(
+  'closeout:',
+  rereadCloseout.paymentsCount,
+  'pagos | refinalizar substitui:',
+  rereadCloseout.paymentsCount === savedCloseout.paymentsCount
+)
+
 await callOp('cancelSignatureSession', { code: session.code })
 console.log('SMOKE OK')

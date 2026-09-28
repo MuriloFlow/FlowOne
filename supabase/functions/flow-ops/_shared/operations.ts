@@ -425,6 +425,12 @@ export type OperationsApi = {
     status?: import('./vouchers.ts').VoucherStatus
     signature?: string
   }) => Promise<void>
+  getVoucherCloseout: (input?: { periodKey?: string | null; storeId?: string | null }) => Promise<import('./vouchers.ts').VoucherCloseout | null>
+  saveVoucherCloseout: (input: {
+    periodKey?: string
+    storeId?: string | null
+    payments: Array<import('./vouchers.ts').VoucherCloseoutPayment>
+  }) => Promise<import('./vouchers.ts').VoucherCloseout>
   lookupSorteioClient: (cpf: string, storeId?: string | null) => Promise<import('./sorteio.ts').SorteioLookup>
   listSorteioBoard: (storeId?: string | null) => Promise<import('./sorteio.ts').SorteioBoard>
   registerSorteioClient: (input: import('./sorteio.ts').SorteioRegisterInput) => Promise<import('./sorteio.ts').SorteioConfirmResult>

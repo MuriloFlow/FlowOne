@@ -9,6 +9,8 @@ import {
   type VoucherStatus
 } from './_shared/vouchers.ts'
 import { voucherPeriodKey, sundaysInMonth, formatSundayLabel, type VoucherHistoryBoard } from './_shared/vouchers.ts'
+import type { VoucherCloseout, VoucherCloseoutPayment } from './_shared/vouchers.ts'
+import { resolveActor } from './scope.ts'
 import { getFlowAdminClient } from './supabase-clients.ts'
 import { listEmployees } from './cardplus.ts'
 import { listIdentities } from './identities.ts'
@@ -391,4 +393,131 @@ export async function listVoucherHistory(
       }
     })
   }
+}
+
+// ─── Finalização do domingo (closeout) ────────────────────────────────────────
+
+const CLOSEOUT_SELECT = 'period_key, store_key, finalized_at, finalized_by, payments'
+
+function isMissingCloseout(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  return (
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    /relation .*flow_voucher_week_closeouts.* does not exist|schema cache.*flow_voucher_week_closeouts|Could not find the .*flow_voucher_week_closeouts/i.test(error.message ?? '')
+  )
+}
+
+function closeoutFromRow(row: {
+  period_key: string
+  store_key: string
+  finalized_at: string
+  finalized_by: string | null
+  payments: unknown
+}): VoucherCloseout {
+  const payments = Array.isArray(row.payments) ? (row.payments as VoucherCloseoutPayment[]) : []
+  return {
+    periodKey: row.period_key,
+    storeKey: row.store_key,
+    finalizedAt: row.finalized_at,
+    finalizedByName: row.finalized_by,
+    paymentsCount: payments.length,
+    totalCents: payments.reduce((total, payment) => total + (Number(payment.totalCents) || 0), 0),
+    payments
+  }
+}
+
+/** Lê o closeout persistido do domingo (por unidade ou geral). Nulo se nunca finalizou. */
+export async function getVoucherCloseout(
+  periodKey: string,
+  storeId?: string | null
+): Promise<VoucherCloseout | null> {
+  const storeKey = storeId || 'ALL'
+  const { data, error } = await getFlowAdminClient()
+    .from('flow_voucher_week_closeouts')
+    .select(CLOSEOUT_SELECT)
+    .eq('period_key', periodKey)
+    .eq('store_key', storeKey)
+    .maybeSingle()
+  if (error) {
+    if (isMissingCloseout(error)) {
+      log.warn('[vouchers] closeout ausente — rode 0019_flow_voucher_week_closeouts.sql')
+      return null
+    }
+    throw new Error(`Erro ao carregar finalização do domingo: ${error.message}`)
+  }
+  return data ? closeoutFromRow(data as never) : null
+}
+
+/**
+ * Persiste a finalização do domingo: status, assinaturas e dados do PDF.
+ * Refinalizar é permitido — o upsert substitui o lote pelo mais recente.
+ */
+export async function saveVoucherCloseout(payload: {
+  periodKey?: string
+  storeId?: string | null
+  payments: Array<{
+    collaboratorId: string
+    name?: string
+    storeId?: string | null
+    storeName?: string
+    roleLabel?: string
+    group?: string
+    cpf?: string | null
+    rgImage?: string | null
+    lunchCents?: number
+    transportCents?: number
+    paidAt?: string | null
+    receiptNumber?: string | null
+    signature?: string | null
+  }>
+}): Promise<VoucherCloseout> {
+  const actor = await resolveActor()
+  const periodKey = voucherPeriodKey()
+  const storeKey = payload.storeId || 'ALL'
+  const payments: VoucherCloseoutPayment[] = (payload.payments ?? [])
+    .filter((payment) => typeof payment?.collaboratorId === 'string' && payment.collaboratorId)
+    .map((payment) => {
+      const lunchCents = Math.max(0, Math.round(Number(payment.lunchCents) || 0))
+      const transportCents = Math.max(0, Math.round(Number(payment.transportCents) || 0))
+      const signature = typeof payment.signature === 'string' && payment.signature.startsWith('data:image/png;base64,')
+        ? payment.signature
+        : null
+      return {
+        collaboratorId: payment.collaboratorId,
+        name: String(payment.name ?? 'Funcionário').slice(0, 120),
+        storeId: typeof payment.storeId === 'string' ? payment.storeId : null,
+        storeName: String(payment.storeName ?? '').slice(0, 120),
+        roleLabel: String(payment.roleLabel ?? '').slice(0, 80),
+        group: (payment.group ?? 'OUTROS') as VoucherCloseoutPayment['group'],
+        cpf: typeof payment.cpf === 'string' ? payment.cpf.slice(0, 16) : null,
+        rgImage: typeof payment.rgImage === 'string' && payment.rgImage.length <= 6_000_000 ? payment.rgImage : null,
+        lunchCents,
+        transportCents,
+        totalCents: lunchCents + transportCents,
+        paidAt: typeof payment.paidAt === 'string' ? payment.paidAt : null,
+        receiptNumber: typeof payment.receiptNumber === 'string' ? payment.receiptNumber.slice(0, 60) : null,
+        signature
+      }
+    })
+  const row = {
+    period_key: periodKey,
+    store_key: storeKey,
+    finalized_at: new Date().toISOString(),
+    finalized_by: actor.displayName ?? actor.email ?? null,
+    payments
+  }
+  const { data, error } = await getFlowAdminClient()
+    .from('flow_voucher_week_closeouts')
+    .upsert(row, { onConflict: 'period_key,store_key' })
+    .select(CLOSEOUT_SELECT)
+    .single()
+  if (error) {
+    if (isMissingCloseout(error)) {
+      throw new Error('Rode o SQL 0019_flow_voucher_week_closeouts.sql no Supabase do FLOW para persistir a finalização.')
+    }
+    throw new Error(`Erro ao salvar a finalização do domingo: ${error.message}`)
+  }
+  log.info('[vouchers] closeout salvo', periodKey, storeKey, payments.length)
+  return closeoutFromRow(data as never)
 }

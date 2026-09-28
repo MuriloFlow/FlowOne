@@ -101,6 +101,9 @@ const flow: FlowApi = {
     listVoucherHistory: (monthKey: string, storeId?: string | null) =>
       ipcRenderer.invoke('operations:voucher-history', { monthKey, storeId: storeId ?? null }),
     updateVoucher: (input) => ipcRenderer.invoke('operations:voucher-update', input),
+    getVoucherCloseout: (input) =>
+      ipcRenderer.invoke('operations:voucher-closeout-get', input ?? {}),
+    saveVoucherCloseout: (input) => ipcRenderer.invoke('operations:voucher-closeout-save', input),
     lookupSorteioClient: (cpf, storeId) => {
       if (cpf && typeof cpf === 'object' && 'cpf' in (cpf as object)) {
         const body = cpf as { cpf: string; storeId?: string | null }

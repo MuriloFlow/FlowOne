@@ -350,9 +350,17 @@ export async function closeSignatureSession(payload: unknown): Promise<Signature
   if (!/^\d{4}$/.test(code)) throw new Error('Sessão de assinatura inválida.')
   const row = await loadByCode(code)
   if (!row) throw new Error('Sessão de assinatura não encontrada.')
+  // linked_at bumpa: é o sinal que o celular usa para SAIR da tela branca e
+  // voltar ao loader standby (rodada encerrada pelo PC — vínculo 24h segue).
   const { data, error } = await getFlowAdminClient()
     .from('flow_signature_sessions')
-    .update({ status: 'linked', strokes: [], signed_at: null, confirmed_at: null })
+    .update({
+      status: 'linked',
+      strokes: [],
+      signed_at: null,
+      confirmed_at: null,
+      linked_at: new Date().toISOString()
+    })
     .eq('id', row.id)
     .select('*')
     .single()

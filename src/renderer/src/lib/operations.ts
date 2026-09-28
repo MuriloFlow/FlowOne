@@ -133,6 +133,17 @@ export function operations(): OperationsApi {
       })
     },
     updateVoucher: (input) => api.updateVoucher(input),
+    getVoucherCloseout: (input) =>
+      invokeOperation('getVoucherCloseout', 'operations:voucher-closeout-get', {
+        periodKey: input?.periodKey ?? null,
+        storeId: (input?.storeId ?? undefined) === undefined ? getCurrentStoreId() : (input?.storeId ?? null)
+      }),
+    saveVoucherCloseout: (input) =>
+      invokeOperation('saveVoucherCloseout', 'operations:voucher-closeout-save', {
+        periodKey: input.periodKey ?? null,
+        storeId: input.storeId === undefined ? getCurrentStoreId() : input.storeId,
+        payments: input.payments
+      }),
     lookupSorteioClient: (cpf, storeId) => {
       const resolved = storeId === undefined ? getCurrentStoreId() : storeId
       if (typeof api.lookupSorteioClient === 'function') {

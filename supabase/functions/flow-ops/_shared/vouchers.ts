@@ -107,6 +107,41 @@ export function formatSundayLabel(periodKey: string): string {
     .replace('.', '')
 }
 
+// ─── Finalização do domingo (closeout) ───────────────────────────────────
+// Guarda o lote pago de um domingo (valores + assinaturas + documentos
+// necessários ao PDF) para sobreviver ao reset de sábado e ao restart do app.
+// Refinalizar é permitido: o upsert substitui o lote pelo mais recente.
+
+export type VoucherCloseoutPayment = {
+  collaboratorId: string
+  name: string
+  storeId: string | null
+  storeName: string
+  roleLabel: string
+  group: VoucherGroupId
+  cpf: string | null
+  rgImage: string | null
+  lunchCents: number
+  transportCents: number
+  totalCents: number
+  paidAt: string | null
+  receiptNumber: string | null
+  signature: string | null
+}
+
+export type VoucherCloseoutSummary = {
+  periodKey: string
+  storeKey: string
+  finalizedAt: string
+  finalizedByName: string | null
+  paymentsCount: number
+  totalCents: number
+}
+
+export type VoucherCloseout = VoucherCloseoutSummary & {
+  payments: VoucherCloseoutPayment[]
+}
+
 export type VoucherHistoryPayment = {
   collaboratorId: string
   name: string

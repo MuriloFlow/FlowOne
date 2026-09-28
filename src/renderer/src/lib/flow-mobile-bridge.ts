@@ -132,6 +132,8 @@ function createOperations(prefs: Prefs): OperationsApi {
     listVoucherHistory: (monthKey, storeId) =>
       callOp('listVoucherHistory', withStore(storeId, { monthKey })),
     updateVoucher: (input) => callOp('updateVoucher', input),
+    getVoucherCloseout: (input) => callOp('getVoucherCloseout', withStore(input?.storeId, { periodKey: input?.periodKey ?? null })),
+    saveVoucherCloseout: (input) => callOp('saveVoucherCloseout', withStore(input.storeId, { periodKey: input.periodKey ?? null, payments: input.payments })),
     lookupSorteioClient: (cpf, storeId) => callOp('lookupSorteioClient', withStore(storeId, { cpf })),
     listSorteioBoard: (storeId) => callOp('listSorteioBoard', withStore(storeId)),
     registerSorteioClient: (input) => callOp('registerSorteioClient', input),
