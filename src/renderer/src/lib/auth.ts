@@ -125,13 +125,22 @@ export async function signInWithEmailPassword(emailInput: string, passwordInput:
     })
   }
 
-  await rpc('flow_auth_record_attempt', {
-    p_email: email,
-    p_success: !error && Boolean(data.session),
-    p_reason: error?.message ?? null,
-    p_ip: ip,
-    p_user_agent: userAgent
-  })
+  // Registro da tentativa nunca pode prender o login (rede instável no
+  // celular não pode virar "botão de login que não faz nada").
+  try {
+    await Promise.race([
+      rpc('flow_auth_record_attempt', {
+        p_email: email,
+        p_success: !error && Boolean(data.session),
+        p_reason: error?.message ?? null,
+        p_ip: ip,
+        p_user_agent: userAgent
+      }),
+      new Promise((resolve) => window.setTimeout(resolve, 4_000))
+    ])
+  } catch {
+    /* segue para o resultado real do signIn */
+  }
 
   if (error || !data.user || !data.session) {
     if (isTransientAuthError(error)) {
@@ -290,12 +299,18 @@ export async function restoreSession(): Promise<AuthUser | null> {
     await persistLocalSession(sessionId, data.session)
 
     const ip = await getPublicIp()
-    const validation = await rpc<SessionValidation>('flow_auth_validate_session', {
-      p_session_id: sessionId,
-      p_refresh_token_hash: originalHash,
-      p_ip: ip,
-      p_user_agent: navigator.userAgent
-    })
+    // A validação da sessão no banco é best-effort: se o servidor de RPC
+    // estiver lento/indisponível, a sessão do Supabase (setSession) já
+    // garantiu que o token é válido — não desloga o usuário por causa disso.
+    const validation = await Promise.race<SessionValidation | null>([
+      rpc<SessionValidation>('flow_auth_validate_session', {
+        p_session_id: sessionId,
+        p_refresh_token_hash: originalHash,
+        p_ip: ip,
+        p_user_agent: navigator.userAgent
+      }),
+      new Promise((resolve) => window.setTimeout(() => resolve(null), 5_000))
+    ])
 
     if (validation && validation.valid === false) {
       await clearLocalSession()

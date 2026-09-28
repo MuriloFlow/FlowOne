@@ -48,7 +48,19 @@ async function renewMobileSession(forceRefresh = false): Promise<void> {
     refresh_token: stored.refreshToken
   })
   let session = restored.data.session
-  if (restored.error || !session?.access_token || !session.refresh_token) return
+  if (restored.error || !session?.access_token || !session.refresh_token) {
+    // Refresh token morto/revogado: limpa a sessão salva para o app abrir
+    // na tela de login limpa (sem erro fantasma de "sessão expirada" em loop).
+    const message = restored.error?.message ?? ''
+    if (/invalid|expired|revoked|refresh/i.test(message)) {
+      try {
+        await flow.auth.clearSession()
+      } catch {
+        /* ignore */
+      }
+    }
+    return
+  }
 
   if (forceRefresh) {
     const refreshed = await supabase.auth.refreshSession()

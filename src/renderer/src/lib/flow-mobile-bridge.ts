@@ -221,7 +221,30 @@ function createKobbi(prefs: Prefs): KobbiApi {
 }
 
 export async function installFlowMobileBridge(): Promise<void> {
-  const { Preferences } = await import('@capacitor/preferences')
+  // O plugin nativo de Preferences pode travar em WebView antigo — e a ponte
+  // é pré-requisito do boot (login depende dela). Fallback: Preferences em
+  // memória, com o app funcionando (sem persistência entre aberturas).
+  let Preferences: Prefs
+  try {
+    const loaded = await Promise.race([
+      import('@capacitor/preferences'),
+      new Promise<'timeout'>((resolve) => window.setTimeout(() => resolve('timeout'), 6_000))
+    ])
+    if (loaded === 'timeout') throw new Error('Preferences demorou >6s')
+    Preferences = loaded.Preferences as Prefs
+  } catch (error) {
+    console.warn('[bridge] Preferences nativo indisponível — usando memória', error)
+    const memory = new Map<string, string>()
+    Preferences = {
+      get: async ({ key }) => ({ value: memory.get(key) ?? null }),
+      set: async ({ key, value }) => {
+        memory.set(key, value)
+      },
+      remove: async ({ key }) => {
+        memory.delete(key)
+      }
+    }
+  }
   const operations = createOperations(Preferences)
   const idle: UpdateStatus = idleStatus()
 

@@ -9,6 +9,8 @@ async function boot(): Promise<void> {
     const { installMobileSafeArea } = await import('./lib/mobile-safe-area')
     installMobileSafeArea()
     const { installFlowMobileBridge } = await import('./lib/flow-mobile-bridge')
+    // A ponte em si não pode prender o app na splash (ver fallback em
+    // installFlowMobileBridge — timeout interno com Preferences em memória).
     await installFlowMobileBridge()
     const { runSilentUpdate } = await import('./lib/live-update')
     // An OTA update must not keep the application on the splash screen while

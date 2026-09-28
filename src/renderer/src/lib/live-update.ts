@@ -177,6 +177,10 @@ let lastAttemptAt = 0
 let lastFailureAt = 0
 let pendingReload = false
 
+// O plugin do updater pode travar (WebView antigo, zip corrompido); se o
+// download não concluir em 90s, abortamos a rodada e liberamos a próxima.
+const DOWNLOAD_TIMEOUT_MS = 90 * 1000
+
 async function downloadAndApply(manifest: MobileManifest): Promise<void> {
   if (applying) return
   applying = true
@@ -250,7 +254,11 @@ async function checkAndApply(): Promise<void> {
     const current = await runningVersion()
     if (!isNewer(manifest.version, current)) return
     await resetIfRolledBack(manifest)
-    await downloadAndApply(manifest)
+    // A checagem não pode ficar presa num download lento: timeout de 90s.
+    await Promise.race([
+      downloadAndApply(manifest),
+      new Promise((resolve) => window.setTimeout(() => resolve('timeout'), DOWNLOAD_TIMEOUT_MS))
+    ])
   } catch (error) {
     lastFailureAt = Date.now()
     console.warn('[live-update] check', error)
