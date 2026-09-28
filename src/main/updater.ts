@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, net, powerMonitor } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import type { UpdateStatus } from '../shared/ipc'
+import { getFlowAdminClient } from './supabase-clients'
 
 const CHECK_EVERY_MS = 60_000
 const FOCUS_DEBOUNCE_MS = 30_000
@@ -130,6 +131,58 @@ function scheduleRetry(): void {
 
 function versionParts(value: string): number[] {
   return value.replace(/^v/i, '').split('.').map((part) => Number(part) || 0)
+}
+
+function isNewerKeys(left: string, right: string): boolean {
+  const a = versionParts(left)
+  const b = versionParts(right)
+  const size = Math.max(a.length, b.length)
+  for (let index = 0; index < size; index += 1) {
+    if ((a[index] ?? 0) > (b[index] ?? 0)) return true
+    if ((a[index] ?? 0) < (b[index] ?? 0)) return false
+  }
+  return false
+}
+
+let minVersionCheckedAt = 0
+
+/**
+ * Política de versão mínima do servidor: se a versão rodando ficou abaixo do
+ * mínimo (ex. versão com bug crítico), força a checagem de update imediatamente
+ * mesmo com o debounce — o desktop não continua trabalhando desatualizado.
+ */
+async function enforceMinVersion(): Promise<void> {
+  const now = Date.now()
+  if (now - minVersionCheckedAt < 5 * 60_000) return
+  minVersionCheckedAt = now
+  try {
+    const { data, error } = await getFlowAdminClient()
+      .from('flow_release_policy')
+      .select('min_version')
+      .eq('platform', 'DESKTOP')
+      .maybeSingle()
+    if (error || !data) return
+    const minVersion = String((data as { min_version?: string }).min_version ?? '0.0.0')
+    if (isNewerKeys(minVersion, app.getVersion())) {
+      log.info('[updater] versão mínima', minVersion, '> rodando', app.getVersion(), '— forçando update')
+      await checkForUpdates({ force: true })
+    }
+  } catch {
+    /* sem banco agora: segue */
+  }
+}
+
+/** Telemetria da frota: reporta a versão do desktop (best-effort). */
+async function reportDesktopVersion(): Promise<void> {
+  try {
+    await getFlowAdminClient().from('flow_device_pings').insert({
+      platform: 'DESKTOP',
+      app_version: app.getVersion(),
+      device_label: 'FLOW Launcher'
+    })
+  } catch {
+    /* antes do login falha silenciosamente */
+  }
 }
 
 function isNewer(latest: string, current: string): boolean {
@@ -305,12 +358,19 @@ function startUpdater(background: boolean): void {
   })
 
   void checkForUpdates({ force: true })
+  void reportDesktopVersion()
+  void enforceMinVersion()
   if (backgroundMode || pollingStarted) return
   pollingStarted = true
   setInterval(() => {
     if (!net.isOnline()) return
     void checkForUpdates()
+    void enforceMinVersion()
   }, CHECK_EVERY_MS)
+  // Telemetria a cada 15 min (frota visível no painel).
+  setInterval(() => {
+    void reportDesktopVersion()
+  }, 15 * 60_000)
   app.on('browser-window-focus', () => void checkForUpdates())
   powerMonitor.on('resume', () => void checkForUpdates({ force: true }))
   powerMonitor.on('unlock-screen', () => void checkForUpdates({ force: true }))

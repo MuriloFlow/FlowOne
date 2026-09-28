@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import log from 'electron-log'
 import { listStoreAccess, upsertStoreAccess, assertAccessUsernameAvailable, listEmployeeDirectory, deleteGlobalDeskAccount, linkedDeskAccountId, syncDeskAccountName } from './access'
 import {
@@ -22,6 +22,7 @@ import { deleteEmployeeDocument, getEmployeeDocument, saveEmployeeDocument } fro
 import { invalidateMemo, memo } from './memo'
 import { dateKeyInSaoPaulo } from './dates'
 import { resolveActor, resolveStoreFilter } from './scope'
+import { getFlowAdminClient } from './supabase-clients'
 import { getScheduleBoard, saveScheduleSlots, resetScheduleSlots, upsertScheduleAssignment, deleteScheduleAssignment } from './schedules'
 import { getAttendanceBoard, upsertTeamHeadcount, upsertAttendanceEvent, deleteAttendanceEvent } from './attendance'
 import { readStorePreference, writeStorePreference } from './store-preference'
@@ -210,7 +211,95 @@ function assertCardAmounts(input: CardWriteInput): CardWriteInput {
   return input
 }
 
+function compareVersionKeys(left: string, right: string): number {
+  const a = left.replace(/^v/i, '').split('.').map((part) => Number(part) || 0)
+  const b = right.replace(/^v/i, '').split('.').map((part) => Number(part) || 0)
+  const size = Math.max(a.length, b.length)
+  for (let index = 0; index < size; index += 1) {
+    if ((a[index] ?? 0) > (b[index] ?? 0)) return 1
+    if ((a[index] ?? 0) < (b[index] ?? 0)) return -1
+  }
+  return 0
+}
+
 export function registerOperationsIpc(): void {
+  handle('operations:release-policy', async (payload) => {
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const platform = String(body.platform ?? 'DESKTOP').toUpperCase() === 'MOBILE' ? 'MOBILE' : 'DESKTOP'
+    const appVersion = typeof body.appVersion === 'string' ? body.appVersion : app.getVersion()
+    const admin = getFlowAdminClient()
+    const { data, error } = await admin
+      .from('flow_release_policy')
+      .select('min_version, message')
+      .eq('platform', platform)
+      .maybeSingle()
+    const minVersion = (error || !data ? '0.0.0' : String((data as { min_version?: string }).min_version ?? '0.0.0'))
+    const message = error || !data ? null : ((data as { message?: string | null }).message ?? null)
+    const cmp = compareVersionKeys(minVersion, appVersion)
+    return {
+      platform,
+      minVersion,
+      message: cmp > 0 ? message : null,
+      block: cmp > 0
+    }
+  })
+
+  handle('operations:app-version-report', async (payload) => {
+    await resolveActor()
+    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+    const platform = String(body.platform ?? 'DESKTOP').toUpperCase() === 'MOBILE' ? 'MOBILE' : 'DESKTOP'
+    const appVersion = String(body.appVersion ?? app.getVersion()).trim().slice(0, 32)
+    if (!appVersion) return { recorded: false }
+    const { error } = await getFlowAdminClient().from('flow_device_pings').insert({
+      platform,
+      app_version: appVersion,
+      device_label: typeof body.deviceLabel === 'string' ? body.deviceLabel.slice(0, 80) : 'FLOW Launcher',
+      session_id: typeof body.sessionId === 'string' ? body.sessionId.slice(0, 80) : null
+    })
+    if (error) {
+      log.warn('[release] ping', error.message)
+      return { recorded: false }
+    }
+    return { recorded: true }
+  })
+
+  handle('operations:device-versions', async () => {
+    const actor = await resolveActor()
+    if (!['LIDER_OPERACAO', 'SUPERVISOR', 'DIRETOR', 'GERENTE_GERAL'].includes(actor.role)) {
+      throw new Error('Sem permissão para ver a frota.')
+    }
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
+    const { data, error } = await getFlowAdminClient()
+      .from('flow_device_pings')
+      .select('platform, app_version, device_label, user_email, created_at')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(2000)
+    if (error && !['42P01', 'PGRST205'].includes(String(error.code))) {
+      throw new Error(`Erro ao carregar versões da frota: ${error.message}`)
+    }
+    const latest = new Map<string, { platform: string; appVersion: string; deviceLabel: string | null; userEmail: string | null; lastSeen: string }>()
+    for (const row of (data ?? []) as Array<{
+      platform: string
+      app_version: string
+      device_label: string | null
+      user_email: string | null
+      created_at: string
+    }>) {
+      const key = `${row.platform}:${row.user_email ?? ''}:${row.device_label ?? ''}`
+      if (!latest.has(key)) {
+        latest.set(key, {
+          platform: row.platform,
+          appVersion: row.app_version,
+          deviceLabel: row.device_label,
+          userEmail: row.user_email,
+          lastSeen: row.created_at
+        })
+      }
+    }
+    return [...latest.values()]
+  })
+
   handle('operations:scope', async () => {
     const actor = await resolveActor()
     if (!actor.canViewAll && !actor.boundStoreId) {

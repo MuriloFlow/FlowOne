@@ -141,7 +141,10 @@ function createOperations(prefs: Prefs): OperationsApi {
     deleteSorteioClient: (clientId) => callOp('deleteSorteioClient', { clientId }),
     listFlowUsers: () => callOp('listFlowUsers'),
     upsertFlowUser: (input) => callOp('upsertFlowUser', input),
-    getActorScope: () => callOp('getActorScope')
+    getActorScope: () => callOp('getActorScope'),
+    getReleasePolicy: (input) => callOp('getReleasePolicy', input ?? {}),
+    reportAppVersion: (input) => callOp('reportAppVersion', input),
+    listDeviceVersions: () => callOp('listDeviceVersions')
   }
 }
 

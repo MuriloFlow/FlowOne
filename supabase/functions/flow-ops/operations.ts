@@ -65,6 +65,7 @@ import {
 import { listFlowUsers as loadFlowUsers, upsertFlowUser as saveFlowUser } from './users.ts'
 import { sendKobbi } from './kobbi.ts'
 import { handleSignatureOp } from './signature-sessions.ts'
+import { getReleasePolicy, listDeviceVersions, reportAppVersion } from './release-policy.ts'
 import type {
   CardMonthTotalWrite,
   CardWriteInput,
@@ -904,6 +905,18 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
 
   async closeSignatureSession(payload) {
     return handleSignatureOp('closeSignatureSession', payload)
+  },
+
+  async getReleasePolicy(payload) {
+    return getReleasePolicy(payload)
+  },
+
+  async reportAppVersion(payload) {
+    return reportAppVersion(payload)
+  },
+
+  async listDeviceVersions() {
+    return listDeviceVersions()
   }
 }
 

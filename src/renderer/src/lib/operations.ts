@@ -83,6 +83,12 @@ export function operations(): OperationsApi {
     deleteCard: (id) => api.deleteCard(id),
     upsertDailySale: (input) => api.upsertDailySale(input),
     upsertFinanceDay: (input) => api.upsertFinanceDay(input),
+    getReleasePolicy: (input) =>
+      invokeOperation('getReleasePolicy', 'operations:release-policy', input ?? {}),
+    reportAppVersion: (input) =>
+      invokeOperation('reportAppVersion', 'operations:app-version-report', input),
+    listDeviceVersions: () =>
+      invokeOperation('listDeviceVersions', 'operations:device-versions'),
     getScheduleBoard: (storeId, weekStart) =>
       api.getScheduleBoard(storeId === undefined ? getCurrentStoreId() : storeId, weekStart),
     saveScheduleSlots: (storeId, slots, team) => api.saveScheduleSlots(storeId, slots, team),

@@ -10,11 +10,14 @@ type GithubRelease = {
   assets?: Array<{ name?: string; browser_download_url?: string }>
 }
 
+import { operations } from '@/lib/operations'
+
 const OWNER = 'MuriloFlow'
 const REPO = 'FlowOne'
 const MANIFEST_URL = `https://github.com/${OWNER}/${REPO}/releases/latest/download/latest-mobile.yml`
 const RELEASES_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=20`
 const LAST_KEY = 'flow.mobile.applied-version'
+const ROLLBACK_KEY = 'flow.mobile.rollback-count'
 // Direto: o zip mais recente sem passar pela API do GitHub (que tem limite
 // anônimo de 60 req/h e derrubava a checagem com o polling).
 const LATEST_ZIP_URL = `https://github.com/${OWNER}/${REPO}/releases/latest/download/mobile-www.zip`
@@ -216,29 +219,82 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
   }
 }
 
-// O pacote anterior falhou e o Android voltou para o builtin (o capacitor-
-// updater faz rollback sozinho quando o notifyAppReady não chega). Sem o
-// reset, o plugin recusa o download da mesma versão e o app nunca se
-// atualiza de novo — o reset limpa o bundle quebrado e libera a retry.
-async function resetIfRolledBack(manifest: MobileManifest): Promise<void> {
+/**
+ * AUTO-CURA: bundle em 'builtin' significa que o plugin fez rollback do OTA
+ * (bundle quebrado ou crash). Sem o reset, o plugin recusa reinstalar a MESMA
+ * versão e o aparelho fica preso para sempre na versão antiga — é exatamente
+ * o bug que fazia "a atualização nunca chegar". Retorna a versão que estava
+ * armazenada (quando havia) ou null se o bundle está saudável.
+ */
+async function resetIfRolledBack(): Promise<string | null> {
   try {
     const { CapacitorUpdater } = await import('@capgo/capacitor-updater')
     const { Preferences } = await import('@capacitor/preferences')
     const info = await CapacitorUpdater.current()
     const bundle = info.bundle?.version?.trim()
-    const stored = (await Preferences.get({ key: LAST_KEY })).value
-    if ((!bundle || bundle === 'builtin') && stored && isNewer(stored, manifest.version) === false && isNewer(manifest.version, stored) === false) {
-      await CapacitorUpdater.reset()
-      await Preferences.remove({ key: LAST_KEY })
-      console.warn('[live-update] bundle anterior falhou; reset feito para aplicar', manifest.version)
-      return
-    }
-    if (bundle && bundle !== 'builtin' && isNewer(manifest.version, bundle)) {
-      // Bundle antigo saudável: mantemos como fallback e seguimos.
-      return
+    if (!bundle || bundle === 'builtin') {
+      const stored = (await Preferences.get({ key: LAST_KEY })).value
+      await CapacitorUpdater.reset().catch(() => undefined)
+      if (stored) await Preferences.remove({ key: LAST_KEY })
+      console.warn('[live-update] bundle em builtin — reset feito para permitir reinstalar')
+      return stored || ''
     }
   } catch {
     /* plugin indisponível: segue o fluxo normal */
+  }
+  return null
+}
+
+async function rollbackCountFor(version: string): Promise<number> {
+  try {
+    const { Preferences } = await import('@capacitor/preferences')
+    const raw = (await Preferences.get({ key: ROLLBACK_KEY })).value
+    const parsed = raw ? (JSON.parse(raw) as { version?: string; count?: number }) : null
+    return parsed && parsed.version === version ? Number(parsed.count) || 0 : 0
+  } catch {
+    return 0
+  }
+}
+
+async function bumpRollbackCount(version: string): Promise<void> {
+  if (!version) return
+  try {
+    const { Preferences } = await import('@capacitor/preferences')
+    const count = (await rollbackCountFor(version)) + 1
+    await Preferences.set({ key: ROLLBACK_KEY, value: JSON.stringify({ version, count }) })
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Telemetria: reporta a versão rodando (best-effort; falha antes do login é normal). */
+async function reportMobileVersion(): Promise<void> {
+  try {
+    const appVersion = await runningVersion()
+    if (appVersion === '0.0.0') return
+    await operations().reportAppVersion({
+      platform: 'MOBILE',
+      appVersion,
+      deviceLabel: 'FLOW Mobile'
+    })
+  } catch {
+    /* sem sessão ainda — tenta na próxima checagem */
+  }
+}
+
+/** Versão mínima imposta pelo servidor: se bloqueou, força checagem agora. */
+async function enforceMinVersion(): Promise<void> {
+  try {
+    const appVersion = await runningVersion()
+    const policy = await operations().getReleasePolicy({ platform: 'MOBILE', appVersion })
+    if (policy.block) {
+      console.warn('[live-update] versão mínima', policy.minVersion, '— forçando atualização')
+      lastAttemptAt = 0
+      lastFailureAt = 0
+      await checkAndApply()
+    }
+  } catch {
+    /* antes do login falha silenciosamente */
   }
 }
 
@@ -251,14 +307,25 @@ async function checkAndApply(): Promise<void> {
   try {
     const manifest = await latestMobileManifest()
     if (!manifest) return
+    const rolledBackFrom = await resetIfRolledBack()
+    if (rolledBackFrom !== null) {
+      await bumpRollbackCount(rolledBackFrom)
+      if ((await rollbackCountFor(manifest.version)) >= 2) {
+        console.warn('[live-update]', manifest.version, 'rollbackou 2x — aguardando versão nova')
+        return
+      }
+    }
     const current = await runningVersion()
-    if (!isNewer(manifest.version, current)) return
-    await resetIfRolledBack(manifest)
+    if (!isNewer(manifest.version, current)) {
+      void reportMobileVersion()
+      return
+    }
     // A checagem não pode ficar presa num download lento: timeout de 90s.
     await Promise.race([
       downloadAndApply(manifest),
       new Promise((resolve) => window.setTimeout(() => resolve('timeout'), DOWNLOAD_TIMEOUT_MS))
     ])
+    void reportMobileVersion()
   } catch (error) {
     lastFailureAt = Date.now()
     console.warn('[live-update] check', error)
@@ -284,6 +351,11 @@ export async function runSilentUpdate(): Promise<void> {
   }
 
   await checkAndApply()
+  // Política de versão mínima + telemetria: roda depois (pode falhar antes do login).
+  window.setTimeout(() => {
+    void enforceMinVersion()
+    void reportMobileVersion()
+  }, 3_000)
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void checkAndApply()
@@ -301,4 +373,9 @@ export async function runSilentUpdate(): Promise<void> {
   window.setInterval(() => {
     void checkAndApply()
   }, 90_000)
+  // Política/telemetria reavaliadas a cada 5 min (pega login tardio).
+  window.setInterval(() => {
+    void enforceMinVersion()
+    void reportMobileVersion()
+  }, 300_000)
 }

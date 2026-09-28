@@ -494,4 +494,12 @@ export type OperationsApi = {
   listFlowUsers: () => Promise<FlowLauncherUser[]>
   upsertFlowUser: (input: FlowLauncherUserWrite) => Promise<FlowLauncherUser>
   getActorScope: () => Promise<ActorScopeView>
+  getReleasePolicy: (input?: { platform?: string | null; appVersion?: string | null }) => Promise<{
+    platform: string
+    minVersion: string
+    message: string | null
+    block: boolean
+  }>
+  reportAppVersion: (input: { platform: string; appVersion: string; deviceLabel?: string | null; sessionId?: string | null }) => Promise<{ recorded: boolean }>
+  listDeviceVersions: () => Promise<Array<{ platform: string; appVersion: string; deviceLabel: string | null; userEmail: string | null; lastSeen: string }>>
 }
