@@ -40,6 +40,8 @@ export type AuthUser = {
   displayName: string
   storeId: string | null
   canFilterStores: boolean
+  /** true = login com senha temporária (primeiro acesso/redefinição): exige criar nova senha. */
+  mustSetPassword: boolean
 }
 
 function readFlowApi() {
@@ -70,13 +72,14 @@ type FlowProfileRow = {
   display_name?: string | null
   email?: string | null
   status?: string | null
+  must_set_password?: boolean | null
   cardplus_store_id?: string | null
 }
 
 async function readProfile(userId: string): Promise<FlowProfileRow | null> {
   const full = await supabase
     .from('flow_profiles')
-    .select('role, display_name, email, status, cardplus_store_id')
+    .select('role, display_name, email, status, must_set_password, cardplus_store_id')
     .eq('user_id', userId)
     .maybeSingle()
   if (!full.error) return full.data
@@ -180,7 +183,8 @@ export async function signInWithEmailPassword(emailInput: string, passwordInput:
     displayRole: roleLabel(role),
     displayName: profile?.display_name ?? 'Usuário',
     storeId: typeof profile?.cardplus_store_id === 'string' ? profile.cardplus_store_id : null,
-    canFilterStores: canViewAllStores(role)
+    canFilterStores: canViewAllStores(role),
+    mustSetPassword: profile?.must_set_password === true
   }
 }
 
@@ -337,7 +341,8 @@ export async function restoreSession(): Promise<AuthUser | null> {
       displayRole: roleLabel(role),
       displayName: profile?.display_name ?? validation?.display_name ?? 'Usuário',
       storeId: typeof profile?.cardplus_store_id === 'string' ? profile.cardplus_store_id : null,
-      canFilterStores: canViewAllStores(role)
+      canFilterStores: canViewAllStores(role),
+      mustSetPassword: profile?.must_set_password === true
     }
   } finally {
     restoring = false
@@ -349,6 +354,19 @@ export async function refreshAuthUser(): Promise<AuthUser | null> {
   if (user) {
     window.dispatchEvent(new CustomEvent('flow:auth-changed', { detail: user }))
   }
+  return user
+}
+
+/**
+ * Primeiro acesso / pós-redefinição: o usuário cria a própria senha (RPC no
+ * banco com auth.uid()). Retorna o usuário atualizado (mustSetPassword=false).
+ */
+export async function completePasswordSetup(newPassword: string): Promise<AuthUser> {
+  const password = validatePassword(newPassword)
+  const { error } = await supabase.rpc('flow_auth_set_own_password', { p_new_password: password })
+  if (error) throw new AuthFlowError('password_setup', error.message)
+  const user = await restoreSession()
+  if (!user) throw new AuthFlowError('password_setup', 'Sua sessão expirou. Entre novamente.')
   return user
 }
 

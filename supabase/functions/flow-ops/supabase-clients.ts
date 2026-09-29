@@ -73,6 +73,22 @@ export function flowPublicUrl(): string {
   return requiredEnv('FLOW_SUPABASE_URL', ['SUPABASE_PUBLIC_URL', 'SUPABASE_URL'])
 }
 
+/**
+ * Cliente com a identidade do USUÁRIO (token do chamador). Usado para RPCs
+ * que rodam com auth.uid() — ex. o usuário definir a própria senha.
+ */
+export function getFlowUserClient(accessToken: string): SupabaseClient {
+  return createClient(flowPublicUrl(), flowAnonKey() ?? '', {
+    ...clientOptions,
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: flowAnonKey() ?? ''
+      }
+    }
+  })
+}
+
 export function flowAnonKey(): string | null {
   return envValue('SUPABASE_ANON_KEY') || envValue('FLOW_SUPABASE_ANON_KEY') || null
 }

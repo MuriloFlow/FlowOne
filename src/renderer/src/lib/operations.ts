@@ -188,6 +188,10 @@ export function operations(): OperationsApi {
     },
     listFlowUsers: () => invokeOperation('listFlowUsers', 'operations:users'),
     upsertFlowUser: (input) => invokeOperation('upsertFlowUser', 'operations:user-upsert', input),
+    resetFlowUserPassword: (id: string) =>
+      invokeOperation('resetFlowUserPassword', 'operations:password-reset', { id }),
+    setOwnPassword: (input: { newPassword: string }) =>
+      invokeOperation('setOwnPassword', 'operations:password-set-own', input),
     getActorScope: () => invokeOperation('getActorScope', 'operations:scope')
   }
 }

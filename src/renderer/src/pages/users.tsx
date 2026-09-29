@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight, Eye, EyeOff, Loader2, Settings } from 'lucide-react'
+import { Check, ChevronRight, Eye, EyeOff, KeyRound, Loader2, Settings } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,6 +25,8 @@ export function UsersPage() {
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<FlowLauncherUser | null>(null)
+  const [resetTarget, setResetTarget] = useState<FlowLauncherUser | null>(null)
+  const [resetResult, setResetResult] = useState<{ user: string; password: string } | null>(null)
 
   async function reload(): Promise<void> {
     const [list, storeList] = await Promise.all([operations().listFlowUsers(), operations().listStores()])
@@ -145,8 +147,26 @@ export function UsersPage() {
                   {initials(user.displayName)}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] text-[#F0EFEC]/85">{user.displayName}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="truncate text-[14px] text-[#F0EFEC]/85">{user.displayName}</span>
+                    {user.mustSetPassword ? (
+                      <span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-amber-200/90 uppercase">
+                        Senha pendente
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="mt-0.5 block truncate text-[12px] text-[#F0EFEC]/38">{user.email}</span>
+                </span>
+                <span
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setResetTarget(user)
+                  }}
+                  className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[#F0EFEC]/35 hover:bg-white/[0.05] hover:text-amber-200/90"
+                  role="button"
+                  aria-label="Redefinir senha"
+                >
+                  <KeyRound className="size-4" strokeWidth={1.7} />
                 </span>
                 <ChevronRight className="size-4 shrink-0 text-[#F0EFEC]/28" strokeWidth={1.8} />
               </button>
@@ -190,16 +210,32 @@ export function UsersPage() {
                       />
                       {user.status === 'active' ? 'Ativo' : user.status === 'locked' ? 'Bloqueado' : 'Inativo'}
                     </span>
+                    {user.mustSetPassword ? (
+                      <span className="mt-1 inline-flex items-center rounded-full border border-amber-300/25 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-amber-200/90 uppercase">
+                        Senha pendente
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(user)}
-                      className="flex size-7 items-center justify-center rounded-[8px] text-[#F0EFEC]/35 hover:bg-white/[0.04] hover:text-[#F0EFEC]/70"
-                      aria-label="Editar"
-                    >
-                      <Settings className="size-3.5" strokeWidth={1.7} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setResetTarget(user)}
+                        className="flex size-7 items-center justify-center rounded-[8px] text-[#F0EFEC]/35 hover:bg-white/[0.04] hover:text-amber-200/90"
+                        aria-label="Redefinir senha"
+                        title="Redefinir senha (funcionário esqueceu)"
+                      >
+                        <KeyRound className="size-3.5" strokeWidth={1.7} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEdit(user)}
+                        className="flex size-7 items-center justify-center rounded-[8px] text-[#F0EFEC]/35 hover:bg-white/[0.04] hover:text-[#F0EFEC]/70"
+                        aria-label="Editar"
+                      >
+                        <Settings className="size-3.5" strokeWidth={1.7} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -223,7 +259,150 @@ export function UsersPage() {
           setDialogOpen(false)
         }}
       />
+
+      <ResetPasswordDialog
+        target={resetTarget}
+        onClose={() => setResetTarget(null)}
+        onReset={(target, password) => {
+          setResetResult({ user: target.displayName, password })
+          setUsers((current) =>
+            current.map((item) => (item.id === target.id ? { ...item, mustSetPassword: true } : item))
+          )
+          setResetTarget(null)
+        }}
+      />
+
+      <TempPasswordDialog result={resetResult} onClose={() => setResetResult(null)} />
     </div>
+  )
+}
+
+/** Modal de redefinição: aviso + confirmação. A senha temporária aparece no modal seguinte. */
+function ResetPasswordDialog({
+  target,
+  onClose,
+  onReset
+}: {
+  target: FlowLauncherUser | null
+  onClose: () => void
+  onReset: (target: FlowLauncherUser, temporaryPassword: string) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (target) {
+      setError(null)
+      setSaving(false)
+    }
+  }, [target])
+
+  async function confirm(): Promise<void> {
+    if (!target) return
+    setSaving(true)
+    setError(null)
+    try {
+      const { temporaryPassword } = await operations().resetFlowUserPassword(target.id)
+      onReset(target, temporaryPassword)
+    } catch (resetError) {
+      setError(operationError(resetError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={Boolean(target)}
+      title="Redefinir senha"
+      description={
+        target
+          ? `A senha de ${target.displayName} (${target.email}) será trocada por uma senha temporária. Todas as sessões dele serão encerradas e, no próximo login, ele cria uma nova senha.`
+          : ''
+      }
+      onClose={onClose}
+    >
+      <div className="space-y-3.5 px-5 pb-5">
+        <p className="text-[12px] text-[#F0EFEC]/45">
+          Passe a senha temporária para o funcionário (WhatsApp ou papel). Ele loga com ela e o app
+          pede para criar a nova senha na hora.
+        </p>
+        {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 rounded-[8px] px-3 text-[13px] text-[#F0EFEC]/45 hover:bg-white/[0.04]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void confirm()}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111] disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />} Redefinir
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+/** Mostra a senha temporária gerada, com copiar fácil. */
+function TempPasswordDialog({
+  result,
+  onClose
+}: {
+  result: { user: string; password: string } | null
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (result) setCopied(false)
+  }, [result])
+
+  async function copy(): Promise<void> {
+    if (!result) return
+    try {
+      await navigator.clipboard.writeText(result.password)
+      setCopied(true)
+    } catch {
+      /* clipboard indisponível */
+    }
+  }
+
+  return (
+    <Dialog
+      open={Boolean(result)}
+      title="Senha temporária gerada"
+      description={result ? `Entregue para ${result.user}. Vale só até ele criar a nova senha no login.` : ''}
+      onClose={onClose}
+    >
+      <div className="space-y-3.5 px-5 pb-5">
+        <div className="rounded-[12px] border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-center">
+          <p className="font-mono text-[22px] tracking-[0.18em] text-[#F0EFEC] select-all">{result?.password}</p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => void copy()}
+            className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-white/[0.08] px-3 text-[13px] text-[#F0EFEC]/70 hover:bg-white/[0.04]"
+          >
+            {copied ? <Check className="size-3.5 text-emerald-300" /> : null} {copied ? 'Copiado!' : 'Copiar'}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 items-center rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] text-[#111111]"
+          >
+            Concluir
+          </button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
 
@@ -270,7 +449,7 @@ function UserDialog({
     setSaving(true)
     setError(null)
     try {
-      if (!user && password.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.')
+      if (password && password.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.')
       if (password && password !== confirmPassword) throw new Error('As senhas não coincidem.')
       const saved = await operations().upsertFlowUser({
         id: user?.id,
@@ -293,7 +472,7 @@ function UserDialog({
     <Dialog
       open={open}
       title={user ? 'Editar acesso' : 'Novo acesso do FLOW'}
-      description="E-mail e senha entram no launcher. Cargo FLOW define o que a pessoa vê. Login do Card+ continua separado."
+      description="O e-mail é o acesso. Sem senha, a pessoa cria a própria no primeiro login (Nova senha + Confirmar). Login do Card+ continua separado."
       onClose={onClose}
     >
       <div className="space-y-3.5 px-5 pb-5">
@@ -354,13 +533,17 @@ function UserDialog({
         )}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-[12px] text-[#F0EFEC]/45">{user ? 'Nova senha' : 'Senha'}</Label>
+            <Label className="text-[12px] text-[#F0EFEC]/45">{user ? 'Nova senha' : 'Senha (opcional)'}</Label>
             <div className="relative">
               <Input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder={user ? 'Deixe vazio para manter' : 'Mínimo 8 caracteres'}
+                placeholder={
+                  user
+                    ? 'Deixe vazio para manter'
+                    : 'Vazio = pessoa cria no 1º login'
+                }
                 autoComplete="new-password"
                 className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] pr-10 text-[13px]"
               />
@@ -379,12 +562,20 @@ function UserDialog({
               type={showPassword ? 'text' : 'password'}
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
-              placeholder="Repita a senha"
+              placeholder={password ? 'Repita a senha' : '—'}
               autoComplete="new-password"
-              className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px]"
+              disabled={!password}
+              className="h-9 rounded-[10px] border-white/[0.08] bg-white/[0.03] text-[13px] disabled:opacity-40"
             />
           </div>
         </div>
+        {!user ? (
+          <p className="text-[11px] leading-relaxed text-[#F0EFEC]/32">
+            Recomendado: deixe a senha vazia. A pessoa loga com o e-mail, recebe uma senha temporária
+            do sistema e o app pede para ela criar a própria senha na hora — depois use o ícone de
+            chave 🔑 para redefinir caso esqueça.
+          </p>
+        ) : null}
         {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
         <div className="flex justify-end gap-2 pt-1">
           <button

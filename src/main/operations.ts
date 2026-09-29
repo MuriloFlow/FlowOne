@@ -35,7 +35,7 @@ import {
   upsertVoucher
 } from './vouchers'
 import { addSorteioVale, deleteSorteioClient, listSorteioBoard, lookupSorteioClient, registerSorteioClient } from './sorteio'
-import { listFlowUsers, upsertFlowUser } from './users'
+import { listFlowUsers, upsertFlowUser, resetFlowUserPassword, setOwnFlowPassword } from './users'
 import type {
   CardMonthTotalWrite,
   CardWriteInput,
@@ -1087,6 +1087,19 @@ export function registerOperationsIpc(): void {
       throw new Error('Só Lider de Operação, Supervisor e Diretor gerenciam acessos do FLOW.')
     }
     return memo(cacheKey('users', 'all'), 8_000, () => listFlowUsers())
+  })
+
+  handle('operations:password-reset', async (payload) => {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Usuário é obrigatório.')
+    const body = payload as Record<string, unknown>
+    const id = asString(body.id, 'Usuário')
+    return resetFlowUserPassword(id, actor.role)
+  })
+
+  handle('operations:password-set-own', async (payload) => {
+    await resolveActor()
+    return setOwnFlowPassword(payload)
   })
 
   handle('operations:user-upsert', async (payload) => {

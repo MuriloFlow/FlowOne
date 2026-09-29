@@ -141,6 +141,8 @@ function createOperations(prefs: Prefs): OperationsApi {
     deleteSorteioClient: (clientId) => callOp('deleteSorteioClient', { clientId }),
     listFlowUsers: () => callOp('listFlowUsers'),
     upsertFlowUser: (input) => callOp('upsertFlowUser', input),
+    resetFlowUserPassword: (id) => callOp('resetFlowUserPassword', { id }),
+    setOwnPassword: (input) => callOp('setOwnPassword', input),
     getActorScope: () => callOp('getActorScope'),
     getReleasePolicy: (input) => callOp('getReleasePolicy', input ?? {}),
     reportAppVersion: (input) => callOp('reportAppVersion', input),

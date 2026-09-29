@@ -11,6 +11,8 @@ export type ActorScope = {
   email: string | null
   displayName: string | null
   status: string
+  /** Token do chamador: RPCs que usam auth.uid() (ex. definir a própria senha). */
+  accessToken: string
 }
 
 let currentActor: ActorScope | null = null
@@ -159,7 +161,8 @@ export async function authenticateRequest(accessToken: string): Promise<ActorSco
     boundStoreId: typeof profile?.cardplus_store_id === 'string' ? profile.cardplus_store_id : null,
     email: profile?.email ?? user.email ?? null,
     displayName: profile?.display_name ?? null,
-    status
+    status,
+    accessToken
   }
   setCurrentActor(actor)
   return actor

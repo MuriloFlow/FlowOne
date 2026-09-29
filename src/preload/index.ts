@@ -129,6 +129,8 @@ const flow: FlowApi = {
     deleteSorteioClient: (clientId) => ipcRenderer.invoke('operations:sorteio-delete', { clientId }),
     listFlowUsers: () => ipcRenderer.invoke('operations:users'),
     upsertFlowUser: (input) => ipcRenderer.invoke('operations:user-upsert', input),
+    resetFlowUserPassword: (id: string) => ipcRenderer.invoke('operations:password-reset', { id }),
+    setOwnPassword: (input: { newPassword: string }) => ipcRenderer.invoke('operations:password-set-own', input),
     getActorScope: () => ipcRenderer.invoke('operations:scope'),
     pollNotifications: (input) => ipcRenderer.invoke('operations:notifications', input ?? {})
   },

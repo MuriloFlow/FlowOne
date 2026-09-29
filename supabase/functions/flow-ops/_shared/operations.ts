@@ -358,6 +358,7 @@ export type FlowLauncherUser = {
   status: 'active' | 'inactive' | 'locked'
   storeId: string | null
   storeName: string | null
+  mustSetPassword: boolean
   createdAt: string | null
   updatedAt: string | null
 }
@@ -438,6 +439,8 @@ export type OperationsApi = {
   deleteSorteioClient: (clientId: string) => Promise<void>
   listFlowUsers: () => Promise<FlowLauncherUser[]>
   upsertFlowUser: (input: FlowLauncherUserWrite) => Promise<FlowLauncherUser>
+  resetFlowUserPassword: (id: string) => Promise<{ temporaryPassword: string }>
+  setOwnPassword: (input: { newPassword: string }) => Promise<{ ok: boolean }>
   getActorScope: () => Promise<ActorScopeView>
   getReleasePolicy: (input?: { platform?: string | null; appVersion?: string | null }) => Promise<{
     platform: string

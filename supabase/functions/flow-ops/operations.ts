@@ -62,7 +62,12 @@ import {
   lookupSorteioClient,
   registerSorteioClient
 } from './sorteio.ts'
-import { listFlowUsers as loadFlowUsers, upsertFlowUser as saveFlowUser } from './users.ts'
+import {
+  listFlowUsers as loadFlowUsers,
+  upsertFlowUser as saveFlowUser,
+  resetFlowUserPassword as doResetFlowUserPassword,
+  setOwnFlowPassword as doSetOwnFlowPassword
+} from './users.ts'
 import { sendKobbi } from './kobbi.ts'
 import { handleSignatureOp } from './signature-sessions.ts'
 import { pollNotifications } from './notifications.ts'
@@ -866,6 +871,20 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
       status: body.status === 'inactive' ? 'inactive' : 'active'
     }
     return saveFlowUser(input, actor.userId, actor.role)
+  },
+
+  async resetFlowUserPassword(payload) {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Usuário é obrigatório.')
+    const body = payload as Record<string, unknown>
+    const id = asString(body.id, 'Usuário')
+    return doResetFlowUserPassword(id, actor.role)
+  },
+
+  async setOwnPassword(payload) {
+    const actor = await resolveActor()
+    if (!payload || typeof payload !== 'object') throw new Error('Dados da senha inválidos.')
+    return doSetOwnFlowPassword(payload, actor.accessToken)
   },
 
   async kobbiSend(payload) {
