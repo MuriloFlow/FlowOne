@@ -447,4 +447,5 @@ export type OperationsApi = {
   }>
   reportAppVersion: (input: { platform: string; appVersion: string; deviceLabel?: string | null; sessionId?: string | null }) => Promise<{ recorded: boolean }>
   listDeviceVersions: () => Promise<Array<{ platform: string; appVersion: string; deviceLabel: string | null; userEmail: string | null; lastSeen: string }>>
+  pollNotifications: (input?: { since?: string | null; storeId?: string | null }) => Promise<unknown>
 }

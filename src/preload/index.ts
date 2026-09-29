@@ -129,7 +129,8 @@ const flow: FlowApi = {
     deleteSorteioClient: (clientId) => ipcRenderer.invoke('operations:sorteio-delete', { clientId }),
     listFlowUsers: () => ipcRenderer.invoke('operations:users'),
     upsertFlowUser: (input) => ipcRenderer.invoke('operations:user-upsert', input),
-    getActorScope: () => ipcRenderer.invoke('operations:scope')
+    getActorScope: () => ipcRenderer.invoke('operations:scope'),
+    pollNotifications: (input) => ipcRenderer.invoke('operations:notifications', input ?? {})
   },
   kobbi: {
     send: (input: KobbiSendInput) => ipcRenderer.invoke('kobbi:send', input),

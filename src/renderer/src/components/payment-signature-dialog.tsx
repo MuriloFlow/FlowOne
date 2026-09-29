@@ -267,6 +267,8 @@ type SyncSnapshot = {
   aspect: number
   linkedAt: string | null
   openCount: number
+  openAt: string | null
+  previewDataUrl: string | null
 }
 
 function useSignaturePoll(code: string | null, intervalMs: number, onTick: (snapshot: SyncSnapshot) => void) {
@@ -287,7 +289,9 @@ function useSignaturePoll(code: string | null, intervalMs: number, onTick: (snap
           strokes: session.strokes ?? [],
           aspect: session.aspect ?? 2.2,
           linkedAt: session.linkedAt ?? null,
-          openCount: session.openCount ?? 0
+          openCount: session.openCount ?? 0,
+          openAt: session.openAt ?? null,
+          previewDataUrl: session.previewDataUrl ?? null
         })
       } catch {
         // rede instável: tenta no próximo tick
@@ -401,6 +405,9 @@ function DesktopSignatureContent({
   const [autoConfirmed, setAutoConfirmed] = useState(false)
   const confirmedRef = useRef(false)
   const lastOpenRef = useRef<number | null>(null)
+  // Último snapshot da sessão (para pegar o previewDataUrl gerado no celular
+  // sem causar re-render em cada tick).
+  const sessionRef = useRef<SyncSnapshot | null>(null)
 
   useEffect(() => subscribeSignatureLink(() => setLink(getSignatureLink('pc'))), [])
 
@@ -417,6 +424,7 @@ function DesktopSignatureContent({
       .then((session) => {
         if (stopped) return
         lastOpenRef.current = session.openCount
+        sessionRef.current = null
         setStrokes([])
         setSignatureUrl(null)
         setPhase('waiting')
@@ -431,6 +439,7 @@ function DesktopSignatureContent({
 
   // Poll: acompanha traços, assinatura enviada e novo sinal de abertura.
   useSignaturePoll(link?.code ?? null, 650, (snapshot) => {
+    sessionRef.current = snapshot
     if (snapshot.status === 'expired') {
       clearSignatureLink('pc', snapshot.code)
       setLink(null)
@@ -446,6 +455,7 @@ function DesktopSignatureContent({
     // Novo pagamento (sinal open): recomeça do zero.
     if (lastOpenRef.current !== null && snapshot.openCount > lastOpenRef.current) {
       lastOpenRef.current = snapshot.openCount
+      sessionRef.current = snapshot
       setStrokes([])
       setSignatureUrl(null)
       setAutoConfirmed(false)
@@ -459,12 +469,17 @@ function DesktopSignatureContent({
     if (snapshot.status === 'confirmed' && phase !== 'confirmed') setPhase('confirmed')
   })
 
-  // Renderiza a assinatura recebida na MESMA geometria em que foi desenhada
-  // (largura em pixels equivalente à tela do celular derivada do aspect) —
-  // espessura e variação por velocidade idênticas ao que a pessoa desenhou.
+  // Assinatura recebida: usa o PNG EXATO gerado no celular (previewDataUrl da
+  // sessão) — pixels, espessura e recorte idênticos ao que a pessoa desenhou.
+  // Fallback (celular antigo, sem PNG): renderiza os traços localmente.
   useEffect(() => {
     if (phase !== 'received' || signatureUrl) return
     if (strokes.length < 8) return
+    const session = sessionRef.current
+    if (session?.previewDataUrl) {
+      setSignatureUrl(session.previewDataUrl)
+      return
+    }
     try {
       const sourceWidth = Math.round(1080 * clampInkValue(aspect || 2.2, 0.3, 4))
       const url = signatureDataUrlFromNormalized(strokesFromFlat(strokes), aspect, sourceWidth)
@@ -1036,6 +1051,25 @@ function MobileDrawScreen({
     setHasInk(false)
   }
 
+  /** Tenta de novo em falha de rede/DNS (ex. "unable to resolve host"). */
+  const sendWithRetry = async <T,>(action: () => Promise<T>): Promise<T> => {
+    const transient = (error: unknown): boolean =>
+      /resolve host|network|fetch|timeout|abort|failed|econn|enotfound|socket/i.test(
+        error instanceof Error ? error.message : String(error ?? '')
+      )
+    let lastError: unknown = null
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        return await action()
+      } catch (error) {
+        lastError = error
+        if (attempt === 3 || !transient(error)) throw error
+        await new Promise((resolve) => window.setTimeout(resolve, 700 * attempt))
+      }
+    }
+    throw lastError
+  }
+
   async function send(): Promise<void> {
     if (sending || !hasInk) return
     setSending(true)
@@ -1058,22 +1092,38 @@ function MobileDrawScreen({
         flat.push({ x: -1, y: -1, m: 1 })
       }
       if (flat.length === 0) throw new Error('Desenhe a assinatura antes de enviar.')
+      // PNG FINAL renderizado AQUI no celular (pixels exatos, espessura e
+      // recorte idênticos ao que a pessoa desenhou). O PC exibe esta imagem —
+      // nunca re-renderiza os traços (era isso que distorcia no desktop).
+      let previewDataUrl: string | null = null
+      try {
+        previewDataUrl = signatureDataUrlFromNormalized(strokesFromFlat(flat), aspect, Math.round(width))
+      } catch {
+        previewDataUrl = null
+      }
       // Envio em lotes SEM reset: a sessão já foi limpa pelo open do PC.
       // Um reset não-silent bumpava open_count e o celular remontava esta
       // tela no meio do envio (tela branca / "não existe assinatura").
       const batchCount = Math.ceil(flat.length / 400)
       for (let index = 0; index < batchCount; index += 1) {
         const batch = flat.slice(index * 400, (index + 1) * 400)
-        await operations().pushSignatureStrokes({
-          code,
-          strokes: batch,
-          aspect
-        })
+        await sendWithRetry(() =>
+          operations().pushSignatureStrokes({
+            code,
+            strokes: batch,
+            aspect
+          })
+        )
       }
-      await operations().finishSignatureSession({ code })
+      await sendWithRetry(() => operations().finishSignatureSession({ code, previewDataUrl }))
       onSent()
     } catch (sendError) {
-      setError(operationError(sendError))
+      const message = operationError(sendError)
+      setError(
+        /resolve host|network|fetch|timeout|abort|failed/i.test(message)
+          ? 'Sem internet agora. Verifique o Wi-Fi/dados e toque em ENVIAR de novo — sua assinatura está salva nesta tela.'
+          : message
+      )
     } finally {
       setSending(false)
     }
@@ -1208,7 +1258,9 @@ export function SignatureMobileHost() {
   }, [])
 
   // Standby: guarda os sinais atuais da sessão para só reagir a sinais NOVOS
-  // (a tela de assinatura NUNCA abre sozinha ao entrar no app/parear).
+  // (a tela de assinatura NUNCA abre sozinha ao entrar no app/parear) — MAS se
+  // o app reabriu com assinatura pendente (PC abriu com app fechado/minimizado:
+  // open_at >= linked_at), a tela branca abre direto, como a notificação promete.
   useEffect(() => {
     if (!link) {
       openSeenRef.current = 0
@@ -1225,11 +1277,20 @@ export function SignatureMobileHost() {
         if (session.status === 'cancelled' || session.status === 'expired') {
           clearSignatureLink('phone', link.code)
           setLocalLink(null)
-        } else {
-          // Com vínculo ativo, o celular fica no loader standby (não sai
-          // sozinho para a tela de vales — só o X do usuário fecha).
-          setPhase((current) => (current === 'idle' ? 'wait' : current))
+          return
         }
+        // Assinatura pendente? (PC mandou abrir e a rodada não fechou desde então)
+        const pending =
+          !!session.openAt &&
+          (!session.linkedAt || new Date(session.openAt) >= new Date(session.linkedAt))
+        if (pending && session.status === 'linked') {
+          setDrawKey(`${session.code}:${session.openCount ?? 0}`)
+          setPhase('draw')
+          return
+        }
+        // Com vínculo ativo, o celular fica no loader standby (não sai
+        // sozinho para a tela de vales — só o X do usuário fecha).
+        setPhase((current) => (current === 'idle' ? 'wait' : current))
       })
       .catch(() => undefined)
     return () => {
@@ -1252,6 +1313,20 @@ export function SignatureMobileHost() {
     }
     const open = snapshot.openCount ?? 0
     if (open > openSeenRef.current) {
+      openSeenRef.current = open
+      tapSeenRef.current = snapshot.linkedAt ?? null
+      setDrawKey(`${snapshot.code}:${open}`)
+      setPhase('draw')
+      return
+    }
+    // App reaberto com assinatura pendente (PC abriu com app fechado): abre
+    // direto a tela branca — igual ao toque na notificação.
+    if (
+      (phase === 'idle' || phase === 'wait') &&
+      snapshot.status === 'linked' &&
+      snapshot.openAt &&
+      (!snapshot.linkedAt || new Date(snapshot.openAt) >= new Date(snapshot.linkedAt))
+    ) {
       openSeenRef.current = open
       tapSeenRef.current = snapshot.linkedAt ?? null
       setDrawKey(`${snapshot.code}:${open}`)

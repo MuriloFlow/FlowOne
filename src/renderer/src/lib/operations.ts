@@ -89,6 +89,8 @@ export function operations(): OperationsApi {
       invokeOperation('reportAppVersion', 'operations:app-version-report', input),
     listDeviceVersions: () =>
       invokeOperation('listDeviceVersions', 'operations:device-versions'),
+    pollNotifications: (input) =>
+      invokeOperation('pollNotifications', 'operations:notifications', input ?? {}),
     getScheduleBoard: (storeId, weekStart) =>
       api.getScheduleBoard(storeId === undefined ? getCurrentStoreId() : storeId, weekStart),
     saveScheduleSlots: (storeId, slots, team) => api.saveScheduleSlots(storeId, slots, team),

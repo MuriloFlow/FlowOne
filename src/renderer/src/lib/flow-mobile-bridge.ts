@@ -144,7 +144,8 @@ function createOperations(prefs: Prefs): OperationsApi {
     getActorScope: () => callOp('getActorScope'),
     getReleasePolicy: (input) => callOp('getReleasePolicy', input ?? {}),
     reportAppVersion: (input) => callOp('reportAppVersion', input),
-    listDeviceVersions: () => callOp('listDeviceVersions')
+    listDeviceVersions: () => callOp('listDeviceVersions'),
+    pollNotifications: (input) => callOp('pollNotifications', input ?? {})
   }
 }
 

@@ -342,6 +342,16 @@ async function install(): Promise<void> {
   await renewMobileSession()
   wrapMobileOperations()
   void showAppliedUpdateOnce()
+  // Notificações (cartões CARD+ / "Assinatura digital disponível"): roda no
+  // boot do app; polling próprio de 20s + reação ao voltar do background.
+  const { installNotificationRuntime, setSignatureTapHandler } = await import('./mobile-notifications')
+  setSignatureTapHandler(() => {
+    // Tocar na notificação traz o app para frente; o host de assinatura
+    // (SignatureMobileHost, global) reabre a tela branca sozinho ao ver
+    // open_at >= linked_at na sessão vinculada.
+    window.focus()
+  })
+  installNotificationRuntime()
 }
 
 export function installMobileRuntime(): Promise<void> {

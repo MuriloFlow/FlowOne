@@ -336,9 +336,21 @@ export type SignatureSessionView = {
   amountCents: number | null
   aspect: number
   strokes: SignatureStrokePoint[]
+  previewDataUrl: string | null
   expiresAt: string
   linkedAt: string | null
   openCount: number
+  openAt: string | null
+}
+
+export type FlowNotification = {
+  id: string
+  kind: string
+  title: string
+  body: string
+  payload: Record<string, unknown>
+  target: string
+  createdAt: string
 }
 
 export type EmployeeDocument = {
@@ -441,7 +453,10 @@ export type OperationsApi = {
     silent?: boolean
     aspect?: number
   }) => Promise<import('./operations').SignatureSessionView>
-  finishSignatureSession: (input: { code: string }) => Promise<import('./operations').SignatureSessionView>
+  finishSignatureSession: (input: {
+    code: string
+    previewDataUrl?: string | null
+  }) => Promise<import('./operations').SignatureSessionView>
   confirmSignatureSession: (input: { ownerToken?: string | null; code?: string | null }) => Promise<import('./operations').SignatureSessionView>
   cancelSignatureSession: (input: { ownerToken?: string | null; code?: string | null }) => Promise<import('./operations').SignatureSessionView | null>
   openSignatureSession: (input: { code: string; aspect?: number }) => Promise<import('./operations').SignatureSessionView>
@@ -502,4 +517,5 @@ export type OperationsApi = {
   }>
   reportAppVersion: (input: { platform: string; appVersion: string; deviceLabel?: string | null; sessionId?: string | null }) => Promise<{ recorded: boolean }>
   listDeviceVersions: () => Promise<Array<{ platform: string; appVersion: string; deviceLabel: string | null; userEmail: string | null; lastSeen: string }>>
+  pollNotifications: (input?: { since?: string | null; storeId?: string | null }) => Promise<{ notifications: import('./operations').FlowNotification[] }>
 }

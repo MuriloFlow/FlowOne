@@ -16,6 +16,10 @@ async function boot(): Promise<void> {
     // An OTA update must not keep the application on the splash screen while
     // a mobile connection waits for GitHub.
     void runSilentUpdate()
+    const { installNotificationRuntime } = await import('../../../mobile/src/mobile-notifications')
+    // Notificações (cartões CARD+ / assinatura disponível): polling leve com
+    // app aberto; notificação nativa na bandeja; tocar reabre o app/sync.
+    installNotificationRuntime()
   }
 
   createRoot(document.getElementById('root')!).render(

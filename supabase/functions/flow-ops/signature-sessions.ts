@@ -22,9 +22,11 @@ export type SignatureSessionView = {
   amountCents: number | null
   aspect: number
   strokes: SignatureStrokePoint[]
+  previewDataUrl: string | null
   expiresAt: string
   linkedAt?: string | null
   openCount: number
+  openAt?: string | null
 }
 
 const SESSION_TTL_MINUTES = 15
@@ -44,6 +46,7 @@ type SignatureRow = {
   amount_cents: number | null
   aspect: number | null
   strokes: SignatureStrokePoint[] | null
+  preview_data_url?: string | null
   created_at: string
   linked_at: string | null
   linkedAt?: never
@@ -51,6 +54,7 @@ type SignatureRow = {
   confirmed_at: string | null
   expires_at: string
   open_count: number | null
+  open_at?: string | null
   owner_token?: string | null
 }
 
@@ -91,9 +95,11 @@ function toView(row: SignatureRow, options?: { withToken?: boolean }): Signature
     amountCents: row.amount_cents ?? null,
     aspect: row.aspect ?? 2.2,
     strokes: Array.isArray(row.strokes) ? row.strokes : [],
+    previewDataUrl: typeof row.preview_data_url === 'string' ? row.preview_data_url : null,
     expiresAt: row.expires_at,
     linkedAt: row.linked_at ?? null,
-    openCount: row.open_count ?? 0
+    openCount: row.open_count ?? 0,
+    openAt: row.open_at ?? null
   }
 }
 
@@ -299,14 +305,19 @@ export async function finishSignatureSession(payload: unknown): Promise<Signatur
   if (!isFresh(row)) throw new Error('Esta sessão expirou. Peça um código novo no computador.')
   const strokes = Array.isArray(row.strokes) ? row.strokes : []
   if (strokes.length < 8) throw new Error('Desenhe a assinatura antes de enviar.')
+  // PNG gerado no celular (pixels exatos): fonte da verdade visual para o PC
+  // e para o recibo — o desktop NUNCA re-renderiza os traços.
+  const preview = typeof body.previewDataUrl === 'string' && body.previewDataUrl.startsWith('data:image/')
+    ? body.previewDataUrl.slice(0, 400_000)
+    : null
   const { data, error } = await getFlowAdminClient()
     .from('flow_signature_sessions')
-    .update({ status: 'signed', signed_at: new Date().toISOString() })
+    .update({ status: 'signed', signed_at: new Date().toISOString(), ...(preview ? { preview_data_url: preview } : {}) })
     .eq('id', row.id)
     .select('*')
     .single()
   if (error) throw new Error(`Erro ao finalizar a assinatura: ${error.message}`)
-  log.info('signature-session signed', code)
+  log.info('signature-session signed', code, preview ? 'com-preview' : 'sem-preview')
   return toView(data as SignatureRow)
 }
 
@@ -329,7 +340,9 @@ export async function openSignatureSession(payload: unknown): Promise<SignatureS
     .update({
       status: 'linked',
       strokes: [],
+      preview_data_url: null,
       open_count: (row.open_count ?? 0) + 1,
+      open_at: new Date().toISOString(),
       linked_at: new Date().toISOString(),
       ...(aspectPatch ? { aspect: aspectPatch } : {})
     })

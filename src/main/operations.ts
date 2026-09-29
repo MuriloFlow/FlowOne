@@ -77,6 +77,7 @@ import {
   pushSignatureStrokes,
   type SignatureSessionView
 } from './signature-sessions'
+import { pollNotifications } from './notifications'
 
 export type { SignatureSessionView }
 
@@ -541,6 +542,10 @@ export function registerOperationsIpc(): void {
   handle('operations:signature-session-finish', async (payload) => {
     await resolveActor()
     return finishSignatureSession(payload)
+  })
+
+  handle('operations:notifications', async (payload) => {
+    return pollNotifications(payload)
   })
 
   handle('operations:signature-session-open', async (payload) => {

@@ -97,6 +97,12 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
 
   useEffect(() => {
     setCurrentStoreId(storeId)
+    // Escopo de unidade para notificações miradas (signature_available por loja).
+    if (isMobileShell()) {
+      void import('../../../../mobile/src/mobile-notifications').then(({ refreshNotificationStoreScope }) =>
+        refreshNotificationStoreScope(storeId)
+      )
+    }
   }, [storeId])
 
   useEffect(() => {

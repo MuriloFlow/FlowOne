@@ -65,6 +65,7 @@ import {
 import { listFlowUsers as loadFlowUsers, upsertFlowUser as saveFlowUser } from './users.ts'
 import { sendKobbi } from './kobbi.ts'
 import { handleSignatureOp } from './signature-sessions.ts'
+import { pollNotifications } from './notifications.ts'
 import { getReleasePolicy, listDeviceVersions, reportAppVersion } from './release-policy.ts'
 import type {
   CardMonthTotalWrite,
@@ -900,7 +901,22 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
   },
 
   async openSignatureSession(payload) {
-    return handleSignatureOp('openSignatureSession', payload)
+    const session = await handleSignatureOp('openSignatureSession', payload)
+    // Notifica o celular vinculado (app fechado/minimizado) que há assinatura
+    // esperando — tocar abre direto na tela de assinatura. Best-effort.
+    const view = session as import('./signature-sessions.ts').SignatureSessionView
+    void import('./notifications.ts').then(({ createSignatureNotification }) =>
+      createSignatureNotification({
+        code: view.code,
+        collaboratorName: view.collaboratorName,
+        amountCents: view.amountCents
+      })
+    )
+    return session
+  },
+
+  async pollNotifications(payload) {
+    return pollNotifications(payload)
   },
 
   async closeSignatureSession(payload) {

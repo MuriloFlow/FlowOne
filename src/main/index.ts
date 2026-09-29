@@ -6,6 +6,7 @@ import { installPendingUpdateOnQuit, registerUpdater, startBackgroundUpdater } f
 import { loadLocalEnv } from './env'
 import { registerKobbiIpc } from './kobbi'
 import { registerOperationsIpc } from './operations'
+import { startNotificationPoller } from './notification-poller'
 import type { PersistedAuthSession } from '../shared/ipc'
 
 log.transports.file.level = 'info'
@@ -82,6 +83,11 @@ if (!gotLock) {
 
     ipcMain.handle('auth:read-session', async () => readAuthSession())
     ipcMain.handle('auth:clear-session', async () => clearAuthSession())
+
+    // Notificações (cartões CARD+ / assinatura disponível): polling leve no
+    // main — notificação nativa do Windows em evento novo. Sem login ainda,
+    // os ticks falham silenciosamente até a sessão existir.
+    startNotificationPoller()
 
     await hydrateAuthSession()
     if (launchWindowRequested) openLauncherWindow()

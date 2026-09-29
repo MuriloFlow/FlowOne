@@ -76,7 +76,23 @@ console.log('silent linkedAt igual:', silent.linkedAt === tapped.linkedAt)
 const opened = await callOp('openSignatureSession', { code: session.code, aspect: 2.2 })
 console.log('open: openCount', opened.openCount, 'status', opened.status)
 const reopened = await callOp('openSignatureSession', { code: session.code })
-console.log('open de novo: openCount', reopened.openCount, '(deve ser +1)')
+console.log('open de novo: openCount', reopened.openCount, '(deve ser +1)', 'openAt:', reopened.openAt ? 'ok' : 'ausente')
+
+// 7b) notificação de assinatura disponível (criada pelo open) chega no poll
+const poll1 = await callOp('pollNotifications', {})
+const sigNotification = poll1.notifications.find((n) => n.kind === 'signature_available')
+console.log('poll notific assinatura:', sigNotification ? `ok (${sigNotification.title})` : 'AUSENTE')
+
+// 7c) preview PNG do celular: finish aceita data URL e get devolve
+const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+await callOp('pushSignatureStrokes', { code: session.code, strokes })
+const finishedPreview = await callOp('finishSignatureSession', { code: session.code, previewDataUrl: tinyPng })
+console.log('finish c/ preview:', finishedPreview.status, finishedPreview.previewDataUrl ? 'preview salvo' : 'PREVIEW AUSENTE')
+const fetched = await callOp('getSignatureSession', { code: session.code })
+console.log('get preview:', fetched.previewDataUrl === tinyPng ? 'ok (idêntico)' : 'DIFERENTE')
+await callOp('confirmSignatureSession', { code: session.code })
+console.log('confirm:', (await callOp('getSignatureSession', { code: session.code })).status)
+
 const closed = await callOp('closeSignatureSession', { code: session.code })
 console.log('close:', closed.status, 'strokes:', closed.strokes.length, '(deve seguir linked)')
 
@@ -113,4 +129,9 @@ console.log(
 )
 
 await callOp('cancelSignatureSession', { code: session.code })
+
+// 10) detector de cartões CARD+ via poll (best-effort: depende de existir
+// cartão novo no dia — só valida que a op não explode)
+const pollCards = await callOp('pollNotifications', {})
+console.log('poll cartões CARD+:', pollCards.notifications.filter((n) => n.kind === 'cardplus_card').length, 'evento(s)')
 console.log('SMOKE OK')

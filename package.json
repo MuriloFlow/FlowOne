@@ -1,6 +1,6 @@
 {
   "name": "flow-launcher",
-  "version": "1.6.3",
+  "version": "1.7.0",
   "description": "FLOW — Central de Gestão e Operações",
   "main": "./out/main/index.js",
   "author": "FLOW",
