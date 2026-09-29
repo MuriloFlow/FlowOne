@@ -953,7 +953,7 @@ export function registerOperationsIpc(): void {
   handle('operations:vouchers', async (payload) => {
     const actor = await resolveActor()
     const storeId = resolveStoreFilter(actor, payload)
-    return memo(cacheKey('vouchers', storeId), 8_000, () => listVoucherBoard(storeId))
+    return memo(cacheKey('vouchers', storeId), 2_000, () => listVoucherBoard(storeId))
   })
 
   handle('operations:voucher-history', async (payload) => {

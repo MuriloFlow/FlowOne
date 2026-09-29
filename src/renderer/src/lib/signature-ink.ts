@@ -134,9 +134,13 @@ export const SIGNATURE_INK_COLOR = INK_COLOR
  */
 export function signatureDataUrlFromNormalized(
   normalized: InkPoint[][],
-  aspect: number
+  aspect: number,
+  renderWidth?: number
 ): string {
-  const width = 1000
+  // Renderizar na MESMA largura de pixels que a tela de origem usou mantém a
+  // geometria idêntica (espessura e variação por velocidade) — o que o PC
+  // mostra é exatamente o que a pessoa desenhou no celular.
+  const width = Math.round(clampInk(renderWidth || 1000, 600, 2600))
   const height = Math.round(width / clampInk(aspect || 0.5, 0.3, 4))
   const scaled: InkPoint[][] = normalized.map((stroke) =>
     stroke.map((point) => ({ x: point.x * width, y: point.y * height, p: point.p }))

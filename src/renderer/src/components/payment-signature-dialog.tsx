@@ -315,12 +315,27 @@ type PaymentSignatureDialogProps = {
   onConfirm: (signature: string) => Promise<void> | void
 }
 
-/** Preview grande da assinatura recebida (proporção real do celular). */
-function SyncPreviewCanvas({ strokes, aspect }: { strokes: SignatureStrokePoint[]; aspect: number }) {
+/**
+ * Preview grande da assinatura recebida. Renderiza o MESMO PNG final que o
+ * celular gerou (mesma espessura, mesmo recorte) — o que o PC mostra é
+ * idêntico ao que vai no recibo, sem distorção nem tremedeira.
+ */
+function SyncPreviewCanvas({
+  signatureUrl,
+  strokes,
+  aspect
+}: {
+  signatureUrl: string | null
+  strokes: SignatureStrokePoint[]
+  aspect: number
+}) {
+  // Fallback: sem PNG ainda (traços parciais), desenha os traços normalizados
+  // com espessura relativa ao CANVAS (não à tela), mantendo a proporção real.
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawnCount = useRef(-1)
 
   useEffect(() => {
+    if (signatureUrl || !canvasRef.current) return
     const canvas = canvasRef.current
     if (!canvas || strokes.length === drawnCount.current) return
     drawnCount.current = strokes.length
@@ -336,8 +351,19 @@ function SyncPreviewCanvas({ strokes, aspect }: { strokes: SignatureStrokePoint[
     const mapped = strokesFromFlat(strokes).map((stroke) =>
       stroke.map((point) => ({ x: point.x * bounds.width, y: point.y * bounds.height, p: point.p }))
     )
-    paintInkStrokes(ctx, mapped, (7 * bounds.width) / 1000)
-  }, [strokes])
+    paintInkStrokes(ctx, mapped, Math.max(3, Math.min(bounds.width, bounds.height) * 0.011))
+  }, [strokes, signatureUrl])
+
+  if (signatureUrl) {
+    return (
+      <div
+        className="relative overflow-hidden rounded-[20px] border-[5px] border-[#0A0A0A] bg-white shadow-[0_10px_36px_rgba(0,0,0,0.45)]"
+        style={{ width: 460, height: Math.round(460 / clampInkValue(aspect || 0.5, 0.3, 4)) }}
+      >
+        <img src={signatureUrl} alt="Assinatura" className="h-full w-full object-contain" />
+      </div>
+    )
+  }
 
   // Retângulo largo (proporção real da tela do celular em landscape).
   const width = Math.min(460, 620 * clampInkValue(aspect || 0.5, 0.35, 1))
@@ -433,12 +459,15 @@ function DesktopSignatureContent({
     if (snapshot.status === 'confirmed' && phase !== 'confirmed') setPhase('confirmed')
   })
 
-  // Renderiza a assinatura recebida quando completa.
+  // Renderiza a assinatura recebida na MESMA geometria em que foi desenhada
+  // (largura em pixels equivalente à tela do celular derivada do aspect) —
+  // espessura e variação por velocidade idênticas ao que a pessoa desenhou.
   useEffect(() => {
     if (phase !== 'received' || signatureUrl) return
     if (strokes.length < 8) return
     try {
-      const url = signatureDataUrlFromNormalized(strokesFromFlat(strokes), aspect)
+      const sourceWidth = Math.round(1080 * clampInkValue(aspect || 2.2, 0.3, 4))
+      const url = signatureDataUrlFromNormalized(strokesFromFlat(strokes), aspect, sourceWidth)
       setSignatureUrl(url)
     } catch {
       // ainda desenhando
@@ -501,7 +530,7 @@ function DesktopSignatureContent({
         <div className="flex flex-col items-center gap-4 rounded-[14px] border border-white/[0.07] bg-white/[0.02] px-4 py-6">
           {received ? (
             <>
-              <SyncPreviewCanvas strokes={strokes} aspect={aspect} />
+              <SyncPreviewCanvas signatureUrl={signatureUrl} strokes={strokes} aspect={aspect} />
               <div className="flex items-center gap-2 text-[12px] text-[#34D399]">
                 <Check className="size-4" strokeWidth={2.5} />
                 {autoConfirmed || phase === 'confirmed'

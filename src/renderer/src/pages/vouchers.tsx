@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Banknote, Bus, CheckCircle2, FileDown, History, Utensils } from 'lucide-react'
 import { AnimatedMoney } from '@/components/animated-number'
@@ -147,9 +147,32 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
 
   async function load(): Promise<VoucherBoard> {
     const next = await operations().listVouchers(storeId)
-    setBoard(next)
+    // Merge com patches locais recentes (12s): um snapshot velho do servidor
+    // não pode "despagar" o que o usuário acabou de confirmar aqui.
+    const patchedAt = localPatchAtRef.current
+    const now = Date.now()
+    const merged: VoucherBoard = {
+      ...next,
+      groups: next.groups.map((group) => ({
+        ...group,
+        rows: group.rows.map((row) => {
+          const at = patchedAt[row.collaboratorId]
+          if (!at || now - at >= 12_000) return row
+          const local = board?.groups.flatMap((g) => g.rows).find((item) => item.collaboratorId === row.collaboratorId)
+          if (!local) return row
+          // Servidor confirma o estado local (ou é mais novo): limpa o grace.
+          if (local.status === row.status) {
+            delete patchedAt[row.collaboratorId]
+            return row
+          }
+          // Servidor velho: mantém o estado local até o banco alcançar.
+          return { ...local, paidAt: local.status === 'PAGO' ? local.paidAt ?? row.paidAt : row.paidAt }
+        })
+      }))
+    }
+    setBoard(merged)
     setError(null)
-    return next
+    return merged
   }
 
   useEffect(() => {
@@ -214,13 +237,15 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     return () => window.clearTimeout(timer)
   }, [storeId])
 
-  // Sincronia em tempo real: assinou no celular → o status PAGO e a assinatura
-  // aparecem aqui no PC sozinhos (e vice-versa), sem apertar nada.
+  // Sincronia em tempo real em AMBOS os lados: assinou no celular → PAGO e
+  // assinatura aparecem no PC sozinhos (e vice-versa), sem apertar nada.
+  // O cache de 8s do processo principal é contornável: quem chegou agora
+  // precisa do dado fresco, então o desktop usa polling curto também.
   useEffect(() => {
-    if (mobile) return
     const timer = window.setInterval(() => {
+      if (mobile && document.visibilityState !== 'visible') return
       void load().catch(() => undefined)
-    }, 6_000)
+    }, mobile ? 8_000 : 4_000)
     const refresh = () => {
       if (document.visibilityState === 'visible') void load().catch(() => undefined)
     }
@@ -267,6 +292,11 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
     })
   }
 
+  // Grace period por linha: depois de um patch local, o polling não pode
+  // sobrescrever com um snapshot antigo do banco (senão o PAGO que o usuário
+  // acabou de confirmar "some" até o próximo ciclo).
+  const localPatchAtRef = useRef<Record<string, number>>({})
+
   async function patch(
     row: VoucherRow,
     next: { lunchCents?: number; transportCents?: number; status?: VoucherStatus; signature?: string }
@@ -279,6 +309,7 @@ export function VouchersPage({ storeId = null }: VouchersPageProps) {
       rememberSignature(row.collaboratorId, row.paymentSignature)
     }
     applyLocal(row, next)
+    localPatchAtRef.current[row.collaboratorId] = Date.now()
     setBusyId(row.collaboratorId)
     try {
       await operations().updateVoucher({
