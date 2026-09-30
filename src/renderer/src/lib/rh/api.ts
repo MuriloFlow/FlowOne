@@ -4,6 +4,7 @@
 import { supabase } from "@/lib/supabase";
 import { currentAccessToken } from "@/lib/auth";
 import { callOp } from "@/lib/flow-ops-client";
+import { loadPdfJs } from "@/lib/rh/pdf";
 import type {
   RhAiAssessment,
   RhAiRule,
@@ -552,8 +553,14 @@ export async function analyzeApplication(
     const fallbackWorthy = /OPENAI|IA indispon|modelo|rate limit|429|503/i.test(
       message,
     );
-    if (!fallbackWorthy)
+    if (!fallbackWorthy) {
+      // Mensagens técnicas → texto acionável para o RH.
+      if (/permission denied/i.test(message))
+        throw new RhApiError(
+          "Sem permissão para analisar esta candidatura agora. Atualize o app e tente de novo.",
+        );
       throw new RhApiError(message || "A análise da IA falhou.");
+    }
     // fallback: motor de regras SQL
     const { data, error } = await supabase.rpc("rh_analyze_application", {
       p_application_id: applicationId,
@@ -586,12 +593,10 @@ export async function extractResumeTextFromUrl(
     throw new RhApiError("Não foi possível baixar o currículo para análise.");
   const buffer = await response.arrayBuffer();
   if (mime.includes("pdf")) {
-    const pdfjs = await import("pdfjs-dist");
-    const workerUrl = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url,
-    ).toString();
-    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+    // loadPdfJs registra o worker do pdf.js na main thread — obrigatório no
+    // Electron empacotado (file://) e no WebView Android, onde new Worker
+    // com URL de asset não funciona (sem isso a extração falha em silêncio).
+    const pdfjs = await loadPdfJs();
     const pdf = await pdfjs.getDocument({ data: buffer }).promise;
     let text = "";
     for (

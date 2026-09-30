@@ -35,6 +35,7 @@ import {
   type RhJob,
 } from "@/lib/rh/types";
 import { Dialog } from "@/components/ui/dialog";
+import { RhResumePreview } from "@/components/rh-resume-preview";
 import { interviewInviteMessage, openWhatsApp } from "@/lib/rh/whatsapp";
 import { MessageCircle } from "lucide-react";
 import {
@@ -339,6 +340,7 @@ export function RhApplicationDetailPage({
     mime: string;
   } | null>(null);
   const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [interviewModal, setInterviewModal] = useState(false);
@@ -366,16 +368,16 @@ export function RhApplicationDetailPage({
   }, [load]);
 
   /**
-   * Visualização do currículo: baixa o PDF via URL assinada e converte em blob
-   * local — iframe com blob: renderiza 100% dentro do FLOW (o viewer nativo
-   * do Electron não exibe https assinado; blob resolve a tela branca).
+   * Visualização do currículo: baixa o arquivo via URL assinada e abre o
+   * preview renderizado com pdf.js (canvas) — o viewer nativo do Electron
+   * não funciona (file:// sem plugin de PDF = tela branca).
    */
   async function openResume(): Promise<void> {
     if (!detail || resumeLoading) return;
     const file = detail.application.rh_files?.[0];
     if (!file) return;
     setResumeLoading(true);
-    setAiMessage(null);
+    setResumeError(null);
     try {
       const signed = await createResumeSignedUrl(file.storage_path);
       const response = await fetch(signed);
@@ -387,7 +389,7 @@ export function RhApplicationDetailPage({
         mime,
       });
     } catch (openError) {
-      setAiMessage(
+      setResumeError(
         openError instanceof Error
           ? openError.message
           : "Erro ao abrir o currículo.",
@@ -553,6 +555,9 @@ export function RhApplicationDetailPage({
                 Nenhum currículo anexado nesta candidatura.
               </p>
             )}
+            {resumeError ? (
+              <p className="mt-2 text-[12px] text-red-300/80">{resumeError}</p>
+            ) : null}
           </RhCard>
 
           {/* IA */}
@@ -746,7 +751,7 @@ export function RhApplicationDetailPage({
       ) : null}
 
       {resumeBlob ? (
-        <ResumePreviewOverlay
+        <RhResumePreview
           url={resumeBlob.url}
           mime={resumeBlob.mime}
           fileName={resumeFile?.file_name ?? "Currículo"}
@@ -1352,62 +1357,6 @@ function AiAssessmentBody({
   );
 }
 
-/** Preview do currículo DENTRO do FLOW (overlay sobre a página do candidato). */
-function ResumePreviewOverlay({
-  url,
-  mime,
-  fileName,
-  onClose,
-}: {
-  url: string;
-  mime: string;
-  fileName: string;
-  onClose: () => void;
-}) {
-  const isPdf = mime.includes("pdf");
-  return (
-    <div className="absolute inset-0 z-40 flex flex-col rounded-[18px] bg-[#111111]/97 backdrop-blur-sm">
-      <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
-        <FileText className="size-4 text-[#F0EFEC]/45" />
-        <span className="min-w-0 flex-1 truncate text-[13px] text-[#F0EFEC]/75">
-          {fileName}
-        </span>
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          download={fileName}
-          className="rounded-[8px] border border-white/[0.08] px-2.5 py-1 text-[11.5px] text-[#F0EFEC]/60 transition hover:bg-white/[0.05]"
-        >
-          Baixar
-        </a>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-[8px] bg-[#F0EFEC] px-2.5 py-1 text-[11.5px] font-medium text-[#111111]"
-        >
-          Fechar
-        </button>
-      </div>
-      {isPdf ? (
-        <object
-          data={url}
-          type="application/pdf"
-          title={fileName}
-          className="min-h-0 flex-1 bg-white"
-        >
-          <iframe src={url} title={fileName} className="size-full bg-white" />
-        </object>
-      ) : (
-        <iframe
-          src={url}
-          title={fileName}
-          className="min-h-0 flex-1 bg-white"
-        />
-      )}
-    </div>
-  );
-}
 
 function initials(name: string): string {
   return name
