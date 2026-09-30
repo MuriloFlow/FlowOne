@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Pencil, Pause, Play, Plus, Search, Settings2, Trash2 } from 'lucide-react'
+import { Loader2, Pencil, Pause, Play, Plus, Search, Trash2 } from 'lucide-react'
 import {
   createJob,
   createQuestion,
@@ -18,25 +18,44 @@ import {
   type RhEmploymentType,
   type RhJob,
   type RhJobStatus,
+  type RhOption,
   type RhQuestion,
-  type RhQuestionType,
-  type RhOption
+  type RhQuestionType
 } from '@/lib/rh/types'
+import { Dialog } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import {
   RhCard,
   RhEmptyState,
   RhErrorState,
+  RhField,
   RhGhostButton,
+  RhInput,
   RhJobStatusChip,
+  RhOrderedList,
   RhPageHeader,
   RhPrimaryButton,
-  RhSkeleton
+  RhSelect,
+  RhSkeleton,
+  RhTextarea
 } from './rh-ui'
 
 type JobsListProps = {
   onNewJob: () => void
   onEditJob: (jobId: string) => void
 }
+
+const STATUS_OPTIONS = (Object.keys(JOB_STATUS_META) as RhJobStatus[]).map((status) => ({
+  value: status,
+  label: JOB_STATUS_META[status].label
+}))
+
+const EMPLOYMENT_OPTIONS = (Object.keys(EMPLOYMENT_TYPE_LABEL) as RhEmploymentType[]).map((type) => ({
+  value: type,
+  label: EMPLOYMENT_TYPE_LABEL[type]
+}))
+
+const WORK_MODEL_OPTIONS = ['Presencial', 'Híbrido', 'Remoto'].map((model) => ({ value: model, label: model }))
 
 export function RhJobsPage({ onNewJob, onEditJob }: JobsListProps) {
   const [jobs, setJobs] = useState<RhJob[]>([])
@@ -124,22 +143,13 @@ export function RhJobsPage({ onNewJob, onEditJob }: JobsListProps) {
             className="h-9 w-full rounded-[10px] border border-white/[0.06] bg-white/[0.02] pr-3 pl-9 text-[13px] text-[#F0EFEC]/85 placeholder:text-[#F0EFEC]/30 focus:border-white/15 focus:outline-none"
           />
         </div>
-        <div className="flex gap-1">
-          {(['all', 'open', 'paused', 'closed'] as const).map((status) => (
-            <button
-              key={status}
-              type="button"
-              onClick={() => setStatusFilter(status)}
-              className={`h-8 rounded-[8px] px-3 text-[12px] font-medium transition ${
-                statusFilter === status
-                  ? 'bg-[#F0EFEC] text-[#111111]'
-                  : 'border border-white/[0.07] text-[#F0EFEC]/50 hover:text-[#F0EFEC]/80'
-              }`}
-            >
-              {status === 'all' ? 'Todas' : JOB_STATUS_META[status].label}
-            </button>
-          ))}
-        </div>
+        <RhSelect
+          value={statusFilter}
+          placeholder="Todas"
+          options={[{ value: 'all', label: 'Todas' }, ...STATUS_OPTIONS]}
+          onChange={(value) => setStatusFilter(value as RhJobStatus | 'all')}
+          className="w-[150px]"
+        />
       </div>
 
       {loading ? (
@@ -227,13 +237,30 @@ type JobEditorProps = {
   onSaved?: () => void
 }
 
-const EMPTY_FORM = {
+type JobForm = {
+  title: string
+  department: string
+  location: string
+  work_model: string
+  employment_type: RhEmploymentType
+  status: RhJobStatus
+  description: string
+  responsibilities: string
+  requirements: string
+  benefits: string
+  salary_min: string
+  salary_max: string
+  salary_visible: boolean
+  openings: string
+}
+
+const EMPTY_FORM: JobForm = {
   title: '',
   department: '',
   location: '',
   work_model: 'Presencial',
-  employment_type: 'CLT' as RhEmploymentType,
-  status: 'draft' as RhJobStatus,
+  employment_type: 'CLT',
+  status: 'draft',
   description: '',
   responsibilities: '',
   requirements: '',
@@ -246,12 +273,13 @@ const EMPTY_FORM = {
 
 export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
   const isNew = jobId === 'new'
-  const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [form, setForm] = useState<JobForm>({ ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(!isNew)
   const [error, setError] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(isNew ? null : jobId)
   const [questions, setQuestions] = useState<RhQuestion[]>([])
+  const [questionModal, setQuestionModal] = useState(false)
 
   useEffect(() => {
     if (isNew) {
@@ -296,7 +324,11 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
     if (!savedId) return
     try {
       const all = await fetchQuestions()
-      setQuestions(all.filter((question) => question.scope === 'JOB' && question.job_id === savedId))
+      setQuestions(
+        all
+          .filter((question) => question.scope === 'JOB' && question.job_id === savedId)
+          .sort((left, right) => left.order_index - right.order_index)
+      )
     } catch {
       /* perguntas falham de forma não-fatal */
     }
@@ -306,14 +338,14 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
     void loadQuestions()
   }, [loadQuestions])
 
-  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]): void {
+  function set<K extends keyof JobForm>(key: K, value: JobForm[K]): void {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  async function submit(): Promise<void> {
+  async function submit(): Promise<boolean> {
     if (!form.title.trim()) {
       setError('Informe o cargo da vaga.')
-      return
+      return false
     }
     setSaving(true)
     setError(null)
@@ -334,8 +366,8 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
         responsibilities: toLines(form.responsibilities),
         requirements: toLines(form.requirements),
         benefits: toLines(form.benefits),
-        salary_min: form.salary_min ? Number(form.salary_min) : null,
-        salary_max: form.salary_max ? Number(form.salary_max) : null,
+        salary_min: form.salary_min ? Number(form.salary_min.replace(',', '.')) : null,
+        salary_max: form.salary_max ? Number(form.salary_max.replace(',', '.')) : null,
         salary_visible: form.salary_visible,
         openings: Math.max(1, Number(form.openings) || 1)
       }
@@ -346,11 +378,37 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
         setSavedId(created.id)
       }
       onSaved?.()
+      return true
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Erro ao salvar a vaga.')
+      return false
     } finally {
       setSaving(false)
     }
+  }
+
+  function moveQuestion(from: number, to: number): void {
+    if (to < 0 || to >= questions.length) return
+    const next = [...questions]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setQuestions(next)
+    void Promise.all(
+      next.map((question, index) =>
+        updateQuestion(question.id, { order_index: index }).catch(() => undefined)
+      )
+    ).then(() => undefined)
+  }
+
+  async function removeQuestion(question: RhQuestion): Promise<void> {
+    if (!window.confirm('Remover esta pergunta da vaga?')) return
+    await deleteQuestion(question.id).catch(() => undefined)
+    void loadQuestions()
+  }
+
+  async function toggleQuestion(question: RhQuestion): Promise<void> {
+    await updateQuestion(question.id, { active: !question.active }).catch(() => undefined)
+    void loadQuestions()
   }
 
   if (loading) {
@@ -379,254 +437,238 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
               {isNew ? 'Nova vaga' : form.title || 'Editar vaga'}
             </h1>
             <p className="text-[12px] text-[#F0EFEC]/35">
-              {isNew ? 'Preencha as informações e salve para configurar perguntas.' : 'Edição completa da vaga e perguntas específicas.'}
+              {isNew
+                ? 'Preencha os dados e salve para configurar as perguntas.'
+                : 'Edição completa da vaga, perguntas e ordem.'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {savedId ? (
-            <button
-              type="button"
-              onClick={() => void submit()}
-              disabled={saving}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[9px] border border-white/[0.08] bg-white/[0.03] px-3.5 text-[13px] font-medium text-[#F0EFEC]/75 transition hover:bg-white/[0.06] disabled:opacity-40"
-            >
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Salvar
-            </button>
-          ) : null}
-          <RhPrimaryButton onClick={() => void submit()} disabled={saving}>
+          <RhGhostButton onClick={() => void submit()} disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Salvar rascunho
+          </RhGhostButton>
+          <RhPrimaryButton
+            onClick={async () => {
+              const ok = await submit()
+              if (ok) onBack()
+            }}
+            disabled={saving}
+          >
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            {savedId ? 'Salvar e fechar' : 'Criar vaga'}
+            {savedId ? 'Salvar e voltar' : 'Criar vaga'}
           </RhPrimaryButton>
         </div>
       </header>
 
       {error ? <RhErrorState message={error} /> : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto pb-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] p-4">
-          <h2 className="mb-4 text-[13px] font-semibold text-[#F0EFEC]/80">Informações da vaga</h2>
-          <div className="space-y-3">
-            <Field label="Cargo *">
-              <input
-                value={form.title}
-                onChange={(event) => set('title', event.target.value)}
-                placeholder="Ex.: Vendedor(a) de loja"
-                className={inputClass}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-4">
+        {/* ---------- Identificação ---------- */}
+        <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
+          <h2 className="mb-4 text-[15px] text-[#F0EFEC]/82">Identificação da vaga</h2>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <RhField label="Cargo *" className="lg:col-span-2">
+              <RhInput value={form.title} onChange={(value) => set('title', value)} placeholder="Ex.: Vendedor(a) de loja" />
+            </RhField>
+            <RhField label="Área / Departamento">
+              <RhInput value={form.department} onChange={(value) => set('department', value)} placeholder="Ex.: Loja" />
+            </RhField>
+            <RhField label="Local">
+              <RhInput value={form.location} onChange={(value) => set('location', value)} placeholder="Ex.: Ribeirão Pires - SP" />
+            </RhField>
+            <RhField label="Modelo de trabalho">
+              <RhSelect value={form.work_model} options={WORK_MODEL_OPTIONS} onChange={(value) => set('work_model', value)} />
+            </RhField>
+            <RhField label="Tipo de contrato">
+              <RhSelect
+                value={form.employment_type}
+                options={EMPLOYMENT_OPTIONS}
+                onChange={(value) => set('employment_type', value as RhEmploymentType)}
               />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Área / Departamento">
-                <input value={form.department} onChange={(event) => set('department', event.target.value)} placeholder="Ex.: Loja" className={inputClass} />
-              </Field>
-              <Field label="Local">
-                <input value={form.location} onChange={(event) => set('location', event.target.value)} placeholder="Ex.: Ribeirão Pires - SP" className={inputClass} />
-              </Field>
-            </div>
-            <Field label="Descrição">
-              <textarea
-                value={form.description}
-                onChange={(event) => set('description', event.target.value)}
-                rows={4}
-                placeholder="Conte sobre a oportunidade, rotina e diferenciais."
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Responsabilidades (uma por linha)">
-              <textarea value={form.responsibilities} onChange={(event) => set('responsibilities', event.target.value)} rows={3} className={inputClass} />
-            </Field>
-            <Field label="Requisitos (uma por linha)">
-              <textarea value={form.requirements} onChange={(event) => set('requirements', event.target.value)} rows={3} className={inputClass} />
-            </Field>
-            <Field label="Benefícios (uma por linha)">
-              <textarea value={form.benefits} onChange={(event) => set('benefits', event.target.value)} rows={3} className={inputClass} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Faixa salarial mín. (R$)">
-                <input value={form.salary_min} onChange={(event) => set('salary_min', event.target.value)} inputMode="decimal" placeholder="0,00" className={inputClass} />
-              </Field>
-              <Field label="Faixa salarial máx. (R$)">
-                <input value={form.salary_max} onChange={(event) => set('salary_max', event.target.value)} inputMode="decimal" placeholder="0,00" className={inputClass} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Tipo de contrato">
-                <select
-                  value={form.employment_type}
-                  onChange={(event) => set('employment_type', event.target.value as RhEmploymentType)}
-                  className={inputClass}
-                >
-                  {(Object.keys(EMPLOYMENT_TYPE_LABEL) as RhEmploymentType[]).map((type) => (
-                    <option key={type} value={type} className="bg-[#1A1A1A]">
-                      {EMPLOYMENT_TYPE_LABEL[type]}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Modelo de trabalho">
-                <select value={form.work_model} onChange={(event) => set('work_model', event.target.value)} className={inputClass}>
-                  {['Presencial', 'Híbrido', 'Remoto'].map((model) => (
-                    <option key={model} value={model} className="bg-[#1A1A1A]">
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Posições">
-                <input value={form.openings} onChange={(event) => set('openings', event.target.value)} inputMode="numeric" className={inputClass} />
-              </Field>
-              <Field label="Status">
-                <select value={form.status} onChange={(event) => set('status', event.target.value as RhJobStatus)} className={inputClass}>
-                  {(Object.keys(JOB_STATUS_META) as RhJobStatus[]).map((status) => (
-                    <option key={status} value={status} className="bg-[#1A1A1A]">
-                      {JOB_STATUS_META[status].label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-[#F0EFEC]/60">
-              <input
-                type="checkbox"
-                checked={form.salary_visible}
-                onChange={(event) => set('salary_visible', event.target.checked)}
-                className="size-3.5 accent-[#F0EFEC]"
-              />
-              Exibir faixa salarial no portal público
-            </label>
+            </RhField>
           </div>
         </section>
 
-        <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] p-4">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-[13px] font-semibold text-[#F0EFEC]/80">Perguntas específicas da vaga</h2>
-            {!savedId ? <span className="text-[11px] text-[#F0EFEC]/30">Salve a vaga para configurar</span> : null}
+        {/* ---------- Descrição ---------- */}
+        <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
+          <h2 className="mb-4 text-[15px] text-[#F0EFEC]/82">Descrição e requisitos</h2>
+          <div className="space-y-3">
+            <RhField label="Descrição da oportunidade" hint="Texto que abre a página da vaga no portal público.">
+              <RhTextarea
+                value={form.description}
+                onChange={(value) => set('description', value)}
+                rows={4}
+                placeholder="Conte sobre a oportunidade, rotina e diferenciais."
+              />
+            </RhField>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+              <RhField label="Responsabilidades" hint="Uma por linha.">
+                <RhTextarea value={form.responsibilities} onChange={(value) => set('responsibilities', value)} rows={5} />
+              </RhField>
+              <RhField label="Requisitos" hint="Uma por linha.">
+                <RhTextarea value={form.requirements} onChange={(value) => set('requirements', value)} rows={5} />
+              </RhField>
+              <RhField label="Benefícios" hint="Uma por linha.">
+                <RhTextarea value={form.benefits} onChange={(value) => set('benefits', value)} rows={5} />
+              </RhField>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- Publicação ---------- */}
+        <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
+          <h2 className="mb-4 text-[15px] text-[#F0EFEC]/82">Publicação</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <RhField label="Status">
+              <RhSelect value={form.status} options={STATUS_OPTIONS} onChange={(value) => set('status', value as RhJobStatus)} />
+            </RhField>
+            <RhField label="Posições">
+              <RhInput value={form.openings} onChange={(value) => set('openings', value.replace(/\D/g, ''))} inputMode="numeric" />
+            </RhField>
+            <RhField label="Salário mín. (R$)">
+              <RhInput value={form.salary_min} onChange={(value) => set('salary_min', value)} inputMode="decimal" placeholder="0,00" />
+            </RhField>
+            <RhField label="Salário máx. (R$)">
+              <RhInput value={form.salary_max} onChange={(value) => set('salary_max', value)} inputMode="decimal" placeholder="0,00" />
+            </RhField>
+          </div>
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-[12.5px] text-[#F0EFEC]/60">
+            <input
+              type="checkbox"
+              checked={form.salary_visible}
+              onChange={(event) => set('salary_visible', event.target.checked)}
+              className="size-3.5 accent-[#F0EFEC]"
+            />
+            Exibir faixa salarial no portal público
+          </label>
+        </section>
+
+        {/* ---------- Perguntas específicas ---------- */}
+        <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-[15px] text-[#F0EFEC]/82">Perguntas específicas da vaga</h2>
+              <p className="mt-1 text-[12px] text-[#F0EFEC]/35">
+                {savedId
+                  ? 'A ordem aqui é a ordem do formulário público. As globais entram antes.'
+                  : 'Salve a vaga para configurar as perguntas.'}
+              </p>
+            </div>
+            {savedId ? (
+              <RhPrimaryButton onClick={() => setQuestionModal(true)}>
+                <Plus className="size-3.5" /> Criar pergunta
+              </RhPrimaryButton>
+            ) : null}
           </div>
           {!savedId ? (
-            <p className="py-8 text-center text-[12.5px] text-[#F0EFEC]/35">
+            <p className="py-6 text-center text-[12.5px] text-[#F0EFEC]/35">
               Crie a vaga para adicionar perguntas específicas. As perguntas globais já se aplicam automaticamente.
             </p>
+          ) : questions.length === 0 ? (
+            <p className="py-6 text-center text-[12.5px] text-[#F0EFEC]/35">
+              Nenhuma pergunta específica. Use “Criar pergunta” — as globais continuam valendo para esta vaga.
+            </p>
           ) : (
-            <JobQuestionsPanel jobId={savedId} questions={questions} onChanged={() => void loadQuestions()} />
+            <RhOrderedList
+              items={questions}
+              onMove={moveQuestion}
+              onRemove={(question) => void removeQuestion(question)}
+              render={(question) => (
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-[#F0EFEC]/82">{question.label}</span>
+                  <span className="shrink-0 text-[11px] text-[#F0EFEC]/32">
+                    {QUESTION_TYPE_LABEL[question.type]} · {question.required ? 'obrigatória' : 'opcional'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void toggleQuestion(question)}
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[9.5px] font-semibold tracking-wide uppercase transition ${
+                      question.active
+                        ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200/90'
+                        : 'border-white/10 bg-white/[0.05] text-[#F0EFEC]/45'
+                    }`}
+                  >
+                    {question.active ? 'ativa' : 'off'}
+                  </button>
+                </div>
+              )}
+            />
           )}
         </section>
       </div>
+
+      {/* ---------- MODAL: criar pergunta da vaga ---------- */}
+      <QuestionModal
+        open={questionModal}
+        title="Nova pergunta da vaga"
+        onClose={() => setQuestionModal(false)}
+        onSubmit={async (input) => {
+          await createQuestion({ ...input, scope: 'JOB', job_id: savedId })
+          void loadQuestions()
+        }}
+      />
     </div>
   )
 }
 
-const inputClass =
-  'w-full rounded-[10px] border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-[13px] text-[#F0EFEC]/85 placeholder:text-[#F0EFEC]/28 focus:border-white/15 focus:outline-none'
+// ============================================================
+// MODAL de pergunta (mesmo padrão Dialog do launcher) — reutilizado
+// nas Configurações (globais) também.
+// ============================================================
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <label className="block text-[12px] font-medium text-[#F0EFEC]/45">{label}</label>
-      {children}
-    </div>
-  )
+export type QuestionFormOutput = {
+  type: RhQuestionType
+  label: string
+  placeholder: string | null
+  help_text: string | null
+  required: boolean
+  order_index: number
+  active: boolean
+  options: RhOption[]
+  true_points?: number
 }
 
-// ---------- Perguntas da vaga (painel embutido na edição) ----------
-
-function JobQuestionsPanel({
-  jobId,
-  questions,
-  onChanged
+export function QuestionModal({
+  open,
+  title,
+  initial,
+  onClose,
+  onSubmit
 }: {
-  jobId: string
-  questions: RhQuestion[]
-  onChanged: () => void
-}) {
-  const [creating, setCreating] = useState(false)
-
-  async function remove(question: RhQuestion): Promise<void> {
-    if (!window.confirm('Remover esta pergunta da vaga?')) return
-    await deleteQuestion(question.id).catch(() => undefined)
-    onChanged()
-  }
-
-  async function toggleActive(question: RhQuestion): Promise<void> {
-    await updateQuestion(question.id, { active: !question.active }).catch(() => undefined)
-    onChanged()
-  }
-
-  return (
-    <div className="space-y-2">
-      {questions.length === 0 ? (
-        <p className="py-4 text-center text-[12.5px] text-[#F0EFEC]/35">
-          Nenhuma pergunta específica. As globais continuam valendo para esta vaga.
-        </p>
-      ) : (
-        questions.map((question) => (
-          <div key={question.id} className="rounded-[12px] border border-white/[0.05] bg-white/[0.02] p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[13px] text-[#F0EFEC]/82">{question.label}</p>
-                <p className="mt-0.5 text-[11px] text-[#F0EFEC]/32">
-                  {QUESTION_TYPE_LABEL[question.type]} · {question.required ? 'obrigatória' : 'opcional'} ·{' '}
-                  {question.active ? 'ativa' : 'desativada'}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => void toggleActive(question)}
-                  className="rounded-[7px] border border-white/[0.07] px-2 py-1 text-[11px] text-[#F0EFEC]/55 hover:bg-white/[0.05]"
-                >
-                  {question.active ? 'Desativar' : 'Ativar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void remove(question)}
-                  aria-label="Remover pergunta"
-                  className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 hover:bg-red-400/10 hover:text-red-300"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))
-      )}
-
-      {creating ? (
-        <QuestionFormInline
-          jobId={jobId}
-          onCancel={() => setCreating(false)}
-          onCreated={() => {
-            setCreating(false)
-            onChanged()
-          }}
-        />
-      ) : (
-        <RhGhostButton onClick={() => setCreating(true)} className="w-full">
-          <Plus className="size-3.5" /> Adicionar pergunta à vaga
-        </RhGhostButton>
-      )}
-    </div>
-  )
-}
-
-function QuestionFormInline({
-  jobId,
-  onCancel,
-  onCreated
-}: {
-  jobId: string
-  onCancel: () => void
-  onCreated: () => void
+  open: boolean
+  title: string
+  initial?: { label: string; type: RhQuestionType; required: boolean; help_text: string | null; options: RhOption[]; true_points?: number } | null
+  onClose: () => void
+  onSubmit: (input: QuestionFormOutput) => Promise<void>
 }) {
   const [label, setLabel] = useState('')
   const [type, setType] = useState<RhQuestionType>('TEXT')
   const [required, setRequired] = useState(true)
   const [helpText, setHelpText] = useState('')
-  const [options, setOptions] = useState<Array<{ label: string; points: string; disqualify: boolean }>>([])
+  const [truePoints, setTruePoints] = useState('10')
+  const [options, setOptions] = useState<Array<{ id: string; label: string; points: string; disqualify: boolean }>>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const needsOptions = type === 'SELECT' || type === 'MULTISELECT'
+
+  useEffect(() => {
+    if (!open) return
+    setLabel(initial?.label ?? '')
+    setType(initial?.type ?? 'TEXT')
+    setRequired(initial?.required ?? true)
+    setHelpText(initial?.help_text ?? '')
+    setTruePoints(String(initial?.true_points ?? 10))
+    setOptions(
+      (initial?.options ?? []).map((option, index) => ({
+        id: `opt-${index}`,
+        label: option.label,
+        points: String(option.points),
+        disqualify: option.effect === 'DISQUALIFY'
+      }))
+    )
+    setError(null)
+    setSaving(false)
+  }, [open, initial])
 
   async function submit(): Promise<void> {
     if (!label.trim()) {
@@ -651,9 +693,7 @@ function QuestionFormInline({
               order_index: index
             }))
         : []
-      await createQuestion({
-        scope: 'JOB',
-        job_id: jobId,
+      await onSubmit({
         type,
         label: label.trim(),
         placeholder: null,
@@ -661,98 +701,123 @@ function QuestionFormInline({
         required,
         order_index: 90,
         active: true,
-        options: parsedOptions
+        options: parsedOptions,
+        true_points: type === 'BOOLEAN' ? Number(truePoints) || 0 : undefined
       })
-      onCreated()
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Erro ao criar pergunta.')
+      onClose()
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Erro ao salvar a pergunta.')
     } finally {
       setSaving(false)
     }
   }
 
+  const TYPE_OPTIONS = (Object.keys(QUESTION_TYPE_LABEL) as RhQuestionType[])
+    .filter((questionType) => questionType !== 'FILE')
+    .map((questionType) => ({ value: questionType, label: QUESTION_TYPE_LABEL[questionType] }))
+
   return (
-    <div className="space-y-3 rounded-[12px] border border-white/[0.08] bg-white/[0.02] p-3">
-      <Field label="Enunciado *">
-        <input value={label} onChange={(event) => setLabel(event.target.value)} className={inputClass} placeholder="Ex.: Tem experiência com vendas?" />
-      </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Tipo">
-          <select value={type} onChange={(event) => setType(event.target.value as RhQuestionType)} className={inputClass}>
-            {(Object.keys(QUESTION_TYPE_LABEL) as RhQuestionType[])
-              .filter((questionType) => questionType !== 'FILE')
-              .map((questionType) => (
-                <option key={questionType} value={questionType} className="bg-[#1A1A1A]">
-                  {QUESTION_TYPE_LABEL[questionType]}
-                </option>
-              ))}
-          </select>
-        </Field>
-        <Field label="Obrigatoriedade">
-          <select value={required ? 'yes' : 'no'} onChange={(event) => setRequired(event.target.value === 'yes')} className={inputClass}>
-            <option value="yes" className="bg-[#1A1A1A]">Obrigatória</option>
-            <option value="no" className="bg-[#1A1A1A]">Opcional</option>
-          </select>
-        </Field>
-      </div>
-      <Field label="Texto de ajuda (opcional)">
-        <input value={helpText} onChange={(event) => setHelpText(event.target.value)} className={inputClass} />
-      </Field>
-      {needsOptions ? (
-        <div className="space-y-2">
-          <label className="block text-[12px] font-medium text-[#F0EFEC]/45">Opções (pontos e eliminação)</label>
-          {options.map((option, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <input
-                value={option.label}
-                onChange={(event) =>
-                  setOptions((current) => current.map((item, i) => (i === index ? { ...item, label: event.target.value } : item)))
-                }
-                placeholder={`Opção ${index + 1}`}
-                className={`${inputClass} flex-1`}
-              />
-              <input
-                value={option.points}
-                onChange={(event) =>
-                  setOptions((current) => current.map((item, i) => (i === index ? { ...item, points: event.target.value } : item)))
-                }
-                placeholder="pts"
-                inputMode="numeric"
-                className={`${inputClass} w-16`}
-              />
-              <label className="flex shrink-0 items-center gap-1 text-[11px] text-[#F0EFEC]/45">
-                <input
-                  type="checkbox"
-                  checked={option.disqualify}
-                  onChange={(event) =>
-                    setOptions((current) => current.map((item, i) => (i === index ? { ...item, disqualify: event.target.checked } : item)))
-                  }
-                  className="size-3 accent-[#F0EFEC]"
-                />
-                elimina
-              </label>
-              <button
-                type="button"
-                onClick={() => setOptions((current) => current.filter((_, i) => i !== index))}
-                className="text-[#F0EFEC]/30 hover:text-red-300"
-                aria-label="Remover opção"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-            </div>
-          ))}
-          <RhGhostButton onClick={() => setOptions((current) => [...current, { label: '', points: '0', disqualify: false }])}>
-            <Settings2 className="size-3.5" /> Adicionar opção
-          </RhGhostButton>
+    <Dialog open={open} title={title} description="A pergunta entra no formulário público na ordem configurada." onClose={onClose} wide>
+      <div className="space-y-3.5 px-5 pb-5">
+        <RhField label="Enunciado *">
+          <RhInput value={label} onChange={setLabel} placeholder="Ex.: Tem experiência com vendas?" />
+        </RhField>
+        <div className="grid grid-cols-2 gap-3">
+          <RhField label="Tipo de resposta">
+            <RhSelect value={type} options={TYPE_OPTIONS} onChange={(value) => setType(value as RhQuestionType)} />
+          </RhField>
+          <RhField label="Obrigatoriedade">
+            <RhSelect
+              value={required ? 'yes' : 'no'}
+              options={[
+                { value: 'yes', label: 'Obrigatória' },
+                { value: 'no', label: 'Opcional' }
+              ]}
+              onChange={(value) => setRequired(value === 'yes')}
+            />
+          </RhField>
         </div>
-      ) : null}
-      {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
-      <div className="flex justify-end gap-2">
-        <RhGhostButton onClick={onCancel}>Cancelar</RhGhostButton>
-        <RhPrimaryButton onClick={() => void submit()} disabled={saving}>
-          {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Adicionar
-        </RhPrimaryButton>
+        <RhField label="Texto de ajuda (opcional)">
+          <RhInput value={helpText} onChange={setHelpText} placeholder="Dica exibida abaixo do campo" />
+        </RhField>
+        {type === 'BOOLEAN' ? (
+          <RhField label="Pontos ao responder “Sim”" hint="A resposta “Não” não pontua.">
+            <RhInput value={truePoints} onChange={(value) => setTruePoints(value.replace(/\D/g, ''))} inputMode="numeric" />
+          </RhField>
+        ) : null}
+        {needsOptions ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-[12px] text-[#F0EFEC]/45">Opções (pontos e eliminação)</Label>
+              <RhGhostButton
+                onClick={() => setOptions((current) => [...current, { id: `opt-${Date.now()}`, label: '', points: '0', disqualify: false }])}
+              >
+                <Plus className="size-3.5" /> Opção
+              </RhGhostButton>
+            </div>
+            {options.length === 0 ? (
+              <p className="rounded-[10px] border border-dashed border-white/[0.07] py-4 text-center text-[12px] text-[#F0EFEC]/35">
+                Adicione as opções — cada uma pode somar pontos ou eliminar o candidato.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {options.map((option, index) => (
+                  <div key={option.id} className="flex items-center gap-2">
+                    <span className="w-5 text-center text-[11px] text-[#F0EFEC]/30">{index + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <RhInput
+                        value={option.label}
+                        onChange={(value) =>
+                          setOptions((current) => current.map((item) => (item.id === option.id ? { ...item, label: value } : item)))
+                        }
+                        placeholder={`Opção ${index + 1}`}
+                      />
+                    </div>
+                    <div className="w-16">
+                      <RhInput
+                        value={option.points}
+                        onChange={(value) =>
+                          setOptions((current) => current.map((item) => (item.id === option.id ? { ...item, points: value } : item)))
+                        }
+                        inputMode="numeric"
+                        placeholder="pts"
+                      />
+                    </div>
+                    <label className="flex shrink-0 items-center gap-1.5 text-[11px] text-[#F0EFEC]/45">
+                      <input
+                        type="checkbox"
+                        checked={option.disqualify}
+                        onChange={(event) =>
+                          setOptions((current) =>
+                            current.map((item) => (item.id === option.id ? { ...item, disqualify: event.target.checked } : item))
+                          )
+                        }
+                        className="size-3.5 accent-[#F0EFEC]"
+                      />
+                      elimina
+                    </label>
+                    <button
+                      type="button"
+                      aria-label="Remover opção"
+                      onClick={() => setOptions((current) => current.filter((item) => item.id !== option.id))}
+                      className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 transition hover:bg-red-400/10 hover:text-red-300"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+        {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
+        <div className="flex justify-end gap-2 pt-1">
+          <RhGhostButton onClick={onClose}>Cancelar</RhGhostButton>
+          <RhPrimaryButton onClick={() => void submit()} disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Salvar pergunta
+          </RhPrimaryButton>
+        </div>
       </div>
-    </div>
+    </Dialog>
   )
 }

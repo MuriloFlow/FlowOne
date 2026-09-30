@@ -3,6 +3,7 @@
 // ativo lê/escreve os dados internos; o público só vê vagas abertas.
 import { supabase } from '@/lib/supabase'
 import { currentAccessToken } from '@/lib/auth'
+import { callOp } from '@/lib/flow-ops-client'
 import type {
   RhAiAssessment,
   RhAiRule,
@@ -416,15 +417,50 @@ export async function updateAiRule(id: string, config: Record<string, unknown>):
   if (error) return fatal(error, 'Erro ao salvar as regras da IA.')
 }
 
+/**
+ * Regras adicionais escritas pelo RH (estilo prompt). Ficam na linha
+ * custom_prompt_rules e entram no prompt da IA na análise.
+ */
+export async function savePromptRules(rules: string[]): Promise<void> {
+  await ensureSession()
+  const { error } = await supabase.from('rh_ai_rules').upsert(
+    {
+      rule_key: 'custom_prompt_rules',
+      label: 'Instruções da IA (escritas pelo RH)',
+      config: { rules },
+      active: true,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: 'rule_key' }
+  )
+  if (error) return fatal(error, 'Erro ao salvar as instruções da IA.')
+}
+
+/**
+ * Análise da IA: preferencialmente via LLM na edge (op rhAnalyzeApplication,
+ * que usa as regras do banco + instruções do RH como prompt). Se a edge não
+ * tiver OPENAI_API_KEY, cai para o motor de regras SQL (RPC rh_analyze_).
+ */
 export async function analyzeApplication(applicationId: string, resumeText?: string): Promise<RhAiAssessment> {
   await ensureSession()
-  const { data, error } = await supabase.rpc('rh_analyze_application', {
-    p_application_id: applicationId,
-    p_resume_text: resumeText ?? null
-  })
-  if (error) return fatal(error, 'A análise da IA falhou.')
-  const result = data as { ok?: boolean } | null
-  if (result && result.ok === false) throw new RhApiError('A análise da IA não retornou resultado.')
+  try {
+    return await callOp<RhAiAssessment>('rhAnalyzeApplication', {
+      applicationId,
+      resumeText: resumeText ?? null
+    })
+  } catch (edgeError) {
+    const message = edgeError instanceof Error ? edgeError.message : ''
+    const fallbackWorthy = /OPENAI|IA indispon|modelo|rate limit|429|503/i.test(message)
+    if (!fallbackWorthy) throw new RhApiError(message || 'A análise da IA falhou.')
+    // fallback: motor de regras SQL
+    const { data, error } = await supabase.rpc('rh_analyze_application', {
+      p_application_id: applicationId,
+      p_resume_text: resumeText ?? null
+    })
+    if (error) return fatal(error, 'A análise da IA falhou.')
+    const result = data as { ok?: boolean } | null
+    if (result && result.ok === false) throw new RhApiError('A análise da IA não retornou resultado.')
+  }
   const { data: row, error: readError } = await supabase
     .from('rh_ai_assessments')
     .select('*')

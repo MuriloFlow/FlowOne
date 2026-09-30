@@ -4,6 +4,7 @@ import {
   CalendarPlus,
   FileText,
   Loader2,
+  Pencil,
   Phone,
   Plus,
   Search,
@@ -15,6 +16,7 @@ import {
   analyzeApplication,
   createInterview,
   createResumeSignedUrl,
+  deleteInternalNote,
   extractResumeTextFromUrl,
   fetchApplicationDetail,
   fetchApplications,
@@ -32,14 +34,18 @@ import {
   type RhInterview,
   type RhJob
 } from '@/lib/rh/types'
+import { Dialog } from '@/components/ui/dialog'
 import {
   RhApplicationStatusChip,
   RhCard,
   RhEmptyState,
   RhErrorState,
+  RhField,
   RhGhostButton,
+  RhInput,
   RhPageHeader,
   RhPrimaryButton,
+  RhSelect,
   RhSkeleton
 } from './rh-ui'
 
@@ -60,6 +66,7 @@ export function RhApplicationsPage({ initialStatus, onOpenApplication }: ListPro
   const [jobId, setJobId] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [moving, setMoving] = useState<string | null>(null)
 
   useEffect(() => {
     if (initialStatus) setStatus(initialStatus)
@@ -96,11 +103,30 @@ export function RhApplicationsPage({ initialStatus, onOpenApplication }: ListPro
     })
   }, [applications, query, status, jobId])
 
+  async function quickMove(application: RhApplication, next: RhApplicationStatus): Promise<void> {
+    setMoving(application.id)
+    try {
+      await moveApplication(application.id, next)
+      setApplications((current) =>
+        current.map((item) => (item.id === application.id ? { ...item, status: next } : item))
+      )
+    } catch (moveError) {
+      setError(moveError instanceof Error ? moveError.message : 'Erro ao alterar status.')
+    } finally {
+      setMoving(null)
+    }
+  }
+
+  const JOB_OPTIONS = [
+    { value: 'all', label: 'Todas as vagas' },
+    ...jobs.map((job) => ({ value: job.id, label: job.title }))
+  ]
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <RhPageHeader
         title="Central de Candidatos"
-        subtitle={`${applications.length} candidaturas no pipeline — toque para ver o candidato completo.`}
+        subtitle={`${applications.length} candidaturas — clique para abrir, ou troque o status direto no card.`}
       />
 
       {error ? <RhErrorState message={error} onRetry={() => void load()} /> : null}
@@ -115,18 +141,7 @@ export function RhApplicationsPage({ initialStatus, onOpenApplication }: ListPro
             className="h-9 w-full rounded-[10px] border border-white/[0.06] bg-white/[0.02] pr-3 pl-9 text-[13px] text-[#F0EFEC]/85 placeholder:text-[#F0EFEC]/30 focus:border-white/15 focus:outline-none"
           />
         </div>
-        <select
-          value={jobId}
-          onChange={(event) => setJobId(event.target.value)}
-          className="h-9 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-2.5 text-[12.5px] text-[#F0EFEC]/75 focus:outline-none"
-        >
-          <option value="all" className="bg-[#1A1A1A]">Todas as vagas</option>
-          {jobs.map((job) => (
-            <option key={job.id} value={job.id} className="bg-[#1A1A1A]">
-              {job.title}
-            </option>
-          ))}
-        </select>
+        <RhSelect value={jobId} options={JOB_OPTIONS} onChange={setJobId} className="w-[200px]" />
       </div>
 
       <div className="mb-3 flex flex-wrap gap-1">
@@ -143,7 +158,9 @@ export function RhApplicationsPage({ initialStatus, onOpenApplication }: ListPro
               type="button"
               onClick={() => setStatus(statusOption)}
               className={`h-7 rounded-full px-3 text-[11.5px] font-medium transition ${
-                active ? 'bg-[#F0EFEC] text-[#111111]' : 'border border-white/[0.07] text-[#F0EFEC]/50 hover:text-[#F0EFEC]/80'
+                active
+                  ? 'bg-[#F0EFEC] text-[#111111]'
+                  : 'border border-white/[0.07] text-[#F0EFEC]/50 hover:text-[#F0EFEC]/80'
               }`}
             >
               {statusOption === 'all' ? 'Todos' : APPLICATION_STATUS_META[statusOption].label}
@@ -155,9 +172,9 @@ export function RhApplicationsPage({ initialStatus, onOpenApplication }: ListPro
 
       {loading ? (
         <div className="space-y-2">
-          <RhSkeleton className="h-[76px]" />
-          <RhSkeleton className="h-[76px]" />
-          <RhSkeleton className="h-[76px]" />
+          <RhSkeleton className="h-[86px]" />
+          <RhSkeleton className="h-[86px]" />
+          <RhSkeleton className="h-[86px]" />
         </div>
       ) : filtered.length === 0 ? (
         <RhEmptyState
@@ -166,38 +183,64 @@ export function RhApplicationsPage({ initialStatus, onOpenApplication }: ListPro
         />
       ) : (
         <div className="space-y-2 pb-2">
-          {filtered.map((application) => (
-            <button
-              key={application.id}
-              type="button"
-              onClick={() => onOpenApplication(application.id)}
-              className="block w-full rounded-[14px] border border-white/[0.045] bg-[#1A1A1A] p-3.5 text-left transition hover:border-white/[0.09] hover:bg-[#1E1E1E]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[13px] font-semibold text-[#F0EFEC]/60">
-                    {initials(application.candidate?.full_name ?? '?')}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[14px] font-medium text-[#F0EFEC]/85">
-                      {application.candidate?.full_name ?? 'Candidato'}
+          {filtered.map((application) => {
+            const nextOptions = APPLICATION_PIPELINE_ORDER.filter((option) => option !== application.status)
+            return (
+              <RhCard key={application.id} className="p-3.5 transition hover:border-white/[0.09]">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => onOpenApplication(application.id)}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[13px] font-semibold text-[#F0EFEC]/60">
+                      {initials(application.candidate?.full_name ?? '?')}
                     </span>
-                    <span className="mt-0.5 block truncate text-[12px] text-[#F0EFEC]/38">
-                      {application.job?.title ?? 'Vaga removida'} ·{' '}
-                      {new Date(application.created_at).toLocaleDateString('pt-BR')}
+                    <span className="min-w-0">
+                      <span className="block truncate text-[14px] font-medium text-[#F0EFEC]/85">
+                        {application.candidate?.full_name ?? 'Candidato'}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[12px] text-[#F0EFEC]/38">
+                        {application.job?.title ?? 'Vaga removida'} ·{' '}
+                        {new Date(application.created_at).toLocaleDateString('pt-BR')} · {application.score} pts
+                        {(application as { rh_files?: unknown[] }).rh_files?.length ? ' · 📎' : ''}
+                      </span>
                     </span>
-                  </span>
+                  </button>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <RhApplicationStatusChip status={application.status} />
+                    <div className="flex items-center gap-1">
+                      <select
+                        value=""
+                        disabled={moving === application.id}
+                        onChange={(event) => {
+                          if (event.target.value) void quickMove(application, event.target.value as RhApplicationStatus)
+                        }}
+                        className="h-7 cursor-pointer rounded-[7px] border border-white/[0.08] bg-white/[0.03] px-2 text-[11px] text-[#F0EFEC]/60 transition hover:text-[#F0EFEC]/85 focus:outline-none"
+                      >
+                        <option value="" disabled>
+                          {moving === application.id ? 'Movendo…' : 'Mover para…'}
+                        </option>
+                        {nextOptions.map((option) => (
+                          <option key={option} value={option} className="bg-[#1A1A1A]">
+                            {APPLICATION_STATUS_META[option].label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => onOpenApplication(application.id)}
+                        aria-label="Abrir candidato"
+                        className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/35 transition hover:bg-white/[0.06] hover:text-[#F0EFEC]/80"
+                      >
+                        <Pencil className="size-3" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1.5">
-                  <RhApplicationStatusChip status={application.status} />
-                  <span className="text-[11px] tabular-nums text-[#F0EFEC]/35">
-                    {(application as { rh_files?: unknown[] }).rh_files?.length ? '📎 currículo' : null} ·{' '}
-                    {application.score} pts
-                  </span>
-                </div>
-              </div>
-            </button>
-          ))}
+              </RhCard>
+            )
+          })}
         </div>
       )}
     </div>
@@ -225,6 +268,7 @@ export function RhApplicationDetailPage({
   const [resumeUrl, setResumeUrl] = useState<string | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiMessage, setAiMessage] = useState<string | null>(null)
+  const [interviewModal, setInterviewModal] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -327,7 +371,7 @@ export function RhApplicationDetailPage({
         {/* ---------- Coluna principal ---------- */}
         <div className="min-w-0 space-y-3">
           <RhCard className="p-4">
-            <h2 className="mb-3 text-[13px] font-semibold text-[#F0EFEC]/80">Dados do candidato</h2>
+            <h2 className="mb-3 text-[15px] text-[#F0EFEC]/82">Dados do candidato</h2>
             <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
               <InfoRow label="E-mail" value={candidate?.email} />
               <InfoRow
@@ -338,12 +382,13 @@ export function RhApplicationDetailPage({
               <InfoRow label="CPF" value={candidate?.cpf} />
               <InfoRow
                 label="Nascimento"
-                value={candidate?.birth_date ? new Date(`${candidate.birth_date}T12:00:00`).toLocaleDateString('pt-BR') : null}
+                value={
+                  candidate?.birth_date
+                    ? new Date(`${candidate.birth_date}T12:00:00`).toLocaleDateString('pt-BR')
+                    : null
+                }
               />
-              <InfoRow
-                label="Cidade"
-                value={[candidate?.city, candidate?.state].filter(Boolean).join(' / ') || null}
-              />
+              <InfoRow label="Cidade" value={[candidate?.city, candidate?.state].filter(Boolean).join(' / ') || null} />
               <InfoRow
                 label="Endereço"
                 value={
@@ -371,7 +416,7 @@ export function RhApplicationDetailPage({
           {/* IA */}
           <RhCard className="p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="flex items-center gap-2 text-[13px] font-semibold text-[#F0EFEC]/80">
+              <h2 className="flex items-center gap-2 text-[15px] text-[#F0EFEC]/82">
                 <Brain className="size-3.5 text-[#F0EFEC]/40" /> Análise da IA
               </h2>
               <RhGhostButton onClick={() => void runAi()} disabled={aiLoading}>
@@ -384,22 +429,24 @@ export function RhApplicationDetailPage({
               <AiAssessmentBody assessment={assessment} />
             ) : (
               <p className="text-[12.5px] text-[#F0EFEC]/35">
-                A IA avalia o currículo e as respostas conforme as regras configuradas em Configurações → Regras da IA,
-                gerando uma pontuação de compatibilidade (0–100) com pontos positivos e de atenção.
+                A IA avalia o currículo e as respostas conforme as regras e instruções configuradas em Configurações →
+                Regras da IA, gerando pontuação de compatibilidade (0–100).
               </p>
             )}
           </RhCard>
 
           {/* Respostas */}
           <RhCard className="p-4">
-            <h2 className="mb-3 text-[13px] font-semibold text-[#F0EFEC]/80">Respostas do formulário</h2>
+            <h2 className="mb-3 text-[15px] text-[#F0EFEC]/82">Respostas do formulário</h2>
             {answers.length === 0 ? (
               <p className="text-[12.5px] text-[#F0EFEC]/35">Sem respostas registradas.</p>
             ) : (
               <div className="space-y-2.5">
                 {answers.map((answer) => (
                   <div key={answer.id} className="rounded-[10px] border border-white/[0.05] bg-white/[0.02] p-3">
-                    <p className="text-[12px] font-medium text-[#F0EFEC]/55">{answer.rh_questions?.label ?? 'Pergunta'}</p>
+                    <p className="text-[12px] font-medium text-[#F0EFEC]/55">
+                      {answer.rh_questions?.label ?? 'Pergunta'}
+                    </p>
                     <p className="mt-1 text-[13px] whitespace-pre-wrap text-[#F0EFEC]/85">
                       {formatAnswer(answer.value_text, answer.value_json)}
                     </p>
@@ -410,14 +457,34 @@ export function RhApplicationDetailPage({
           </RhCard>
 
           {/* Entrevistas */}
-          <InterviewsSection
-            interviews={interviews}
-            applicationId={application.id}
-            onChanged={() => {
-              void load()
-              onChanged?.()
-            }}
-          />
+          <RhCard className="p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-[15px] text-[#F0EFEC]/82">Entrevistas</h2>
+              <RhGhostButton onClick={() => setInterviewModal(true)}>
+                <CalendarPlus className="size-3.5" /> Agendar
+              </RhGhostButton>
+            </div>
+            {interviews.length === 0 ? (
+              <p className="text-[12.5px] text-[#F0EFEC]/35">Nenhuma entrevista marcada.</p>
+            ) : (
+              <div className="space-y-2">
+                {[...interviews]
+                  .sort(
+                    (left, right) => new Date(left.scheduled_at).getTime() - new Date(right.scheduled_at).getTime()
+                  )
+                  .map((interview) => (
+                    <InterviewRow
+                      key={interview.id}
+                      interview={interview}
+                      onChanged={() => {
+                        void load()
+                        onChanged?.()
+                      }}
+                    />
+                  ))}
+              </div>
+            )}
+          </RhCard>
 
           {/* Observações internas */}
           <NotesSection
@@ -430,7 +497,7 @@ export function RhApplicationDetailPage({
           />
         </div>
 
-        {/* ---------- Coluna lateral (cards premium) ---------- */}
+        {/* ---------- Coluna lateral ---------- */}
         <div className="min-w-0 space-y-3">
           <StatusCard
             current={application.status}
@@ -442,7 +509,7 @@ export function RhApplicationDetailPage({
           />
 
           <RhCard className="p-4">
-            <h2 className="mb-2 text-[13px] font-semibold text-[#F0EFEC]/80">Pontuação</h2>
+            <h2 className="mb-2 text-[15px] text-[#F0EFEC]/82">Pontuação</h2>
             <div className="flex items-end gap-3">
               <div>
                 <p className="text-[30px] leading-none font-semibold text-[#F0EFEC]/90">
@@ -453,9 +520,7 @@ export function RhApplicationDetailPage({
               </div>
               {assessment ? (
                 <span
-                  className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${
-                    bandClass(assessment.band)
-                  }`}
+                  className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${bandClass(assessment.band)}`}
                 >
                   IA {assessment.score} · {assessment.band}
                 </span>
@@ -464,7 +529,7 @@ export function RhApplicationDetailPage({
           </RhCard>
 
           <RhCard className="p-4">
-            <h2 className="mb-3 text-[13px] font-semibold text-[#F0EFEC]/80">Histórico</h2>
+            <h2 className="mb-3 text-[15px] text-[#F0EFEC]/82">Histórico</h2>
             {history.length === 0 ? (
               <p className="text-[12.5px] text-[#F0EFEC]/35">Sem movimentações ainda.</p>
             ) : (
@@ -495,12 +560,339 @@ export function RhApplicationDetailPage({
         </div>
       </div>
 
-      {resumeUrl ? <ResumePreviewOverlay url={resumeUrl} fileName={resumeFile?.file_name ?? 'Currículo'} onClose={() => setResumeUrl(null)} /> : null}
+      {interviewModal ? (
+        <InterviewModal
+          open
+          applicationId={application.id}
+          onClose={() => setInterviewModal(false)}
+          onCreated={() => {
+            setInterviewModal(false)
+            void load()
+            onChanged?.()
+          }}
+        />
+      ) : null}
+
+      {resumeUrl ? (
+        <ResumePreviewOverlay url={resumeUrl} fileName={resumeFile?.file_name ?? 'Currículo'} onClose={() => setResumeUrl(null)} />
+      ) : null}
     </div>
   )
 }
 
 // ---------- subcomponentes ----------
+
+function InterviewRow({ interview, onChanged }: { interview: RhInterview; onChanged: () => void }) {
+  const [savingResult, setSavingResult] = useState(false)
+
+  return (
+    <div className="rounded-[10px] border border-white/[0.05] bg-white/[0.02] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[13px] text-[#F0EFEC]/80">
+            {new Date(interview.scheduled_at).toLocaleString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}{' '}
+            · {interview.mode === 'online' ? 'Online' : 'Presencial'}
+            <span className="ml-1.5 text-[11px] text-[#F0EFEC]/35">{interview.duration_minutes} min</span>
+          </p>
+          <p className="mt-0.5 truncate text-[11.5px] text-[#F0EFEC]/40">
+            {[interview.interviewer, interview.location, interview.meeting_url].filter(Boolean).join(' · ') ||
+              'Sem detalhes'}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <select
+            value={interview.result ?? ''}
+            disabled={savingResult}
+            onChange={async (event) => {
+              setSavingResult(true)
+              await updateInterview(interview.id, { result: event.target.value || null }).catch(() => undefined)
+              setSavingResult(false)
+              onChanged()
+            }}
+            className="h-7 rounded-[7px] border border-white/[0.08] bg-white/[0.03] px-2 text-[11.5px] text-[#F0EFEC]/70 focus:outline-none"
+          >
+            <option value="" className="bg-[#1A1A1A]">
+              Resultado…
+            </option>
+            <option value="otimo" className="bg-[#1A1A1A]">Ótimo</option>
+            <option value="bom" className="bg-[#1A1A1A]">Bom</option>
+            <option value="ruim" className="bg-[#1A1A1A]">Ruim</option>
+            <option value="no_show" className="bg-[#1A1A1A]">Não compareceu</option>
+          </select>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!window.confirm('Excluir esta entrevista?')) return
+              await deleteInterview(interview.id).catch(() => undefined)
+              onChanged()
+            }}
+            aria-label="Excluir entrevista"
+            className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 transition hover:bg-red-400/10 hover:text-red-300"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        </div>
+      </div>
+      {interview.result ? (
+        <span className="mt-2 inline-block rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10.5px] text-[#F0EFEC]/60 uppercase">
+          {interview.result}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function InterviewModal({
+  open,
+  applicationId,
+  onClose,
+  onCreated
+}: {
+  open: boolean
+  applicationId: string
+  onClose: () => void
+  onCreated: () => void
+}) {
+  const [mode, setMode] = useState<'online' | 'presencial'>('presencial')
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('09:00')
+  const [duration, setDuration] = useState('60')
+  const [interviewer, setInterviewer] = useState('')
+  const [place, setPlace] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(): Promise<void> {
+    if (!date) {
+      setError('Escolha a data da entrevista.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await createInterview({
+        application_id: applicationId,
+        mode,
+        scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
+        duration_minutes: Number(duration) || 60,
+        interviewer: interviewer.trim() || null,
+        location: mode === 'presencial' ? place.trim() || null : null,
+        meeting_url: mode === 'online' ? place.trim() || null : null
+      })
+      onCreated()
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Erro ao agendar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      title="Agendar entrevista"
+      description="Presencial ou online — aparece na aba Entrevistas e na Visão Geral."
+      onClose={onClose}
+    >
+      <div className="space-y-3.5 px-5 pb-5">
+        <div className="grid grid-cols-2 gap-3">
+          <RhField label="Modalidade">
+            <RhSelect
+              value={mode}
+              options={[
+                { value: 'presencial', label: 'Presencial' },
+                { value: 'online', label: 'Online' }
+              ]}
+              onChange={(value) => setMode(value as 'online' | 'presencial')}
+            />
+          </RhField>
+          <RhField label="Duração (min)">
+            <RhInput value={duration} onChange={(value) => setDuration(value.replace(/\D/g, ''))} inputMode="numeric" />
+          </RhField>
+          <RhField label="Data *">
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              className="h-9 w-full rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 text-[13px] text-[#F0EFEC]/85 focus:border-white/16 focus:outline-none"
+            />
+          </RhField>
+          <RhField label="Hora">
+            <input
+              type="time"
+              value={time}
+              onChange={(event) => setTime(event.target.value)}
+              className="h-9 w-full rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 text-[13px] text-[#F0EFEC]/85 focus:border-white/16 focus:outline-none"
+            />
+          </RhField>
+        </div>
+        <RhField label="Entrevistador">
+          <RhInput value={interviewer} onChange={setInterviewer} placeholder="Quem conduz" />
+        </RhField>
+        <RhField label={mode === 'online' ? 'Link da reunião' : 'Local'}>
+          <RhInput value={place} onChange={setPlace} placeholder={mode === 'online' ? 'https://meet…' : 'Endereço da loja'} />
+        </RhField>
+        {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
+        <div className="flex justify-end gap-2 pt-1">
+          <RhGhostButton onClick={onClose}>Cancelar</RhGhostButton>
+          <RhPrimaryButton onClick={() => void submit()} disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Agendar
+          </RhPrimaryButton>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+function StatusCard({
+  current,
+  onChange
+}: {
+  current: RhApplicationStatus
+  onChange: (next: RhApplicationStatus, note?: string) => Promise<void>
+}) {
+  const [next, setNext] = useState<RhApplicationStatus>(current)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => setNext(current), [current])
+
+  async function apply(): Promise<void> {
+    if (next === current) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onChange(next, note.trim() || undefined)
+      setNote('')
+    } catch (moveError) {
+      setError(moveError instanceof Error ? moveError.message : 'Erro ao alterar status.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <RhCard className="p-4">
+      <h2 className="mb-3 text-[15px] text-[#F0EFEC]/82">Status do candidato</h2>
+      <RhSelect
+        value={next}
+        options={APPLICATION_PIPELINE_ORDER.map((status) => ({
+          value: status,
+          label: APPLICATION_STATUS_META[status].label
+        }))}
+        onChange={(value) => setNext(value as RhApplicationStatus)}
+      />
+      <div className="mt-2">
+        <RhInput value={note} onChange={setNote} placeholder="Observação da movimentação (opcional)" />
+      </div>
+      {error ? <p className="mt-1.5 text-[11.5px] text-red-300/80">{error}</p> : null}
+      <RhPrimaryButton onClick={() => void apply()} disabled={saving || next === current} className="mt-2.5 w-full">
+        {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Salvar status
+      </RhPrimaryButton>
+    </RhCard>
+  )
+}
+
+function NotesSection({
+  notes,
+  applicationId,
+  authorName,
+  onChanged
+}: {
+  notes: RhApplicationDetail['notes']
+  applicationId: string
+  authorName: string
+  onChanged: () => void
+}) {
+  const [content, setContent] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function add(): Promise<void> {
+    if (!content.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await addInternalNote(applicationId, content.trim(), authorName)
+      setContent('')
+      onChanged()
+    } catch (noteError) {
+      setError(noteError instanceof Error ? noteError.message : 'Erro ao salvar a observação.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <RhCard className="p-4">
+      <h2 className="mb-1 text-[15px] text-[#F0EFEC]/82">
+        Observações internas
+        <span className="ml-2 rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9.5px] font-medium tracking-wide text-[#F0EFEC]/45 uppercase">
+          privado · só o RH vê
+        </span>
+      </h2>
+      <div className="mt-2 flex gap-2">
+        <div className="min-w-0 flex-1">
+          <RhInput
+            value={content}
+            onChange={setContent}
+            placeholder="Registrar observação sobre o candidato…"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void add()
+            }}
+          />
+        </div>
+        <RhGhostButton onClick={() => void add()} disabled={saving || !content.trim()}>
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Salvar
+        </RhGhostButton>
+      </div>
+      {error ? <p className="mt-1.5 text-[11.5px] text-red-300/80">{error}</p> : null}
+      {notes.length === 0 ? (
+        <p className="mt-3 text-[12.5px] text-[#F0EFEC]/35">Nenhuma observação interna ainda.</p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {[...notes].reverse().map((note) => (
+            <div
+              key={note.id}
+              className="group flex items-start justify-between gap-2 rounded-[10px] border border-white/[0.05] bg-white/[0.02] p-2.5"
+            >
+              <div className="min-w-0">
+                <p className="text-[12.5px] whitespace-pre-wrap text-[#F0EFEC]/80">{note.content}</p>
+                <p className="mt-1 text-[10.5px] text-[#F0EFEC]/30">
+                  {note.author_name ?? 'RH'} ·{' '}
+                  {new Date(note.created_at).toLocaleString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!window.confirm('Excluir esta observação?')) return
+                  await deleteInternalNote(note.id).catch(() => undefined)
+                  onChanged()
+                }}
+                aria-label="Excluir observação"
+                className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#F0EFEC]/25 transition hover:bg-red-400/10 hover:text-red-300"
+              >
+                <Trash2 className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </RhCard>
+  )
+}
 
 function BackButton({ onBack, title }: { onBack: () => void; title: string }) {
   return (
@@ -524,13 +916,28 @@ function BackButtonInline({ onBack }: { onBack: () => void }) {
   )
 }
 
-function InfoRow({ label, value, link, icon }: { label: string; value?: string | null; link?: boolean; icon?: React.ReactNode }) {
+function InfoRow({
+  label,
+  value,
+  link,
+  icon
+}: {
+  label: string
+  value?: string | null
+  link?: boolean
+  icon?: React.ReactNode
+}) {
   if (!value) return null
   return (
     <div className="min-w-0">
       <p className="text-[11px] tracking-wide text-[#F0EFEC]/32 uppercase">{label}</p>
       {link && /^https?:\/\//.test(value) ? (
-        <a href={value} target="_blank" rel="noreferrer" className="block truncate text-[13px] text-sky-300/80 underline-offset-2 hover:underline">
+        <a
+          href={value}
+          target="_blank"
+          rel="noreferrer"
+          className="block truncate text-[13px] text-sky-300/80 underline-offset-2 hover:underline"
+        >
           {value}
         </a>
       ) : (
@@ -615,332 +1022,6 @@ function AiAssessmentBody({ assessment }: { assessment: NonNullable<RhApplicatio
         </p>
       ) : null}
     </div>
-  )
-}
-
-function StatusCard({
-  current,
-  onChange
-}: {
-  current: RhApplicationStatus
-  onChange: (next: RhApplicationStatus, note?: string) => Promise<void>
-}) {
-  const [next, setNext] = useState<RhApplicationStatus>(current)
-  const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => setNext(current), [current])
-
-  async function apply(): Promise<void> {
-    if (next === current) return
-    setSaving(true)
-    setError(null)
-    try {
-      await onChange(next, note.trim() || undefined)
-      setNote('')
-    } catch (moveError) {
-      setError(moveError instanceof Error ? moveError.message : 'Erro ao alterar status.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <RhCard className="p-4">
-      <h2 className="mb-3 text-[13px] font-semibold text-[#F0EFEC]/80">Status do candidato</h2>
-      <select
-        value={next}
-        onChange={(event) => setNext(event.target.value as RhApplicationStatus)}
-        className="w-full rounded-[10px] border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-[13px] text-[#F0EFEC]/85 focus:outline-none"
-      >
-        {APPLICATION_PIPELINE_ORDER.map((status) => (
-          <option key={status} value={status} className="bg-[#1A1A1A]">
-            {APPLICATION_STATUS_META[status].label}
-          </option>
-        ))}
-      </select>
-      <input
-        value={note}
-        onChange={(event) => setNote(event.target.value)}
-        placeholder="Observação da movimentação (opcional)"
-        className="mt-2 w-full rounded-[10px] border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-[12.5px] text-[#F0EFEC]/80 placeholder:text-[#F0EFEC]/28 focus:outline-none"
-      />
-      {error ? <p className="mt-1.5 text-[11.5px] text-red-300/80">{error}</p> : null}
-      <RhPrimaryButton onClick={() => void apply()} disabled={saving || next === current} className="mt-2.5 w-full">
-        {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Salvar status
-      </RhPrimaryButton>
-    </RhCard>
-  )
-}
-
-function InterviewsSection({
-  interviews,
-  applicationId,
-  onChanged
-}: {
-  interviews: RhInterview[]
-  applicationId: string
-  onChanged: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [mode, setMode] = useState<'online' | 'presencial'>('presencial')
-  const [date, setDate] = useState('')
-  const [time, setTime] = useState('09:00')
-  const [duration, setDuration] = useState('60')
-  const [interviewer, setInterviewer] = useState('')
-  const [place, setPlace] = useState('')
-
-  async function schedule(): Promise<void> {
-    if (!date) {
-      setError('Escolha a data da entrevista.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await createInterview({
-        application_id: applicationId,
-        mode,
-        scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
-        duration_minutes: Number(duration) || 60,
-        interviewer: interviewer.trim() || null,
-        location: mode === 'presencial' ? place.trim() || null : null,
-        meeting_url: mode === 'online' ? place.trim() || null : null
-      })
-      setOpen(false)
-      onChanged()
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Erro ao agendar.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function setResult(interview: RhInterview, result: string): Promise<void> {
-    await updateInterview(interview.id, { result: result || null }).catch(() => undefined)
-    onChanged()
-  }
-
-  async function remove(interview: RhInterview): Promise<void> {
-    if (!window.confirm('Excluir esta entrevista?')) return
-    await deleteInterview(interview.id).catch(() => undefined)
-    onChanged()
-  }
-
-  const upcoming = [...interviews].sort(
-    (left, right) => new Date(left.scheduled_at).getTime() - new Date(right.scheduled_at).getTime()
-  )
-
-  return (
-    <RhCard className="p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-[13px] font-semibold text-[#F0EFEC]/80">Entrevistas</h2>
-        <RhGhostButton onClick={() => setOpen((value) => !value)}>
-          {open ? 'Fechar' : (
-            <>
-              <CalendarPlus className="size-3.5" /> Agendar
-            </>
-          )}
-        </RhGhostButton>
-      </div>
-
-      {open ? (
-        <div className="mb-3 space-y-2 rounded-[12px] border border-white/[0.07] bg-white/[0.02] p-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[11px] text-[#F0EFEC]/45">Modalidade</label>
-              <select
-                value={mode}
-                onChange={(event) => setMode(event.target.value as 'online' | 'presencial')}
-                className="w-full rounded-[8px] border border-white/[0.07] bg-white/[0.02] px-2 py-1.5 text-[12.5px] text-[#F0EFEC]/85 focus:outline-none"
-              >
-                <option value="presencial" className="bg-[#1A1A1A]">Presencial</option>
-                <option value="online" className="bg-[#1A1A1A]">Online</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-[#F0EFEC]/45">Duração (min)</label>
-              <input
-                value={duration}
-                onChange={(event) => setDuration(event.target.value)}
-                inputMode="numeric"
-                className="w-full rounded-[8px] border border-white/[0.07] bg-white/[0.02] px-2 py-1.5 text-[12.5px] text-[#F0EFEC]/85 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-[#F0EFEC]/45">Data</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-                className="w-full rounded-[8px] border border-white/[0.07] bg-white/[0.02] px-2 py-1.5 text-[12.5px] text-[#F0EFEC]/85 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-[#F0EFEC]/45">Hora</label>
-              <input
-                type="time"
-                value={time}
-                onChange={(event) => setTime(event.target.value)}
-                className="w-full rounded-[8px] border border-white/[0.07] bg-white/[0.02] px-2 py-1.5 text-[12.5px] text-[#F0EFEC]/85 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-[#F0EFEC]/45">Entrevistador</label>
-              <input
-                value={interviewer}
-                onChange={(event) => setInterviewer(event.target.value)}
-                placeholder="Quem conduz"
-                className="w-full rounded-[8px] border border-white/[0.07] bg-white/[0.02] px-2 py-1.5 text-[12.5px] text-[#F0EFEC]/85 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-[#F0EFEC]/45">{mode === 'online' ? 'Link da reunião' : 'Local'}</label>
-              <input
-                value={place}
-                onChange={(event) => setPlace(event.target.value)}
-                className="w-full rounded-[8px] border border-white/[0.07] bg-white/[0.02] px-2 py-1.5 text-[12.5px] text-[#F0EFEC]/85 focus:outline-none"
-              />
-            </div>
-          </div>
-          {error ? <p className="text-[11.5px] text-red-300/80">{error}</p> : null}
-          <div className="flex justify-end">
-            <RhPrimaryButton onClick={() => void schedule()} disabled={saving}>
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Agendar entrevista
-            </RhPrimaryButton>
-          </div>
-        </div>
-      ) : null}
-
-      {upcoming.length === 0 ? (
-        <p className="text-[12.5px] text-[#F0EFEC]/35">Nenhuma entrevista marcada.</p>
-      ) : (
-        <div className="space-y-2">
-          {upcoming.map((interview) => (
-            <div key={interview.id} className="rounded-[10px] border border-white/[0.05] bg-white/[0.02] p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[13px] text-[#F0EFEC]/80">
-                    {new Date(interview.scheduled_at).toLocaleString('pt-BR', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}{' '}
-                    · {interview.mode === 'online' ? 'Online' : 'Presencial'}
-                    <span className="ml-1.5 text-[11px] text-[#F0EFEC]/35">{interview.duration_minutes} min</span>
-                  </p>
-                  <p className="mt-0.5 truncate text-[11.5px] text-[#F0EFEC]/40">
-                    {[interview.interviewer, interview.location, interview.meeting_url].filter(Boolean).join(' · ') ||
-                      'Sem detalhes'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <select
-                    value={interview.result ?? ''}
-                    onChange={(event) => void setResult(interview, event.target.value)}
-                    className="rounded-[8px] border border-white/[0.07] bg-white/[0.02] px-2 py-1 text-[11.5px] text-[#F0EFEC]/70 focus:outline-none"
-                  >
-                    <option value="" className="bg-[#1A1A1A]">Resultado…</option>
-                    <option value="bom" className="bg-[#1A1A1A]">Bom</option>
-                    <option value="grande" className="bg-[#1A1A1A]">Ótimo</option>
-                    <option value="ruim" className="bg-[#1A1A1A]">Ruim</option>
-                    <option value="no_show" className="bg-[#1A1A1A]">Não compareceu</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => void remove(interview)}
-                    aria-label="Excluir entrevista"
-                    className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 hover:bg-red-400/10 hover:text-red-300"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-              {interview.result ? (
-                <span className="mt-2 inline-block rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10.5px] text-[#F0EFEC]/60 uppercase">
-                  {interview.result}
-                </span>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
-    </RhCard>
-  )
-}
-
-function NotesSection({
-  notes,
-  applicationId,
-  authorName,
-  onChanged
-}: {
-  notes: RhApplicationDetail['notes']
-  applicationId: string
-  authorName: string
-  onChanged: () => void
-}) {
-  const [content, setContent] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function add(): Promise<void> {
-    if (!content.trim()) return
-    setSaving(true)
-    setError(null)
-    try {
-      await addInternalNote(applicationId, content.trim(), authorName)
-      setContent('')
-      onChanged()
-    } catch (noteError) {
-      setError(noteError instanceof Error ? noteError.message : 'Erro ao salvar a observação.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <RhCard className="p-4">
-      <h2 className="mb-1 text-[13px] font-semibold text-[#F0EFEC]/80">
-        Observações internas
-        <span className="ml-2 rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9.5px] font-medium tracking-wide text-[#F0EFEC]/45 uppercase">
-          privado · só o RH vê
-        </span>
-      </h2>
-      <div className="mt-2 flex gap-2">
-        <input
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') void add()
-          }}
-          placeholder="Registrar observação sobre o candidato…"
-          className="min-w-0 flex-1 rounded-[10px] border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-[12.5px] text-[#F0EFEC]/85 placeholder:text-[#F0EFEC]/28 focus:outline-none"
-        />
-        <RhGhostButton onClick={() => void add()} disabled={saving || !content.trim()}>
-          {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Salvar
-        </RhGhostButton>
-      </div>
-      {error ? <p className="mt-1.5 text-[11.5px] text-red-300/80">{error}</p> : null}
-      {notes.length === 0 ? (
-        <p className="mt-3 text-[12.5px] text-[#F0EFEC]/35">Nenhuma observação interna ainda.</p>
-      ) : (
-        <div className="mt-3 space-y-2">
-          {[...notes].reverse().map((note) => (
-            <div key={note.id} className="rounded-[10px] border border-white/[0.05] bg-white/[0.02] p-2.5">
-              <p className="text-[12.5px] whitespace-pre-wrap text-[#F0EFEC]/80">{note.content}</p>
-              <p className="mt-1 text-[10.5px] text-[#F0EFEC]/30">
-                {note.author_name ?? 'RH'} · {new Date(note.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </RhCard>
   )
 }
 

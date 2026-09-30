@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { Download, FileText, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   createCriterion,
   createQuestion,
@@ -8,19 +8,25 @@ import {
   fetchAiRules,
   fetchCriteria,
   fetchQuestions,
-  updateAiRule,
+  savePromptRules,
   updateCriterion,
   updateQuestion
 } from '@/lib/rh/api'
+import { QUESTION_TYPE_LABEL, type RhAiRule, type RhCriterion, type RhQuestion } from '@/lib/rh/types'
+import { Dialog } from '@/components/ui/dialog'
 import {
-  QUESTION_TYPE_LABEL,
-  type RhAiRule,
-  type RhCriterion,
-  type RhOption,
-  type RhQuestion,
-  type RhQuestionType
-} from '@/lib/rh/types'
-import { RhCard, RhErrorState, RhGhostButton, RhPageHeader, RhPrimaryButton, RhSkeleton } from './rh-ui'
+  RhCard,
+  RhErrorState,
+  RhField,
+  RhGhostButton,
+  RhInput,
+  RhOrderedList,
+  RhPageHeader,
+  RhPrimaryButton,
+  RhSelect,
+  RhSkeleton
+} from './rh-ui'
+import { QuestionModal } from './rh-jobs'
 
 type Tab = 'questions' | 'criteria' | 'ai'
 
@@ -44,7 +50,9 @@ export function RhSettingsPage() {
             type="button"
             onClick={() => setTab(value)}
             className={`h-8 rounded-[8px] px-3 text-[12.5px] font-medium transition ${
-              tab === value ? 'bg-[#F0EFEC] text-[#111111]' : 'border border-white/[0.07] text-[#F0EFEC]/50 hover:text-[#F0EFEC]/80'
+              tab === value
+                ? 'bg-[#F0EFEC] text-[#111111]'
+                : 'border border-white/[0.07] text-[#F0EFEC]/50 hover:text-[#F0EFEC]/80'
             }`}
           >
             {label}
@@ -61,22 +69,25 @@ export function RhSettingsPage() {
   )
 }
 
-const inputClass =
-  'w-full rounded-[10px] border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-[13px] text-[#F0EFEC]/85 placeholder:text-[#F0EFEC]/28 focus:border-white/15 focus:outline-none'
-
-// ---------------- Perguntas globais ----------------
+// ============================================================
+// Perguntas globais — lista reordenável + CRUD em modal
+// ============================================================
 
 function GlobalQuestions() {
   const [questions, setQuestions] = useState<RhQuestion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
+  const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'edit'; question: RhQuestion } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const all = await fetchQuestions()
-      setQuestions(all.filter((question) => question.scope === 'GLOBAL'))
+      setQuestions(
+        all
+          .filter((question) => question.scope === 'GLOBAL')
+          .sort((left, right) => left.order_index - right.order_index)
+      )
       setError(null)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar perguntas.')
@@ -89,9 +100,15 @@ function GlobalQuestions() {
     void load()
   }, [load])
 
-  async function toggle(question: RhQuestion): Promise<void> {
-    await updateQuestion(question.id, { active: !question.active }).catch(() => undefined)
-    void load()
+  function move(from: number, to: number): void {
+    if (to < 0 || to >= questions.length) return
+    const next = [...questions]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setQuestions(next)
+    void Promise.all(
+      next.map((question, index) => updateQuestion(question.id, { order_index: index }).catch(() => undefined))
+    ).then(() => undefined)
   }
 
   async function remove(question: RhQuestion): Promise<void> {
@@ -100,212 +117,108 @@ function GlobalQuestions() {
     void load()
   }
 
+  async function toggle(question: RhQuestion): Promise<void> {
+    await updateQuestion(question.id, { active: !question.active }).catch(() => undefined)
+    void load()
+  }
+
   if (loading) return <RhSkeleton className="h-[320px]" />
   if (error) return <RhErrorState message={error} onRetry={() => void load()} />
 
   return (
-    <div className="space-y-2">
-      {questions.map((question) => (
-        <RhCard key={question.id} className="p-3.5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[13.5px] text-[#F0EFEC]/85">{question.label}</p>
-              <p className="mt-0.5 text-[11.5px] text-[#F0EFEC]/32">
-                {QUESTION_TYPE_LABEL[question.type]} · {question.required ? 'obrigatória' : 'opcional'} ·{' '}
-                {question.active ? 'ativa' : 'desativada'}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[12.5px] text-[#F0EFEC]/40">
+          Ordem = posição no formulário público. Perguntas específicas de cada vaga entram depois destas.
+        </p>
+        <RhPrimaryButton onClick={() => setModal({ mode: 'create' })}>
+          <Plus className="size-3.5" /> Nova pergunta
+        </RhPrimaryButton>
+      </div>
+
+      {questions.length === 0 ? (
+        <RhCard className="p-6 text-center text-[13px] text-[#F0EFEC]/35">
+          Nenhuma pergunta global ainda.
+        </RhCard>
+      ) : (
+        <RhOrderedList
+          items={questions}
+          onMove={move}
+          onRemove={(question) => void remove(question)}
+          render={(question) => (
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-[13px] text-[#F0EFEC]/82">{question.label}</span>
+              <span className="shrink-0 text-[11px] text-[#F0EFEC]/32">
+                {QUESTION_TYPE_LABEL[question.type]} · {question.required ? 'obrigatória' : 'opcional'}
                 {question.options?.length ? ` · ${question.options.length} opções` : ''}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <RhGhostButton onClick={() => void toggle(question)}>{question.active ? 'Desativar' : 'Ativar'}</RhGhostButton>
+              </span>
               <button
                 type="button"
-                onClick={() => void remove(question)}
-                aria-label="Excluir pergunta"
-                className="flex size-8 items-center justify-center rounded-[8px] text-[#F0EFEC]/30 hover:bg-red-400/10 hover:text-red-300"
+                onClick={() => setModal({ mode: 'edit', question })}
+                aria-label="Editar pergunta"
+                className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#F0EFEC]/35 transition hover:bg-white/[0.06] hover:text-[#F0EFEC]/80"
               >
-                <Trash2 className="size-3.5" />
+                <Pencil className="size-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggle(question)}
+                className={`shrink-0 rounded-full border px-2 py-0.5 text-[9.5px] font-semibold tracking-wide uppercase transition ${
+                  question.active
+                    ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200/90'
+                    : 'border-white/10 bg-white/[0.05] text-[#F0EFEC]/45'
+                }`}
+              >
+                {question.active ? 'ativa' : 'off'}
               </button>
             </div>
-          </div>
-          {question.options?.length ? (
-            <div className="mt-2 flex flex-wrap gap-1.5 border-t border-white/[0.04] pt-2">
-              {question.options.map((option) => (
-                <span
-                  key={option.id ?? option.value}
-                  className="rounded-full border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[11px] text-[#F0EFEC]/55"
-                >
-                  {option.label}
-                  <span className={option.points > 0 ? 'ml-1 text-emerald-300/70' : 'ml-1 text-[#F0EFEC]/30'}>
-                    {option.points > 0 ? `+${option.points}` : option.points}
-                  </span>
-                  {option.effect === 'DISQUALIFY' ? <span className="ml-1 text-red-300/70">· elimina</span> : null}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </RhCard>
-      ))}
+          )}
+        />
+      )}
 
-      {creating ? (
-        <SettingsQuestionForm
-          onCancel={() => setCreating(false)}
-          onCreated={() => {
-            setCreating(false)
+      {modal?.mode === 'create' ? (
+        <QuestionModal
+          open
+          title="Nova pergunta global"
+          onClose={() => setModal(null)}
+          onSubmit={async (input) => {
+            await createQuestion({ ...input, scope: 'GLOBAL', job_id: null })
             void load()
           }}
         />
-      ) : (
-        <RhPrimaryButton onClick={() => setCreating(true)}>
-          <Plus className="size-3.5" /> Nova pergunta global
-        </RhPrimaryButton>
-      )}
+      ) : null}
+      {modal?.mode === 'edit' ? (
+        <QuestionModal
+          open
+          title="Editar pergunta"
+          initial={{
+            label: modal.question.label,
+            type: modal.question.type,
+            required: modal.question.required,
+            help_text: modal.question.help_text,
+            options: modal.question.options ?? [],
+            true_points: (modal.question.options as { true_points?: number } | null)?.true_points
+          }}
+          onClose={() => setModal(null)}
+          onSubmit={async (input) => {
+            await updateQuestion(modal.question.id, input)
+            void load()
+          }}
+        />
+      ) : null}
     </div>
   )
 }
 
-function SettingsQuestionForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: () => void }) {
-  const [label, setLabel] = useState('')
-  const [type, setType] = useState<RhQuestionType>('TEXT')
-  const [required, setRequired] = useState(true)
-  const [helpText, setHelpText] = useState('')
-  const [options, setOptions] = useState<Array<{ label: string; points: string; disqualify: boolean }>>([])
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const needsOptions = type === 'SELECT' || type === 'MULTISELECT'
-
-  async function submit(): Promise<void> {
-    if (!label.trim()) {
-      setError('Informe o enunciado.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      const parsedOptions: RhOption[] = needsOptions
-        ? options
-            .filter((option) => option.label.trim())
-            .map((option, index) => ({
-              value: option.label.trim().toLowerCase().replace(/\s+/g, '_').slice(0, 40),
-              label: option.label.trim(),
-              points: Number(option.points) || 0,
-              effect: option.disqualify ? 'DISQUALIFY' : 'NONE',
-              order_index: index
-            }))
-        : []
-      await createQuestion({
-        scope: 'GLOBAL',
-        job_id: null,
-        type,
-        label: label.trim(),
-        placeholder: null,
-        help_text: helpText.trim() || null,
-        required,
-        order_index: questionsNextOrder(),
-        active: true,
-        options: parsedOptions
-      })
-      onCreated()
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Erro ao criar pergunta.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function questionsNextOrder(): number {
-    return 50
-  }
-
-  return (
-    <RhCard className="space-y-3 p-4">
-      <div className="space-y-1.5">
-        <label className="text-[12px] font-medium text-[#F0EFEC]/45">Enunciado *</label>
-        <input value={label} onChange={(event) => setLabel(event.target.value)} className={inputClass} />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label className="text-[12px] font-medium text-[#F0EFEC]/45">Tipo</label>
-          <select value={type} onChange={(event) => setType(event.target.value as RhQuestionType)} className={inputClass}>
-            {(Object.keys(QUESTION_TYPE_LABEL) as RhQuestionType[])
-              .filter((questionType) => questionType !== 'FILE')
-              .map((questionType) => (
-                <option key={questionType} value={questionType} className="bg-[#1A1A1A]">
-                  {QUESTION_TYPE_LABEL[questionType]}
-                </option>
-              ))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[12px] font-medium text-[#F0EFEC]/45">Obrigatoriedade</label>
-          <select value={required ? 'yes' : 'no'} onChange={(event) => setRequired(event.target.value === 'yes')} className={inputClass}>
-            <option value="yes" className="bg-[#1A1A1A]">Obrigatória</option>
-            <option value="no" className="bg-[#1A1A1A]">Opcional</option>
-          </select>
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        <label className="text-[12px] font-medium text-[#F0EFEC]/45">Texto de ajuda (opcional)</label>
-        <input value={helpText} onChange={(event) => setHelpText(event.target.value)} className={inputClass} />
-      </div>
-      {needsOptions ? (
-        <div className="space-y-2">
-          <label className="text-[12px] font-medium text-[#F0EFEC]/45">Opções com pontuação</label>
-          {options.map((option, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <input
-                value={option.label}
-                onChange={(event) => setOptions((current) => current.map((item, i) => (i === index ? { ...item, label: event.target.value } : item)))}
-                placeholder={`Opção ${index + 1}`}
-                className={`${inputClass} flex-1`}
-              />
-              <input
-                value={option.points}
-                onChange={(event) => setOptions((current) => current.map((item, i) => (i === index ? { ...item, points: event.target.value } : item)))}
-                placeholder="pts"
-                inputMode="numeric"
-                className={`${inputClass} w-16`}
-              />
-              <label className="flex shrink-0 items-center gap-1 text-[11px] text-[#F0EFEC]/45">
-                <input
-                  type="checkbox"
-                  checked={option.disqualify}
-                  onChange={(event) => setOptions((current) => current.map((item, i) => (i === index ? { ...item, disqualify: event.target.checked } : item)))}
-                  className="size-3 accent-[#F0EFEC]"
-                />
-                elimina
-              </label>
-              <button type="button" onClick={() => setOptions((current) => current.filter((_, i) => i !== index))} className="text-[#F0EFEC]/30 hover:text-red-300">
-                <Trash2 className="size-3.5" />
-              </button>
-            </div>
-          ))}
-          <RhGhostButton onClick={() => setOptions((current) => [...current, { label: '', points: '0', disqualify: false }])}>
-            <Plus className="size-3.5" /> Adicionar opção
-          </RhGhostButton>
-        </div>
-      ) : null}
-      {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
-      <div className="flex justify-end gap-2">
-        <RhGhostButton onClick={onCancel}>Cancelar</RhGhostButton>
-        <RhPrimaryButton onClick={() => void submit()} disabled={saving}>
-          {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Criar pergunta
-        </RhPrimaryButton>
-      </div>
-    </RhCard>
-  )
-}
-
-// ---------------- Critérios avaliativos ----------------
+// ============================================================
+// Critérios avaliativos — CRUD em modal
+// ============================================================
 
 function CriteriaManager() {
   const [criteria, setCriteria] = useState<RhCriterion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [label, setLabel] = useState('')
-  const [points, setPoints] = useState('5')
-  const [kind, setKind] = useState<'SCORE' | 'DISQUALIFIER'>('SCORE')
-  const [saving, setSaving] = useState(false)
+  const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'edit'; criterion: RhCriterion } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -323,112 +236,193 @@ function CriteriaManager() {
     void load()
   }, [load])
 
-  async function add(): Promise<void> {
-    if (!label.trim()) return
+  if (loading) return <RhSkeleton className="h-[240px]" />
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[12.5px] text-[#F0EFEC]/40">
+          Usados pela IA e pelo RH na triagem. Critérios eliminatórios desclassificam na análise.
+        </p>
+        <RhPrimaryButton onClick={() => setModal({ mode: 'create' })}>
+          <Plus className="size-3.5" /> Novo critério
+        </RhPrimaryButton>
+      </div>
+      {error ? <RhErrorState message={error} onRetry={() => void load()} /> : null}
+
+      {criteria.length === 0 ? (
+        <RhCard className="p-6 text-center text-[13px] text-[#F0EFEC]/35">Nenhum critério cadastrado ainda.</RhCard>
+      ) : (
+        <div className="space-y-1.5">
+          {criteria.map((criterion) => (
+            <div
+              key={criterion.id}
+              className="flex items-center justify-between gap-3 rounded-[10px] border border-white/[0.05] bg-white/[0.02] px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[13px] text-[#F0EFEC]/82">{criterion.label}</p>
+                <p className="text-[11px] text-[#F0EFEC]/32">
+                  {criterion.kind === 'DISQUALIFIER' ? 'Eliminatório' : `+${criterion.points} pontos`} ·{' '}
+                  {criterion.job_id ? 'específico de vaga' : 'global'} · {criterion.active ? 'ativo' : 'inativo'}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setModal({ mode: 'edit', criterion })}
+                  aria-label="Editar critério"
+                  className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/35 transition hover:bg-white/[0.06] hover:text-[#F0EFEC]/80"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!window.confirm('Excluir este critério?')) return
+                    await deleteCriterion(criterion.id).catch(() => undefined)
+                    void load()
+                  }}
+                  aria-label="Excluir critério"
+                  className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 transition hover:bg-red-400/10 hover:text-red-300"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modal?.mode === 'create' ? (
+        <CriterionModal
+          open
+          title="Novo critério avaliativo"
+          onClose={() => setModal(null)}
+          onSubmit={async (input) => {
+            await createCriterion(input)
+            void load()
+          }}
+        />
+      ) : null}
+      {modal?.mode === 'edit' ? (
+        <CriterionModal
+          open
+          title="Editar critério"
+          initial={modal.criterion}
+          onClose={() => setModal(null)}
+          onSubmit={async (input) => {
+            await updateCriterion(modal.criterion.id, input)
+            void load()
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function CriterionModal({
+  open,
+  title,
+  initial,
+  onClose,
+  onSubmit
+}: {
+  open: boolean
+  title: string
+  initial?: RhCriterion | null
+  onClose: () => void
+  onSubmit: (input: { kind: 'SCORE' | 'DISQUALIFIER'; label: string; points: number; active?: boolean }) => Promise<void>
+}) {
+  const [label, setLabel] = useState('')
+  const [points, setPoints] = useState('10')
+  const [kind, setKind] = useState<'SCORE' | 'DISQUALIFIER'>('SCORE')
+  const [active, setActive] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setLabel(initial?.label ?? '')
+    setPoints(String(initial?.points ?? 10))
+    setKind(initial?.kind ?? 'SCORE')
+    setActive(initial?.active ?? true)
+    setError(null)
+  }, [open, initial])
+
+  async function submit(): Promise<void> {
+    if (!label.trim()) {
+      setError('Informe a descrição do critério.')
+      return
+    }
     setSaving(true)
     try {
-      await createCriterion({ kind, label: label.trim(), points: Number(points) || 0 })
-      setLabel('')
-      await load()
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Erro ao criar critério.')
+      await onSubmit({ kind, label: label.trim(), points: Number(points) || 0, active })
+      onClose()
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Erro ao salvar o critério.')
     } finally {
       setSaving(false)
     }
   }
 
-  async function remove(criterion: RhCriterion): Promise<void> {
-    if (!window.confirm('Excluir este critério?')) return
-    await deleteCriterion(criterion.id).catch(() => undefined)
-    void load()
-  }
-
-  async function toggle(criterion: RhCriterion): Promise<void> {
-    await updateCriterion(criterion.id, { active: !criterion.active }).catch(() => undefined)
-    void load()
-  }
-
-  if (loading) return <RhSkeleton className="h-[240px]" />
-
   return (
-    <div className="space-y-3">
-      {error ? <RhErrorState message={error} onRetry={() => void load()} /> : null}
-      <RhCard className="p-4">
-        <h2 className="mb-3 text-[13px] font-semibold text-[#F0EFEC]/80">
-          Critérios de avaliação
-          <span className="ml-2 font-normal text-[#F0EFEC]/35">usados pela IA e pelo RH na triagem</span>
-        </h2>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-[200px] flex-1">
-            <label className="mb-1 block text-[11.5px] text-[#F0EFEC]/45">Critério</label>
-            <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Ex.: Experiência com vendas" className={inputClass} />
-          </div>
-          <div className="w-24">
-            <label className="mb-1 block text-[11.5px] text-[#F0EFEC]/45">Pontos</label>
-            <input value={points} onChange={(event) => setPoints(event.target.value)} inputMode="numeric" className={inputClass} />
-          </div>
-          <div className="w-40">
-            <label className="mb-1 block text-[11.5px] text-[#F0EFEC]/45">Tipo</label>
-            <select value={kind} onChange={(event) => setKind(event.target.value as 'SCORE' | 'DISQUALIFIER')} className={inputClass}>
-              <option value="SCORE" className="bg-[#1A1A1A]">Soma pontos</option>
-              <option value="DISQUALIFIER" className="bg-[#1A1A1A]">Eliminatório</option>
-            </select>
-          </div>
-          <RhPrimaryButton onClick={() => void add()} disabled={saving || !label.trim()}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Adicionar
+    <Dialog open={open} title={title} onClose={onClose}>
+      <div className="space-y-3.5 px-5 pb-5">
+        <RhField label="Critério *">
+          <RhInput value={label} onChange={setLabel} placeholder="Ex.: Experiência com vendas" />
+        </RhField>
+        <div className="grid grid-cols-2 gap-3">
+          <RhField label="Tipo">
+            <RhSelect
+              value={kind}
+              options={[
+                { value: 'SCORE', label: 'Soma pontos' },
+                { value: 'DISQUALIFIER', label: 'Eliminatório' }
+              ]}
+              onChange={(value) => setKind(value as 'SCORE' | 'DISQUALIFIER')}
+            />
+          </RhField>
+          <RhField label="Pontos">
+            <RhInput value={points} onChange={(value) => setPoints(value.replace(/[^\d-]/g, ''))} inputMode="numeric" />
+          </RhField>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-[#F0EFEC]/60">
+          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} className="size-3.5 accent-[#F0EFEC]" />
+          Critério ativo
+        </label>
+        {error ? <p className="text-[12px] text-red-400/80">{error}</p> : null}
+        <div className="flex justify-end gap-2 pt-1">
+          <RhGhostButton onClick={onClose}>Cancelar</RhGhostButton>
+          <RhPrimaryButton onClick={() => void submit()} disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Salvar
           </RhPrimaryButton>
         </div>
-
-        <div className="mt-4 space-y-1.5">
-          {criteria.length === 0 ? (
-            <p className="py-4 text-center text-[12.5px] text-[#F0EFEC]/35">Nenhum critério cadastrado ainda.</p>
-          ) : (
-            criteria.map((criterion) => (
-              <div key={criterion.id} className="flex items-center justify-between gap-3 rounded-[10px] border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-[13px] text-[#F0EFEC]/82">{criterion.label}</p>
-                  <p className="text-[11px] text-[#F0EFEC]/32">
-                    {criterion.kind === 'DISQUALIFIER' ? 'Eliminatório' : `+${criterion.points} pontos`} ·{' '}
-                    {criterion.job_id ? 'específico de vaga' : 'global'} · {criterion.active ? 'ativo' : 'inativo'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <RhGhostButton onClick={() => void toggle(criterion)}>{criterion.active ? 'Desativar' : 'Ativar'}</RhGhostButton>
-                  <button
-                    type="button"
-                    onClick={() => void remove(criterion)}
-                    aria-label="Excluir critério"
-                    className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 hover:bg-red-400/10 hover:text-red-300"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </RhCard>
-    </div>
+      </div>
+    </Dialog>
   )
 }
 
-// ---------------- Regras da IA ----------------
+// ============================================================
+// Regras da IA — estilo prompt: lista de instruções do RH + export .md
+// ============================================================
 
 function AiRulesManager() {
   const [rules, setRules] = useState<RhAiRule[]>([])
+  const [promptRules, setPromptRules] = useState<string[]>([])
+  const [newRule, setNewRule] = useState('')
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [savingKey, setSavingKey] = useState<string | null>(null)
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [savedAt, setSavedAt] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await fetchAiRules()
       setRules(data)
-      const nextDrafts: Record<string, string> = {}
-      for (const rule of data) nextDrafts[rule.id] = JSON.stringify(rule.config, null, 2)
-      setDrafts(nextDrafts)
+      const custom = data.find((rule) => rule.rule_key === 'custom_prompt_rules')
+      const list = (custom?.config as { rules?: unknown })?.rules
+      setPromptRules(Array.isArray(list) ? (list as string[]) : [])
       setError(null)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar regras da IA.')
@@ -441,24 +435,74 @@ function AiRulesManager() {
     void load()
   }, [load])
 
-  async function save(rule: RhAiRule): Promise<void> {
-    const draft = drafts[rule.id] ?? ''
+  async function addRule(): Promise<void> {
+    const text = newRule.trim()
+    if (!text) return
+    const next = [...promptRules, text]
+    setPromptRules(next)
+    setNewRule('')
+    setSaving(true)
     try {
-      const config = JSON.parse(draft) as Record<string, unknown>
-      setSavingKey(rule.id)
-      await updateAiRule(rule.id, config)
-      setError(null)
+      await savePromptRules(next)
+      setSavedAt(new Date().toISOString())
     } catch (saveError) {
-      setError(
-        saveError instanceof SyntaxError
-          ? 'JSON inválido — corrija antes de salvar.'
-          : saveError instanceof Error
-            ? saveError.message
-            : 'Erro ao salvar regra.'
-      )
+      setError(saveError instanceof Error ? saveError.message : 'Erro ao salvar.')
+      setPromptRules(promptRules)
     } finally {
-      setSavingKey(null)
+      setSaving(false)
     }
+  }
+
+  async function removeRule(index: number): Promise<void> {
+    const next = promptRules.filter((_, position) => position !== index)
+    setPromptRules(next)
+    setSaving(true)
+    try {
+      await savePromptRules(next)
+      setSavedAt(new Date().toISOString())
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function moveRule(from: number, to: number): Promise<void> {
+    if (to < 0 || to >= promptRules.length) return
+    const next = [...promptRules]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setPromptRules(next)
+    setSaving(true)
+    try {
+      await savePromptRules(next)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function downloadMd(): void {
+    const engineRules = rules.filter((rule) => rule.rule_key !== 'custom_prompt_rules')
+    const lines: string[] = [
+      '# Regras da IA — Portal do RH (FLOW)',
+      '',
+      `Gerado automaticamente em ${new Date().toLocaleString('pt-BR')}.`,
+      '',
+      '## Instruções do RH (aplicadas em toda análise)',
+      '',
+      ...(promptRules.length ? promptRules.map((rule, index) => `${index + 1}. ${rule}`) : ['_Nenhuma instrução adicional._']),
+      '',
+      '## Motor de regras (banco de dados)',
+      ''
+    ]
+    for (const rule of engineRules) {
+      lines.push(`### ${rule.label} (\`${rule.rule_key}\`)`, '', '```json', JSON.stringify(rule.config, null, 2), '```', '')
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `regras-ia-rh-${new Date().toISOString().slice(0, 10)}.md`
+    anchor.click()
+    URL.revokeObjectURL(url)
   }
 
   if (loading) return <RhSkeleton className="h-[280px]" />
@@ -474,39 +518,96 @@ function AiRulesManager() {
   return (
     <div className="space-y-3">
       {error ? <RhErrorState message={error} /> : null}
-      <p className="text-[12.5px] text-[#F0EFEC]/40">
-        Estas regras alimentam a pontuação automática (0–100) de cada candidato. Elas ficam no banco e nunca aparecem no
-        portal público.
-      </p>
-      {rules.map((rule) => (
-        <RhCard key={rule.id} className="p-4">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="text-[13px] font-semibold text-[#F0EFEC]/82">{rule.label}</h3>
-              <p className="text-[11px] text-[#F0EFEC]/32">{DESCRIPTIONS[rule.rule_key] ?? rule.rule_key}</p>
-            </div>
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                rule.active ? 'border border-emerald-300/20 bg-emerald-300/10 text-emerald-200/90' : 'border border-white/10 bg-white/[0.05] text-[#F0EFEC]/50'
-              }`}
-            >
-              {rule.active ? 'ativa' : 'inativa'}
-            </span>
+
+      {/* ---- Instruções do RH (prompt) ---- */}
+      <RhCard className="p-4">
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-[15px] text-[#F0EFEC]/82">Instruções da IA</h2>
+          <RhGhostButton onClick={downloadMd}>
+            <Download className="size-3.5" /> Exportar .md
+          </RhGhostButton>
+        </div>
+        <p className="mb-3 text-[12px] text-[#F0EFEC]/35">
+          Escreva como se fosse um prompt. Cada instrução entra na análise de TODOS os candidatos — ex.: “Priorizar
+          candidatos de Ribeirão Pires”, “Descontar quem não tem disponibilidade aos domingos”.
+        </p>
+        <div className="flex gap-2">
+          <div className="min-w-0 flex-1">
+            <RhInput
+              value={newRule}
+              onChange={setNewRule}
+              placeholder="Ex.: XXXXX — priorizar quem mora até 2 conduções da loja"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void addRule()
+              }}
+            />
           </div>
-          <textarea
-            value={drafts[rule.id] ?? ''}
-            onChange={(event) => setDrafts((current) => ({ ...current, [rule.id]: event.target.value }))}
-            rows={Math.min(14, (drafts[rule.id] ?? '').split('\n').length + 1)}
-            spellCheck={false}
-            className="w-full rounded-[10px] border border-white/[0.07] bg-[#111111] px-3 py-2 font-mono text-[11.5px] text-[#F0EFEC]/80 focus:border-white/15 focus:outline-none"
-          />
-          <div className="mt-2 flex justify-end">
-            <RhPrimaryButton onClick={() => void save(rule)} disabled={savingKey === rule.id}>
-              {savingKey === rule.id ? <Loader2 className="size-3.5 animate-spin" /> : null} Salvar regra
-            </RhPrimaryButton>
+          <RhPrimaryButton onClick={() => void addRule()} disabled={saving || !newRule.trim()}>
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Adicionar
+          </RhPrimaryButton>
+        </div>
+
+        {promptRules.length === 0 ? (
+          <p className="mt-3 rounded-[10px] border border-dashed border-white/[0.07] py-5 text-center text-[12px] text-[#F0EFEC]/35">
+            Nenhuma instrução adicional. A IA usa só as regras do banco abaixo.
+          </p>
+        ) : (
+          <div className="mt-3">
+            <RhOrderedList
+              items={promptRules.map((rule, index) => ({ id: `rule-${index}`, text: rule, index }))}
+              onMove={(from, to) => void moveRule(from, to)}
+              onRemove={(_, index) => void removeRule(index)}
+              render={(item) => (
+                <span className="block min-w-0 break-words text-[12.5px] text-[#F0EFEC]/75">{item.text}</span>
+              )}
+            />
+            {savedAt ? (
+              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-300/70">
+                <FileText className="size-3" /> Instruções salvas — aplicadas na próxima análise.
+              </p>
+            ) : null}
           </div>
-        </RhCard>
-      ))}
+        )}
+      </RhCard>
+
+      {/* ---- Motor de regras (read-only, exporta no .md) ---- */}
+      <RhCard className="p-4">
+        <h2 className="mb-1 text-[15px] text-[#F0EFEC]/82">Motor de regras do banco</h2>
+        <p className="mb-3 text-[12px] text-[#F0EFEC]/35">
+          Regras estruturadas usadas pelo motor de triagem e incluídas no prompt da IA.
+        </p>
+        <div className="space-y-2">
+          {rules
+            .filter((rule) => rule.rule_key !== 'custom_prompt_rules')
+            .map((rule) => (
+              <div key={rule.id} className="rounded-[10px] border border-white/[0.05] bg-white/[0.02] px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[13px] text-[#F0EFEC]/82">{rule.label}</p>
+                    <p className="text-[11px] text-[#F0EFEC]/32">{DESCRIPTIONS[rule.rule_key] ?? rule.rule_key}</p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[9.5px] font-semibold uppercase ${
+                      rule.active
+                        ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200/90'
+                        : 'border-white/10 bg-white/[0.05] text-[#F0EFEC]/45'
+                    }`}
+                  >
+                    {rule.active ? 'ativa' : 'inativa'}
+                  </span>
+                </div>
+                <details className="mt-1.5">
+                  <summary className="cursor-pointer text-[11px] text-[#F0EFEC]/40 transition hover:text-[#F0EFEC]/65">
+                    Ver JSON da regra
+                  </summary>
+                  <pre className="mt-2 overflow-x-auto rounded-[8px] bg-[#111111] p-2.5 font-mono text-[10.5px] leading-relaxed text-[#F0EFEC]/65">
+                    {JSON.stringify(rule.config, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            ))}
+        </div>
+      </RhCard>
     </div>
   )
 }

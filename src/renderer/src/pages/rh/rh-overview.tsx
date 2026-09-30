@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Briefcase, CalendarClock, Users } from 'lucide-react'
+import { Banknote, Briefcase, CalendarClock, ClipboardList, Gauge, Users } from 'lucide-react'
+import { MetricCard } from '@/components/metric-card'
+import { isMobileShell } from '@/lib/is-mobile-shell'
 import {
   fetchApplications,
   fetchDashboardStats,
@@ -7,13 +9,8 @@ import {
   fetchJobs,
   type RhDashboardStats
 } from '@/lib/rh/api'
-import {
-  APPLICATION_STATUS_META,
-  APPLICATION_PIPELINE_ORDER,
-  type RhApplication,
-  type RhJob
-} from '@/lib/rh/types'
-import { RhErrorState, RhMetricCard, RhPageHeader, RhPrimaryButton, RhSkeleton } from './rh-ui'
+import { APPLICATION_PIPELINE_ORDER, type RhApplication, type RhJob } from '@/lib/rh/types'
+import { RhEmptyState, RhErrorState, RhPageHeader, RhPrimaryButton, RhSkeleton } from './rh-ui'
 
 type OverviewProps = {
   onNewJob: () => void
@@ -36,6 +33,7 @@ export function RhOverviewPage({
   const [nextInterviews, setNextInterviews] = useState<Array<{ id: string; scheduled_at: string; name: string; job: string }>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const mobile = isMobileShell()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -49,7 +47,7 @@ export function RhOverviewPage({
       ])
       setStats(statsData)
       setJobs(jobsData)
-      setRecent(appsData.slice(0, 6))
+      setRecent(appsData.slice(0, 5))
       setNextInterviews(
         interviewsData
           .filter((interview) => new Date(interview.scheduled_at).getTime() > Date.now() - 3600_000)
@@ -72,112 +70,140 @@ export function RhOverviewPage({
     void load()
   }, [load])
 
-  const openJobs = jobs.filter((job) => job.status === 'open').slice(0, 5)
+  const openJobs = jobs.filter((job) => job.status === 'open')
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex flex-col">
       <RhPageHeader
         title="Contratações"
         subtitle="Visão geral do processo seletivo — vagas, candidatos e entrevistas."
-        action={
-          <RhPrimaryButton onClick={onNewJob}>+ Nova Vaga</RhPrimaryButton>
-        }
+        action={<RhPrimaryButton onClick={onNewJob}>+ Nova Vaga</RhPrimaryButton>}
       />
 
       {error ? (
         <RhErrorState message={error} onRetry={() => void load()} />
-      ) : loading ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <RhSkeleton className="h-[92px]" />
-            <RhSkeleton className="h-[92px]" />
-            <RhSkeleton className="h-[92px]" />
-            <RhSkeleton className="h-[92px]" />
+      ) : loading || !stats ? (
+        <div className="grid flex-1 grid-rows-[auto_1fr] gap-3">
+          <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-4 gap-3'}>
+            <RhSkeleton className="h-[132px]" />
+            <RhSkeleton className="h-[132px]" />
+            <RhSkeleton className="h-[132px]" />
+            <RhSkeleton className="h-[132px]" />
           </div>
-          <div className="mt-3 grid flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
-            <RhSkeleton className="min-h-[180px]" />
-            <RhSkeleton className="min-h-[180px]" />
+          <div className={mobile ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-4 gap-3'}>
+            <RhSkeleton className="h-[96px]" />
+            <RhSkeleton className="h-[96px]" />
+            <RhSkeleton className="h-[96px]" />
+            <RhSkeleton className="h-[96px]" />
           </div>
+          <RhSkeleton className="min-h-[220px]" />
         </div>
-      ) : stats ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 pb-2">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <RhMetricCard
+      ) : (
+        <>
+          {/* ---------- Cards principais (mesmos do launcher) ---------- */}
+          <div className={mobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-4 gap-3'}>
+            <MetricCard
               label="Vagas abertas"
               value={stats.openJobs}
               hint={`${stats.totalJobs} vagas no total`}
-              tone="green"
-              onClick={() => onOpenJob('__jobs__')}
+              icon={<Briefcase className="size-4" strokeWidth={1.7} />}
             />
-            <RhMetricCard
+            <MetricCard
               label="Candidaturas"
               value={stats.totalApplications}
               hint={`${stats.newThisWeek} nesta semana`}
-              onClick={() => onOpenApplications()}
+              icon={<Users className="size-4" strokeWidth={1.7} />}
             />
-            <RhMetricCard
+            <MetricCard
               label="Em análise"
               value={(stats.byStatus.in_review ?? 0) + (stats.byStatus.viewed ?? 0)}
               hint={`${stats.byStatus.submitted ?? 0} novas sem visualizar`}
-              tone="amber"
-              onClick={() => onOpenApplications('in_review')}
+              icon={<ClipboardList className="size-4" strokeWidth={1.7} />}
             />
-            <RhMetricCard
+            <MetricCard
               label="Entrevistas"
               value={stats.interviewsUpcoming}
               hint="agendadas a partir de agora"
-              tone="violet"
-              onClick={onOpenInterviews}
+              icon={<CalendarClock className="size-4" strokeWidth={1.7} />}
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-[13px] font-semibold text-[#F0EFEC]/80">
-                  <Users className="size-3.5 text-[#F0EFEC]/40" /> Pipeline de candidatos
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => onOpenApplications()}
-                  className="text-[12px] text-[#F0EFEC]/40 transition hover:text-[#F0EFEC]/70"
-                >
-                  Ver central
-                </button>
-              </div>
-              <div className="space-y-2">
-                {APPLICATION_PIPELINE_ORDER.map((status) => {
-                  const meta = APPLICATION_STATUS_META[status]
-                  const count = stats.byStatus[status] ?? 0
-                  const percent = stats.totalApplications > 0 ? Math.round((count / stats.totalApplications) * 100) : 0
-                  return (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => onOpenApplications(status)}
-                      className="group flex w-full items-center gap-3 text-left"
-                    >
-                      <span className="w-[130px] shrink-0 truncate text-[12px] text-[#F0EFEC]/55 group-hover:text-[#F0EFEC]/80">
-                        {meta.label}
-                      </span>
-                      <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/[0.05]">
-                        <span
-                          className={`block h-full rounded-full ${meta.dot}`}
-                          style={{ width: `${Math.max(percent, count > 0 ? 4 : 0)}%` }}
-                        />
-                      </span>
-                      <span className="w-8 shrink-0 text-right text-[12px] tabular-nums text-[#F0EFEC]/70">{count}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </section>
+          {/* ---------- Cards compactos embaixo (mesmo padrão) ---------- */}
+          <div className={mobile ? 'mt-3 grid grid-cols-2 gap-3' : 'mt-3 grid grid-cols-4 gap-3'}>
+            <MetricCard
+              compact
+              label="Contratados"
+              value={stats.hiresTotal}
+              hint="total do processo seletivo"
+              icon={<Users className="size-4" strokeWidth={1.7} />}
+            />
+            <MetricCard
+              compact
+              label="Aprovados"
+              value={stats.byStatus.approved ?? 0}
+              hint="aguardando contratação"
+              icon={<ClipboardList className="size-4" strokeWidth={1.7} />}
+            />
+            <MetricCard
+              compact
+              label="Novas (7 dias)"
+              value={stats.newThisWeek}
+              hint="candidaturas recebidas"
+              icon={<Banknote className="size-4" strokeWidth={1.7} />}
+            />
+            <MetricCard
+              compact
+              label="Vagas encerradas"
+              value={jobs.filter((job) => job.status === 'closed').length}
+              hint="arquivadas do portal"
+              icon={<Gauge className="size-4" strokeWidth={1.7} />}
+            />
+          </div>
 
-            <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] p-4">
+          {/* ---------- Pipeline: linha única, sem cores ---------- */}
+          <section className="mt-3 shrink-0 rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-[15px] text-[#F0EFEC]/82">Pipeline de candidatos</h2>
+              <button
+                type="button"
+                onClick={() => onOpenApplications()}
+                className="text-[12px] text-[#F0EFEC]/40 transition hover:text-[#F0EFEC]/70"
+              >
+                Ver central
+              </button>
+            </div>
+            <div className={mobile ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}>
+              {APPLICATION_PIPELINE_ORDER.map((status) => {
+                const count = stats.byStatus[status] ?? 0
+                const active = count > 0
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => onOpenApplications(status)}
+                    className={`flex min-w-[104px] flex-1 flex-col items-center rounded-[12px] border px-3 py-2.5 transition ${
+                      active
+                        ? 'border-white/[0.09] bg-white/[0.04] hover:bg-white/[0.07]'
+                        : 'border-white/[0.04] bg-transparent opacity-45 hover:opacity-70'
+                    }`}
+                  >
+                    <span className={`text-[18px] leading-none ${active ? 'text-[#F0EFEC]/88' : 'text-[#F0EFEC]/40'}`}>
+                      {count}
+                    </span>
+                    <span className="mt-1.5 truncate text-[10.5px] tracking-wide text-[#F0EFEC]/40 uppercase">
+                      {statusLabelShort(status)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          {/* ---------- Vagas abertas + recentes + entrevistas ---------- */}
+          <div className={mobile ? 'mt-3 grid grid-cols-1 gap-3' : 'mt-3 grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-3'}>
+            <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-[13px] font-semibold text-[#F0EFEC]/80">
-                  <Briefcase className="size-3.5 text-[#F0EFEC]/40" /> Vagas abertas
-                </h2>
+                <h2 className="text-[15px] text-[#F0EFEC]/82">Vagas abertas</h2>
                 <button
                   type="button"
                   onClick={() => onOpenJob('__jobs__')}
@@ -187,26 +213,63 @@ export function RhOverviewPage({
                 </button>
               </div>
               {openJobs.length === 0 ? (
-                <p className="py-6 text-center text-[12.5px] text-[#F0EFEC]/35">
+                <p className="py-5 text-center text-[13px] text-[#F0EFEC]/35">
                   Nenhuma vaga aberta agora. Crie a primeira com “Nova Vaga”.
                 </p>
               ) : (
-                <div className="space-y-1">
-                  {openJobs.map((job) => (
+                <div className="divide-y divide-white/[0.035]">
+                  {openJobs.slice(0, 5).map((job) => (
                     <button
                       key={job.id}
                       type="button"
                       onClick={() => onOpenJob(job.id)}
-                      className="flex w-full items-center justify-between gap-3 rounded-[10px] px-2 py-2 text-left transition hover:bg-white/[0.03]"
+                      className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition hover:opacity-80"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-[13px] text-[#F0EFEC]/80">{job.title}</span>
-                        <span className="mt-0.5 block truncate text-[11px] text-[#F0EFEC]/35">
+                        <span className="block truncate text-[13.5px] text-[#F0EFEC]/80">{job.title}</span>
+                        <span className="mt-0.5 block truncate text-[11.5px] text-[#F0EFEC]/35">
                           {[job.department, job.location, job.work_model].filter(Boolean).join(' · ') || 'Sem detalhes'}
                         </span>
                       </span>
-                      <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200/90 uppercase">
-                        Aberta
+                      <span className="shrink-0 text-[11.5px] text-[#F0EFEC]/40">Aberta</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-[15px] text-[#F0EFEC]/82">Candidaturas recentes</h2>
+                <button
+                  type="button"
+                  onClick={() => onOpenApplications()}
+                  className="text-[12px] text-[#F0EFEC]/40 transition hover:text-[#F0EFEC]/70"
+                >
+                  Ver central
+                </button>
+              </div>
+              {recent.length === 0 ? (
+                <RhEmptyState title="Sem candidaturas ainda" />
+              ) : (
+                <div className="divide-y divide-white/[0.035]">
+                  {recent.map((application) => (
+                    <button
+                      key={application.id}
+                      type="button"
+                      onClick={() => onOpenApplication(application.id)}
+                      className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition hover:opacity-80"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13.5px] text-[#F0EFEC]/80">
+                          {application.candidate?.full_name ?? 'Candidato'}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11.5px] text-[#F0EFEC]/35">
+                          {application.job?.title ?? 'Vaga'} · {new Date(application.created_at).toLocaleDateString('pt-BR')}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[11.5px] text-[#F0EFEC]/45">
+                        {statusLabelShort(application.status)}
                       </span>
                     </button>
                   ))}
@@ -215,97 +278,56 @@ export function RhOverviewPage({
             </section>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] p-4">
-              <h2 className="mb-3 text-[13px] font-semibold text-[#F0EFEC]/80">Candidaturas recentes</h2>
-              {recent.length === 0 ? (
-                <p className="py-6 text-center text-[12.5px] text-[#F0EFEC]/35">
-                  Sem candidaturas ainda. Elas aparecem aqui em tempo real.
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  {recent.map((application) => {
-                    const meta = APPLICATION_STATUS_META[application.status]
-                    return (
-                      <button
-                        key={application.id}
-                        type="button"
-                        onClick={() => onOpenApplication(application.id)}
-                        className="flex w-full items-center justify-between gap-3 rounded-[10px] px-2 py-2 text-left transition hover:bg-white/[0.03]"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-[13px] text-[#F0EFEC]/80">
-                            {application.candidate?.full_name ?? 'Candidato'}
-                          </span>
-                          <span className="mt-0.5 block truncate text-[11px] text-[#F0EFEC]/35">
-                            {application.job?.title ?? 'Vaga'} ·{' '}
-                            {new Date(application.created_at).toLocaleDateString('pt-BR')}
-                          </span>
-                        </span>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${meta.chip}`}>
-                          {meta.label}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-[13px] font-semibold text-[#F0EFEC]/80">
-                  <CalendarClock className="size-3.5 text-[#F0EFEC]/40" /> Próximas entrevistas
-                </h2>
-                <button
-                  type="button"
-                  onClick={onOpenInterviews}
-                  className="text-[12px] text-[#F0EFEC]/40 transition hover:text-[#F0EFEC]/70"
-                >
-                  Ver agenda
-                </button>
+          <section className="mt-3 shrink-0 rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-[15px] text-[#F0EFEC]/82">Próximas entrevistas</h2>
+              <button
+                type="button"
+                onClick={onOpenInterviews}
+                className="text-[12px] text-[#F0EFEC]/40 transition hover:text-[#F0EFEC]/70"
+              >
+                Ver agenda
+              </button>
+            </div>
+            {nextInterviews.length === 0 ? (
+              <p className="py-4 text-center text-[13px] text-[#F0EFEC]/35">Nenhuma entrevista agendada.</p>
+            ) : (
+              <div className="divide-y divide-white/[0.035]">
+                {nextInterviews.map((interview) => (
+                  <div key={interview.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13.5px] text-[#F0EFEC]/80">{interview.name}</span>
+                      <span className="mt-0.5 block truncate text-[11.5px] text-[#F0EFEC]/35">{interview.job}</span>
+                    </span>
+                    <span className="shrink-0 text-[12px] tabular-nums text-[#F0EFEC]/55">
+                      {new Date(interview.scheduled_at).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
+                ))}
               </div>
-              {nextInterviews.length === 0 ? (
-                <p className="py-6 text-center text-[12.5px] text-[#F0EFEC]/35">
-                  Nenhuma entrevista agendada.
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  {nextInterviews.map((interview) => (
-                    <div
-                      key={interview.id}
-                      className="flex items-center justify-between gap-3 rounded-[10px] px-2 py-2"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-[13px] text-[#F0EFEC]/80">{interview.name}</span>
-                        <span className="mt-0.5 block truncate text-[11px] text-[#F0EFEC]/35">{interview.job}</span>
-                      </span>
-                      <span className="shrink-0 text-[12px] tabular-nums text-[#F0EFEC]/55">
-                        {new Date(interview.scheduled_at).toLocaleString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 pb-1 lg:grid-cols-4">
-            <RhMetricCard label="Contratados" value={stats.hiresTotal} tone="teal" />
-            <RhMetricCard label="Aprovados" value={stats.byStatus.approved ?? 0} tone="green" />
-            <RhMetricCard label="Novas (7 dias)" value={stats.newThisWeek} />
-            <RhMetricCard
-              label="Vagas encerradas"
-              value={jobs.filter((job) => job.status === 'closed').length}
-            />
-          </div>
-        </div>
-      ) : null}
+            )}
+          </section>
+        </>
+      )}
     </div>
   )
+}
+
+function statusLabelShort(status: RhApplication['status'] | string): string {
+  const labels: Record<string, string> = {
+    submitted: 'Novo',
+    viewed: 'Visualizado',
+    in_review: 'Em análise',
+    interview_online_scheduled: 'Entrev. online',
+    interview_presencial_scheduled: 'Entrev. presencial',
+    approved: 'Aprovado',
+    rejected: 'Reprovado',
+    hired: 'Contratado'
+  }
+  return labels[status] ?? status
 }

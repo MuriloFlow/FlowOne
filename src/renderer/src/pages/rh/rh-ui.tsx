@@ -1,5 +1,8 @@
 import { motion } from 'framer-motion'
 import type { ReactNode } from 'react'
+import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
+import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import {
   APPLICATION_STATUS_META,
   JOB_STATUS_META,
@@ -8,6 +11,114 @@ import {
 } from '@/lib/rh/types'
 
 const ease = [0.22, 1, 0.36, 1] as const
+
+// ============================================================
+// Primitivos do PORTAL DO RH — mesmos padrões do launcher
+// (Input/Label/Select/Dialog de @/components/ui, cores e raios idênticos).
+// ============================================================
+
+export function RhField({
+  label,
+  hint,
+  children,
+  className
+}: {
+  label: string
+  hint?: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={className}>
+      <Label className="text-[12px] text-[#F0EFEC]/45">{label}</Label>
+      <div className="mt-1.5">{children}</div>
+      {hint ? <p className="mt-1 text-[11px] text-[#F0EFEC]/28">{hint}</p> : null}
+    </div>
+  )
+}
+
+const inputBase =
+  'h-9 w-full rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 text-[13px] text-[#F0EFEC]/85 placeholder:text-[#F0EFEC]/28 transition-colors focus:border-white/16 focus:outline-none'
+
+export function RhInput({
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  inputMode,
+  disabled,
+  maxLength,
+  onKeyDown
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  type?: string
+  inputMode?: 'text' | 'numeric' | 'decimal' | 'tel' | 'email'
+  disabled?: boolean
+  maxLength?: number
+  onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      inputMode={inputMode}
+      disabled={disabled}
+      maxLength={maxLength}
+      onKeyDown={onKeyDown}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      className={`${inputBase} ${disabled ? 'opacity-40' : ''}`}
+    />
+  )
+}
+
+export function RhTextarea({
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
+  disabled
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  rows?: number
+  disabled?: boolean
+}) {
+  return (
+    <textarea
+      value={value}
+      rows={rows}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      className={`${inputBase} h-auto resize-y py-2 leading-relaxed ${disabled ? 'opacity-40' : ''}`}
+    />
+  )
+}
+
+/** Select idêntico ao do launcher (@/components/ui/select) para uso nas telas do RH. */
+export function RhSelect({
+  value,
+  options,
+  placeholder,
+  onChange,
+  className
+}: {
+  value: string
+  options: Array<{ value: string; label: string }>
+  placeholder?: string
+  onChange: (value: string) => void
+  className?: string
+}) {
+  return <Select value={value} options={options} placeholder={placeholder} onChange={onChange} className={className} />
+}
+
+// ============================================================
+// Header / estados
+// ============================================================
 
 export function RhPageHeader({
   title,
@@ -29,92 +140,16 @@ export function RhPageHeader({
   )
 }
 
-const TONE_CLASS: Record<string, string> = {
-  green: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200/90',
-  amber: 'border-amber-300/20 bg-amber-300/10 text-amber-200/90',
-  gray: 'border-white/10 bg-white/[0.05] text-[#F0EFEC]/60',
-  blue: 'border-sky-300/20 bg-sky-300/10 text-sky-200/90'
-}
-
-export function RhJobStatusChip({ status }: { status: RhJobStatus }) {
-  const meta = JOB_STATUS_META[status]
-  return (
-    <span
-      className={cnInline(
-        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase',
-        TONE_CLASS[meta.tone]
-      )}
-    >
-      <span className="size-1.5 rounded-full bg-current" />
-      {meta.label}
-    </span>
-  )
-}
-
-export function RhApplicationStatusChip({ status }: { status: RhApplicationStatus }) {
-  const meta = APPLICATION_STATUS_META[status]
-  return (
-    <span className={cnInline('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase', meta.chip)}>
-      <span className={cnInline('size-1.5 rounded-full', meta.dot)} />
-      {meta.label}
-    </span>
-  )
-}
-
 export function RhCard({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cnInline('rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]', className)}>
+    <div className={cnA('rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]', className)}>
       {children}
     </div>
   )
 }
 
-export function RhMetricCard({
-  label,
-  value,
-  hint,
-  tone = 'default',
-  onClick
-}: {
-  label: string
-  value: string | number
-  hint?: string
-  tone?: 'default' | 'green' | 'amber' | 'violet' | 'teal'
-  onClick?: () => void
-}) {
-  const accent =
-    tone === 'green'
-      ? 'text-emerald-300'
-      : tone === 'amber'
-        ? 'text-amber-300'
-        : tone === 'violet'
-          ? 'text-violet-300'
-          : tone === 'teal'
-            ? 'text-teal-300'
-            : 'text-[#F0EFEC]/85'
-  return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease }}
-      whileHover={onClick ? { y: -2 } : undefined}
-      className={cnInline(
-        'rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] p-4 text-left transition-colors',
-        onClick ? 'cursor-pointer hover:border-white/[0.09] hover:bg-[#1E1E1E]' : 'cursor-default'
-      )}
-    >
-      <p className="text-[11px] font-medium tracking-wide text-[#F0EFEC]/35 uppercase">{label}</p>
-      <p className={cnInline('mt-2 text-[26px] leading-none font-semibold', accent)}>{value}</p>
-      {hint ? <p className="mt-1.5 text-[11px] text-[#F0EFEC]/32">{hint}</p> : null}
-    </motion.button>
-  )
-}
-
 export function RhSkeleton({ className }: { className?: string }) {
-  return <div className={cnInline('animate-pulse rounded-[16px] bg-white/4', className)} />
+  return <div className={cnA('animate-pulse rounded-[16px] bg-white/4', className)} />
 }
 
 export function RhEmptyState({
@@ -152,6 +187,10 @@ export function RhErrorState({ message, onRetry }: { message: string; onRetry?: 
   )
 }
 
+// ============================================================
+// Botões (mesmo padrão dos modais do launcher)
+// ============================================================
+
 export function RhPrimaryButton({
   children,
   onClick,
@@ -168,8 +207,8 @@ export function RhPrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={cnInline(
-        'inline-flex h-9 items-center justify-center gap-1.5 rounded-[9px] bg-[#F0EFEC] px-4 text-[13px] font-medium text-[#111111] transition hover:bg-white disabled:opacity-40',
+      className={cnA(
+        'inline-flex h-8 items-center justify-center gap-1.5 rounded-[8px] bg-[#F0EFEC] px-3.5 text-[13px] font-medium text-[#111111] transition hover:bg-white disabled:opacity-40',
         className
       )}
     >
@@ -196,8 +235,8 @@ export function RhGhostButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={cnInline(
-        'inline-flex h-8 items-center justify-center gap-1.5 rounded-[8px] border px-3 text-[12.5px] font-medium transition disabled:opacity-40',
+      className={cnA(
+        'inline-flex h-8 items-center justify-center gap-1.5 rounded-[8px] border px-3 text-[13px] font-medium transition disabled:opacity-40',
         tone === 'danger'
           ? 'border-red-400/20 bg-red-400/8 text-red-200/85 hover:bg-red-400/15'
           : 'border-white/[0.08] bg-white/[0.03] text-[#F0EFEC]/70 hover:bg-white/[0.06]',
@@ -209,6 +248,108 @@ export function RhGhostButton({
   )
 }
 
-function cnInline(...classes: Array<string | undefined>): string {
-  return classes.filter((value): value is string => Boolean(value)).join(' ')
+// ============================================================
+// Chips de status (mesma linguagem de cores do resto do app)
+// ============================================================
+
+const TONE_CLASS: Record<string, string> = {
+  green: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200/90',
+  amber: 'border-amber-300/20 bg-amber-300/10 text-amber-200/90',
+  gray: 'border-white/10 bg-white/[0.05] text-[#F0EFEC]/60',
+  blue: 'border-sky-300/20 bg-sky-300/10 text-sky-200/90'
+}
+
+export function RhJobStatusChip({ status }: { status: RhJobStatus }) {
+  const meta = JOB_STATUS_META[status]
+  return (
+    <span
+      className={cnA(
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase',
+        TONE_CLASS[meta.tone]
+      )}
+    >
+      <span className="size-1.5 rounded-full bg-current" />
+      {meta.label}
+    </span>
+  )
+}
+
+export function RhApplicationStatusChip({ status }: { status: RhApplicationStatus }) {
+  const meta = APPLICATION_STATUS_META[status]
+  return (
+    <span
+      className={cnA(
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase',
+        meta.chip
+      )}
+    >
+      <span className={cnA('size-1.5 rounded-full', meta.dot)} />
+      {meta.label}
+    </span>
+  )
+}
+
+// ============================================================
+// Lista reordenável (setas ↑ ↓ + remover) — padrão launcher
+// ============================================================
+
+export function RhOrderedList<T extends { id: string }>({
+  items,
+  onMove,
+  onRemove,
+  render
+}: {
+  items: T[]
+  onMove: (fromIndex: number, toIndex: number) => void
+  onRemove?: (item: T, index: number) => void
+  render: (item: T, index: number) => ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      {items.map((item, index) => (
+        <motion.div
+          key={item.id}
+          layout
+          transition={{ duration: 0.22, ease }}
+          className="flex items-center gap-2 rounded-[10px] border border-white/[0.05] bg-white/[0.02] px-2.5 py-2"
+        >
+          <span className="min-w-0 flex-1">{render(item, index)}</span>
+          <span className="flex shrink-0 flex-col">
+            <button
+              type="button"
+              aria-label="Mover para cima"
+              disabled={index === 0}
+              onClick={() => onMove(index, index - 1)}
+              className="flex size-5 items-center justify-center rounded-[5px] text-[#F0EFEC]/35 transition hover:bg-white/[0.06] hover:text-[#F0EFEC]/80 disabled:opacity-25"
+            >
+              <ArrowUp className="size-3" />
+            </button>
+            <button
+              type="button"
+              aria-label="Mover para baixo"
+              disabled={index === items.length - 1}
+              onClick={() => onMove(index, index + 1)}
+              className="flex size-5 items-center justify-center rounded-[5px] text-[#F0EFEC]/35 transition hover:bg-white/[0.06] hover:text-[#F0EFEC]/80 disabled:opacity-25"
+            >
+              <ArrowDown className="size-3" />
+            </button>
+          </span>
+          {onRemove ? (
+            <button
+              type="button"
+              aria-label="Remover"
+              onClick={() => onRemove(item, index)}
+              className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#F0EFEC]/30 transition hover:bg-red-400/10 hover:text-red-300"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          ) : null}
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+function cnA(...classes: Array<string | undefined | false>): string {
+  return classes.filter(Boolean).join(' ')
 }

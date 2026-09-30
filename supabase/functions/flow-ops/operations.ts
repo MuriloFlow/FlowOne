@@ -69,6 +69,7 @@ import {
   setOwnFlowPassword as doSetOwnFlowPassword
 } from './users.ts'
 import { sendKobbi } from './kobbi.ts'
+import { rhAnalyzeApplication } from './rh.ts'
 import { handleSignatureOp } from './signature-sessions.ts'
 import { pollNotifications } from './notifications.ts'
 import { getReleasePolicy, listDeviceVersions, reportAppVersion } from './release-policy.ts'
@@ -889,6 +890,10 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown>> = {
 
   async kobbiSend(payload) {
     return sendKobbi(payload)
+  },
+
+  async rhAnalyzeApplication(payload) {
+    return rhAnalyzeApplication(payload)
   },
 
   async createSignatureSession(payload) {
