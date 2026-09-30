@@ -30,7 +30,6 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
   // Estado de navegação interna do PORTAL DO RH (páginas próprias).
   const [rhJobId, setRhJobId] = useState<string | null>(null)
   const [rhApplicationId, setRhApplicationId] = useState<string | null>(null)
-  const [rhStatusFilter, setRhStatusFilter] = useState<import('@/lib/rh/types').RhApplicationStatus | null>(null)
   const [storeId, setStoreId] = useState<string | null>(() => {
     const initial = user.canFilterStores ? null : user.storeId
     setCurrentStoreId(initial)
@@ -221,7 +220,6 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
         }}
         rhJobId={rhJobId}
         rhApplicationId={rhApplicationId}
-        rhStatusFilter={rhStatusFilter}
         onNavigateRh={navigate}
         onOpenJob={(id) => {
           setRhJobId(id === '__list__' ? null : id)
@@ -236,9 +234,6 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
         }}
         onCloseApplication={() => {
           setRhApplicationId(null)
-        }}
-        onSetRhStatusFilter={(status) => {
-          setRhStatusFilter(status)
         }}
         onOpenStoreOperation={(id) => {
           setCurrentStoreId(id)

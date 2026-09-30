@@ -35,11 +35,9 @@ type ShellMainProps = {
   onCloseJob?: () => void
   onOpenApplication?: (applicationId: string) => void
   onCloseApplication?: () => void
-  onSetRhStatusFilter?: (status: import('@/lib/rh/types').RhApplicationStatus | null) => void
   /** Estado de página interna do RH, mantido no Shell (padrão employeeId). */
   rhJobId?: string | null
   rhApplicationId?: string | null
-  rhStatusFilter?: import('@/lib/rh/types').RhApplicationStatus | null
   /** Troca de aba dentro do RH (mesma ação da sidebar). */
   onNavigateRh?: (id: NavId) => void
 }
@@ -120,10 +118,8 @@ export function ShellMain({
   onCloseJob,
   onOpenApplication,
   onCloseApplication,
-  onSetRhStatusFilter,
   rhJobId = null,
   rhApplicationId = null,
-  rhStatusFilter = null,
   onNavigateRh
 }: ShellMainProps) {
   const activeNavId = activeId && getNavItem(activeId)?.id ? activeId : DEFAULT_NAV_ID
@@ -259,13 +255,13 @@ export function ShellMain({
                     activeId={activeId}
                     jobId={rhJobId}
                     applicationId={rhApplicationId}
-                    statusFilter={rhStatusFilter}
+                    statusFilter={null}
                     onNavigate={(id) => onNavigateRh?.(id)}
                     onOpenJob={(id) => onOpenJob?.(id)}
                     onCloseJob={() => onCloseJob?.()}
                     onOpenApplication={(id) => onOpenApplication?.(id)}
                     onCloseApplication={() => onCloseApplication?.()}
-                    onSetStatusFilter={(status) => onSetRhStatusFilter?.(status)}
+                    onSetStatusFilter={() => undefined}
                   />
                 </PageErrorBoundary>
               ) : null}

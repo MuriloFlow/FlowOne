@@ -1,0 +1,152 @@
+/* Portal Público do RH — clone da referência (Contratação) com as cores FLOW.
+   Mesma escala tipográfica, sombras, easings e utilitários; paleta trocada:
+   brand = verde FLOW (#2EC97E family), superfícies neutras idênticas. */
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Lexend", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* brand = verde FLOW (antes azul da referência) */
+  --color-brand-50: #ecfaf3;
+  --color-brand-100: #d3f5e5;
+  --color-brand-200: #a9eacf;
+  --color-brand-300: #74d9b2;
+  --color-brand-400: #45c595;
+  --color-brand-500: #2ec97e;
+  --color-brand-600: #1fa968;
+  --color-brand-700: #1a8755;
+  --color-brand-800: #1a6b46;
+  --color-brand-900: #17583c;
+  --color-brand-950: #0c3222;
+
+  --color-ink-950: #09090b;
+  --color-ink-900: #101014;
+  --color-ink-800: #1b1c21;
+  --color-ink-700: #2a2c35;
+  --color-ink-600: #3f4250;
+  --color-ink-500: #5c6072;
+  --color-ink-400: #83889e;
+  --color-ink-300: #b3b7c9;
+  --color-ink-200: #d4d7e2;
+  --color-ink-100: #e8eaf1;
+  --color-ink-50: #f4f5f9;
+
+  --shadow-soft: 0 1px 2px rgb(16 16 20 / 0.05), 0 1px 3px rgb(16 16 20 / 0.06);
+  --shadow-card: 0 1px 2px rgb(16 16 20 / 0.04), 0 4px 16px -2px rgb(16 16 20 / 0.08);
+  --shadow-lift: 0 2px 4px rgb(16 16 20 / 0.05), 0 12px 32px -8px rgb(16 16 20 / 0.16);
+  --shadow-pop: 0 4px 8px rgb(16 16 20 / 0.06), 0 24px 56px -12px rgb(16 16 20 / 0.28);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+
+  --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-white font-sans text-ink-900 antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  ::selection {
+    @apply bg-brand-100 text-brand-900;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-500;
+  }
+
+  input, select, textarea, button { font: inherit; }
+
+  /* Scrollbar discreta */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-200;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-ink-300; background-clip: content-box; }
+}
+
+@utility field-input {
+  @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-[15px] text-ink-900 shadow-soft
+    transition-[border-color,box-shadow,background] duration-200 placeholder:text-ink-400
+    hover:border-ink-300
+    focus:border-brand-500 focus:ring-4 focus:ring-brand-500/12 focus:outline-none
+    disabled:cursor-not-allowed disabled:bg-ink-50 disabled:text-ink-400;
+}
+
+@utility field-input-error {
+  @apply border-red-300 focus:border-red-500 focus:ring-red-500/12;
+}
+
+@utility btn {
+  @apply relative inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5
+    text-[15px] font-medium tracking-[-0.01em] transition-all duration-200 ease-out
+    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500
+    active:scale-[0.975] disabled:pointer-events-none disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-ink-950 text-white shadow-lift hover:bg-ink-800 hover:shadow-pop;
+}
+
+@utility btn-brand {
+  @apply btn bg-brand-600 text-white shadow-lift shadow-brand-600/25 hover:bg-brand-700 hover:shadow-pop;
+}
+
+@utility btn-ghost {
+  @apply btn text-ink-600 hover:bg-ink-50 hover:text-ink-900;
+}
+
+@utility btn-outline {
+  @apply btn border border-ink-200 bg-white text-ink-700 shadow-soft hover:border-ink-300 hover:bg-ink-50;
+}
+
+@utility btn-danger {
+  @apply btn border border-red-200 bg-white text-red-600 hover:border-red-300 hover:bg-red-50;
+}
+
+@utility card {
+  @apply rounded-2xl border border-ink-100 bg-white shadow-card;
+}
+
+@utility chip {
+  @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium tracking-[-0.005em];
+}
+
+@utility skeleton {
+  @apply animate-shimmer rounded-lg bg-ink-100;
+  background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.65) 50%, transparent 100%);
+  background-size: 200% 100%;
+}
+
+@utility grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(16 16 20 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(16 16 20 / 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 35%, transparent 78%);
+}
+
+@utility text-balance {
+  text-wrap: balance;
+}

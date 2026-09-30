@@ -1,10 +1,10 @@
 // Deploy do Portal Público do RH (rh.flwdesk.com/digaspi):
-//   1. Envia public-portal/ → /opt/flow-portal/rh/digaspi (base64, byte a byte)
-//   2. Garante o diretório base /opt/flow-portal/rh (root do host rh.db) e
-//      injeta server_alias rh.flwdesk.com no bloco existente
-//   3. Adiciona bloco http://rh.flwdesk.com/digaspi/* se ainda não existir
+//   1. Build do portal React (public-portal) com as chaves públicas injetadas
+//   2. Envia public-portal/dist/* → /opt/flow-portal/rh/digaspi (base64, byte a byte)
+//   3. Garante o alias rh.flwdesk.com no Caddy (idempotente)
 //   4. Valida a config, recria project-gw (bind mount por inode) e testa HTTPS
 // Uso: node scripts/deploy-rh-portal.mjs
+import { execSync } from 'node:child_process'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve as resolvePath, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,9 +19,22 @@ for (const raw of readFileSync(join(root, '.env.local'), 'utf8').split(/\r?\n/))
   env[line.slice(0, cut).trim()] = line.slice(cut + 1).trim()
 }
 
-const DIST = join(root, 'public-portal')
+const PORTAL_DIR = join(root, 'public-portal')
+const DIST = join(PORTAL_DIR, 'dist')
 const REMOTE_BASE = '/opt/flow-portal/rh'
 const REMOTE_DIR = REMOTE_BASE + '/digaspi'
+
+// 0) Build com as chaves públicas (anon key é pública por design; RLS limita).
+console.log('0) Build do portal React...')
+execSync('npm run build', {
+  cwd: PORTAL_DIR,
+  stdio: 'inherit',
+  env: {
+    ...process.env,
+    VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY: env.VITE_SUPABASE_ANON_KEY
+  }
+})
 
 function run(conn, cmd, input = null) {
   return new Promise((resolve, reject) => {
@@ -50,7 +63,7 @@ path = '/opt/supabase-src/docker/Caddyfile.projects'
 text = open(path).read()
 changed = False
 # 1) server_alias rh.flwdesk.com no bloco existente do rh.db
-if 'rh.flwdesk.com' not in text:
+if 'server_alias rh.flwdesk.com' not in text:
     new_text, n = re.subn(
         r'(http://rh\.db\.flwdesk\.com, https://rh\.db\.flwdesk\.com) \{',
         r'\1 {\n\tserver_alias rh.flwdesk.com',
@@ -59,7 +72,7 @@ if 'rh.flwdesk.com' not in text:
         text = new_text
         changed = True
         print('alias rh.flwdesk.com adicionado ao bloco rh.db')
-# 2) bloco /digaspi (placeholders escados p/ não conflitar com o formato do Caddy)
+# 2) bloco /digaspi (placeholders escapados para não conflitar com o formato do Caddy)
 if '/digaspi/' not in text:
     block = (
         '\n# Portal Publico do RH (digaspi)\n'
@@ -92,12 +105,7 @@ conn
     for (const file of files) {
       const rel = relative(DIST, file).split('\\').join('/')
       const raw = readFileSync(file)
-      // Injeta a anon key pública no HTML (chave anônima é pública por design;
-      // RLS limita o que o anon pode ler/escrever).
-      const content = raw
-        .toString('utf8')
-        .replace('__ANON_KEY__', env.VITE_SUPABASE_ANON_KEY || '')
-      const b64 = Buffer.from(content, 'utf8').toString('base64')
+      const b64 = Buffer.from(raw).toString('base64')
       const chunks = b64.match(/.{1,60000}/gs) ?? []
       const remote = `${REMOTE_DIR}/${rel}`
       await run(conn, `mkdir -p "${remote.slice(0, remote.lastIndexOf('/'))}"`)
@@ -140,13 +148,14 @@ conn
     console.log('5) Testes publicos...')
     for (const [label, url] of [
       ['digaspi /', 'https://rh.flwdesk.com/digaspi/'],
-      ['digaspi SPA', 'https://rh.flwdesk.com/digaspi/vaga/x']
+      ['digaspi SPA', 'https://rh.flwdesk.com/digaspi/vaga/x'],
+      ['digaspi asset', 'https://rh.flwdesk.com/digaspi/manifest.webmanifest']
     ]) {
       const t = await run(conn, `curl -sk -o /dev/null -w '%{http_code}' '${url}' --max-time 15`)
-      console.log('  ', label, '->', t.out, '(esperado 200)')
+      console.log('  ', label, '->', t.out)
     }
-    const idx = await run(conn, `curl -sk https://rh.flwdesk.com/digaspi/ | head -c 80`)
-    console.log('   conteudo:', idx.out.slice(0, 70))
+    const idx = await run(conn, `curl -sk https://rh.flwdesk.com/digaspi/ | head -c 120`)
+    console.log('   conteudo:', idx.out.slice(0, 100))
     const others = await run(
       conn,
       `curl -sk -o /dev/null -w '%{http_code}' https://rh.db.flwdesk.com/ && curl -sk -o /dev/null -w ' %{http_code}' https://flowone.db.flwdesk.com/rest/v1/ -H 'apikey: x'`

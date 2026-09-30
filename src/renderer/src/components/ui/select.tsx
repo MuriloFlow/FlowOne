@@ -112,7 +112,7 @@ export function Select({ value, options, placeholder = 'Selecionar', className, 
                 maxHeight: coords.maxHeight,
                 zIndex: 500
               }}
-              className="overflow-auto rounded-[12px] border border-white/[0.08] bg-[#1A1A1A] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
+              className="overflow-auto rounded-[12px] border border-white/[0.08] bg-[#1A1A1A] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl"
             >
               {options.map((option) => {
                 const active = option.value === value

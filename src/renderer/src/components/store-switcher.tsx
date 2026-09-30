@@ -180,7 +180,7 @@ export function StoreSwitcher({
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 6, scale: 0.98 }}
                   transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute right-0 bottom-[calc(100%+8px)] left-0 max-h-56 overflow-auto rounded-[12px] border border-white/[0.06] bg-[#151515] p-1.5 shadow-[0_16px_48px_rgba(0,0,0,0.45)]"
+                  className="absolute right-0 bottom-[calc(100%+8px)] left-0 z-[120] max-h-56 overflow-auto rounded-[12px] border border-white/[0.06] bg-[#151515] p-1.5 shadow-[0_16px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl"
                 >
                   {options}
                 </motion.div>

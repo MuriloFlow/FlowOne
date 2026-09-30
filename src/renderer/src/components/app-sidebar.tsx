@@ -140,7 +140,8 @@ export function AppSidebar({
           ))
         ) : (
           <>
-            {mainItems.map((item, index) => navButton(item, index))}            {!compact ? (
+            {mainItems.map((item, index) => navButton(item, index))}
+            {!compact ? (
               <motion.button
                 type="button"
                 initial={{ opacity: 0, x: -10 }}
