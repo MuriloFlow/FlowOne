@@ -135,7 +135,11 @@ export default defineConfig(({ mode }) => {
         '@capacitor/screen-orientation': path.resolve(mobileModules, '@capacitor/screen-orientation'),
         '@capgo/capacitor-updater': path.resolve(mobileModules, '@capgo/capacitor-updater'),
         '@capgo/capacitor-native-biometric': path.resolve(mobileModules, '@capgo/capacitor-native-biometric'),
-        '@capacitor/local-notifications': path.resolve(mobileModules, '@capacitor/local-notifications')
+        '@capacitor/local-notifications': path.resolve(mobileModules, '@capacitor/local-notifications'),
+        // PORTAL DO RH: extração de currículo (pdfjs/mammoth) vive nas deps do
+        // mobile — em CI o runner Linux não instala a raiz.
+        'pdfjs-dist': path.resolve(mobileModules, 'pdfjs-dist'),
+        'mammoth/mammoth.browser': path.resolve(mobileModules, 'mammoth/mammoth.browser.js')
       },
       dedupe: ['react', 'react-dom', 'lucide-react', 'framer-motion']
     },

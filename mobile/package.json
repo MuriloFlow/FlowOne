@@ -39,6 +39,8 @@
     "framer-motion": "^12.23.12",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.542.0",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^4.10.38",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "recharts": "^3.10.1",
