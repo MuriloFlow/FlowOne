@@ -211,6 +211,12 @@ export function operationError(error: unknown): string {
     return 'Sua conta ainda não tem uma unidade. Peça para um Lider de Operação, Supervisor ou Diretor te vincular em Usuários — ou use um cargo com acesso à rede toda.'
   }
   if (/sessão inválida/i.test(cleaned)) return 'Sua sessão expirou. Entre de novo no FLOW.'
+  if (/usuário n[aã]o encontrado|user from sub claim|user not found|não achei este acesso/i.test(cleaned)) {
+    return 'Esta pessoa não foi encontrada na base do FLOW. Atualize a aba Usuários e tente de novo.'
+  }
+  if (/n[aã]o tem permiss[aã]o|não possui acesso|only an admin|not allowed|aumentar privil[eé]gios/i.test(cleaned)) {
+    return 'Seu cargo não tem permissão para esta ação. Peça para um Lider de Operação, Supervisor ou Diretor.'
+  }
   if (/is not a function|feche o flow por completo/i.test(cleaned)) {
     return 'Feche o FLOW por completo e abra de novo. A aba Usuários precisa desta atualização do launcher.'
   }

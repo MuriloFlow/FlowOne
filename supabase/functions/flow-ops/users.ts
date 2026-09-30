@@ -22,15 +22,17 @@ type ProfileRow = {
   updated_at: string | null
 }
 
-/** Senha temporária legível: pares de letras + dígitos, 12 caracteres. */
+/**
+ * Senha temporária de REDEFINIÇÃO/primeiro acesso: exatamente 8 DÍGITOS
+ * NUMÉRICOS aleatórios — fácil de ler no WhatsApp e digitar no celular.
+ * O usuário troca por uma senha definitiva no próximo login (must_set_password).
+ */
 function generateTemporaryPassword(): string {
-  const letters = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ'
-  const digits = '23456789'
-  const bytes = new Uint8Array(12)
+  const digits = '0123456789'
+  const bytes = new Uint8Array(8)
   crypto.getRandomValues(bytes)
   let password = ''
-  for (let index = 0; index < 8; index += 1) password += letters[bytes[index] % letters.length]
-  for (let index = 8; index < 12; index += 1) password += digits[bytes[index] % digits.length]
+  for (let index = 0; index < 8; index += 1) password += digits[bytes[index] % digits.length]
   return password
 }
 
@@ -66,7 +68,7 @@ function toUser(row: ProfileRow, storeNames: Map<string, string>): FlowLauncherU
   }
 }
 
-function parseWrite(input: FlowLauncherUserWrite, requirePassword: boolean): {
+function parseWrite(input: FlowLauncherUserWrite): {
   email: string
   displayName: string
   role: FlowRoleId
@@ -81,10 +83,10 @@ function parseWrite(input: FlowLauncherUserWrite, requirePassword: boolean): {
   if (!isFlowRole(input.role) || !canLoginWithRole(input.role)) {
     throw new Error('Este cargo não entra no launcher. Escolha Lider, Gerente, Supervisor ou Diretor.')
   }
+  // Senha é OPCIONAL em criar e editar: sem senha o sistema gera uma
+  // temporária de 8 dígitos (must_set_password). Validações de senha
+  // definitiva (mínimo, confirmar) pertencem SÓ ao fluxo do funcionário.
   const password = input.password?.trim() ?? ''
-  if (requirePassword && password.length < 8) {
-    throw new Error('A senha precisa ter pelo menos 8 caracteres.')
-  }
   if (password && password.length < 8) {
     throw new Error('A senha precisa ter pelo menos 8 caracteres.')
   }
@@ -149,7 +151,7 @@ export async function upsertFlowUser(
   if (!canManageFlowUsers(actorRole)) {
     throw new Error('Só Lider de Operação, Supervisor e Diretor gerenciam acessos do FLOW.')
   }
-  const parsed = parseWrite(input, !input.id)
+  const parsed = parseWrite(input)
   const flow = getFlowAdminClient()
 
   if (!input.id) {
@@ -173,7 +175,11 @@ export async function upsertFlowUser(
     }
     await writeProfile(created.data.user.id, parsed, needsSetup)
     const stores = await listStores()
-    return toUser(await loadProfile(created.data.user.id), toStoreNames(stores))
+    const user = toUser(await loadProfile(created.data.user.id), toStoreNames(stores))
+    // Criação SEM senha: devolve a temporária de 8 dígitos para o gestor
+    // copiar/entregar (mesmo contrato da redefinição de senha).
+    if (needsSetup) user.temporaryPassword = temporary
+    return user
   }
 
   if (input.id === actorUserId && parsed.status === 'inactive') {
@@ -245,7 +251,9 @@ export async function resetFlowUserPassword(
   actorRole: string
 ): Promise<{ temporaryPassword: string }> {
   if (!canManageFlowUsers(actorRole)) {
-    throw new Error('Só Lider de Operação, Supervisor e Diretor redefinem senhas.')
+    throw new Error(
+      'Só Lider de Operação, Supervisor e Diretor redefinem senhas. Seu cargo atual não tem essa permissão.'
+    )
   }
   const flow = getFlowAdminClient()
   const current = await loadProfile(id)

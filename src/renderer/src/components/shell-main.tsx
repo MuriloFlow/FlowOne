@@ -12,6 +12,8 @@ import { StoresPage } from '@/pages/stores'
 import { UsersPage } from '@/pages/users'
 import { VouchersPage } from '@/pages/vouchers'
 import { SorteioPage } from '@/pages/sorteio'
+import { RhModule } from '@/pages/rh/rh-module'
+import { isRhNavId } from '@/lib/navigation'
 import type { AuthUser } from '@/lib/auth'
 import { isMobileShell } from '@/lib/is-mobile-shell'
 import { DEFAULT_NAV_ID, getNavItem, type NavId } from '@/lib/navigation'
@@ -29,6 +31,17 @@ type ShellMainProps = {
   onOpenStoreOperation?: (storeId: string) => void
   onOpenStoreTeam?: (storeId: string) => void
   onStoresChanged?: () => void
+  onOpenJob?: (jobId: string) => void
+  onCloseJob?: () => void
+  onOpenApplication?: (applicationId: string) => void
+  onCloseApplication?: () => void
+  onSetRhStatusFilter?: (status: import('@/lib/rh/types').RhApplicationStatus | null) => void
+  /** Estado de página interna do RH, mantido no Shell (padrão employeeId). */
+  rhJobId?: string | null
+  rhApplicationId?: string | null
+  rhStatusFilter?: import('@/lib/rh/types').RhApplicationStatus | null
+  /** Troca de aba dentro do RH (mesma ação da sidebar). */
+  onNavigateRh?: (id: NavId) => void
 }
 
 const ease = [0.22, 1, 0.36, 1] as const
@@ -102,7 +115,16 @@ export function ShellMain({
   onCloseEmployee,
   onOpenStoreOperation,
   onOpenStoreTeam,
-  onStoresChanged
+  onStoresChanged,
+  onOpenJob,
+  onCloseJob,
+  onOpenApplication,
+  onCloseApplication,
+  onSetRhStatusFilter,
+  rhJobId = null,
+  rhApplicationId = null,
+  rhStatusFilter = null,
+  onNavigateRh
 }: ShellMainProps) {
   const activeNavId = activeId && getNavItem(activeId)?.id ? activeId : DEFAULT_NAV_ID
   const current = getNavItem(activeNavId)
@@ -118,6 +140,7 @@ export function ShellMain({
     activeId !== 'schedules' &&
     activeId !== 'attendance' &&
     activeId !== 'users' &&
+    !isRhNavId(activeId) &&
     !(activeId === 'employees' && !employeeId)
 
   return (
@@ -227,6 +250,23 @@ export function ShellMain({
               {activeId === 'users' ? (
                 <PageErrorBoundary>
                   <UsersPage />
+                </PageErrorBoundary>
+              ) : null}
+              {isRhNavId(activeId) ? (
+                <PageErrorBoundary>
+                  <RhModule
+                    user={user}
+                    activeId={activeId}
+                    jobId={rhJobId}
+                    applicationId={rhApplicationId}
+                    statusFilter={rhStatusFilter}
+                    onNavigate={(id) => onNavigateRh?.(id)}
+                    onOpenJob={(id) => onOpenJob?.(id)}
+                    onCloseJob={() => onCloseJob?.()}
+                    onOpenApplication={(id) => onOpenApplication?.(id)}
+                    onCloseApplication={() => onCloseApplication?.()}
+                    onSetStatusFilter={(status) => onSetRhStatusFilter?.(status)}
+                  />
                 </PageErrorBoundary>
               ) : null}
               {activeId === 'reports' ? (

@@ -27,6 +27,10 @@ type ShellPageProps = {
 export function ShellPage({ user, onSignOut }: ShellPageProps) {
   const [activeId, setActiveId] = useState<NavId>(() => readSessionNavId(user.role))
   const [employeeId, setEmployeeId] = useState<string | null>(null)
+  // Estado de navegação interna do PORTAL DO RH (páginas próprias).
+  const [rhJobId, setRhJobId] = useState<string | null>(null)
+  const [rhApplicationId, setRhApplicationId] = useState<string | null>(null)
+  const [rhStatusFilter, setRhStatusFilter] = useState<import('@/lib/rh/types').RhApplicationStatus | null>(null)
   const [storeId, setStoreId] = useState<string | null>(() => {
     const initial = user.canFilterStores ? null : user.storeId
     setCurrentStoreId(initial)
@@ -161,13 +165,16 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
   }
 
   function navigate(id: NavId): void {
-    if (id === activeId && !employeeId) {
+    if (id === activeId && !employeeId && !rhJobId && !rhApplicationId) {
       if (mobile) setNavOpen(false)
       return
     }
     setSwitching(true)
     setActiveId(id)
     setEmployeeId(null)
+    // Saindo do módulo RH ou trocando de aba: limpa páginas internas dele.
+    setRhJobId(null)
+    setRhApplicationId(null)
     if (mobile) setNavOpen(false)
     window.setTimeout(() => setSwitching(false), 320)
   }
@@ -212,6 +219,27 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
         onCloseEmployee={() => {
           setEmployeeId(null)
         }}
+        rhJobId={rhJobId}
+        rhApplicationId={rhApplicationId}
+        rhStatusFilter={rhStatusFilter}
+        onNavigateRh={navigate}
+        onOpenJob={(id) => {
+          setRhJobId(id === '__list__' ? null : id)
+          setRhApplicationId(null)
+        }}
+        onCloseJob={() => {
+          setRhJobId(null)
+        }}
+        onOpenApplication={(id) => {
+          setRhApplicationId(id === '__interviews__' ? null : id)
+          setRhJobId(null)
+        }}
+        onCloseApplication={() => {
+          setRhApplicationId(null)
+        }}
+        onSetRhStatusFilter={(status) => {
+          setRhStatusFilter(status)
+        }}
         onOpenStoreOperation={(id) => {
           setCurrentStoreId(id)
           setStoreId(id)
@@ -244,7 +272,15 @@ export function ShellPage({ user, onSignOut }: ShellPageProps) {
   )
 
   if (mobile) {
-    const title = employeeId ? 'Perfil' : getNavItem(activeId).label
+    const title = employeeId
+      ? 'Perfil'
+      : rhJobId
+        ? rhJobId === 'new'
+          ? 'Nova vaga'
+          : 'Editar vaga'
+        : rhApplicationId
+          ? 'Candidato'
+          : getNavItem(activeId).label
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#111111] font-medium">
         <MobileShellHeader title={title} onOpenNav={() => setNavOpen(true)} />

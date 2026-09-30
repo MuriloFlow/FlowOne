@@ -26,7 +26,8 @@ export function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<FlowLauncherUser | null>(null)
   const [resetTarget, setResetTarget] = useState<FlowLauncherUser | null>(null)
-  const [resetResult, setResetResult] = useState<{ user: string; password: string } | null>(null)
+  // Senha temporária de 8 dígitos gerada pelo sistema (redefinição OU criação sem senha).
+  const [tempResult, setTempResult] = useState<{ user: string; password: string } | null>(null)
 
   async function reload(): Promise<void> {
     const [list, storeList] = await Promise.all([operations().listFlowUsers(), operations().listStores()])
@@ -250,13 +251,15 @@ export function UsersPage() {
         user={editing}
         stores={stores}
         onClose={() => setDialogOpen(false)}
-        onSaved={(saved) => {
+        onSaved={(saved, temporaryPassword) => {
           setUsers((current) => {
             const exists = current.some((item) => item.id === saved.id)
             if (!exists) return [...current, saved].sort((left, right) => left.displayName.localeCompare(right.displayName, 'pt-BR'))
             return current.map((item) => (item.id === saved.id ? saved : item))
           })
           setDialogOpen(false)
+          // Criação sem senha: mostra a temporária gerada para copiar/entregar.
+          if (temporaryPassword) setTempResult({ user: saved.displayName, password: temporaryPassword })
         }}
       />
 
@@ -264,7 +267,7 @@ export function UsersPage() {
         target={resetTarget}
         onClose={() => setResetTarget(null)}
         onReset={(target, password) => {
-          setResetResult({ user: target.displayName, password })
+          setTempResult({ user: target.displayName, password })
           setUsers((current) =>
             current.map((item) => (item.id === target.id ? { ...item, mustSetPassword: true } : item))
           )
@@ -272,7 +275,7 @@ export function UsersPage() {
         }}
       />
 
-      <TempPasswordDialog result={resetResult} onClose={() => setResetResult(null)} />
+      <TempPasswordDialog result={tempResult} onClose={() => setTempResult(null)} />
     </div>
   )
 }
@@ -417,7 +420,7 @@ function UserDialog({
   user: FlowLauncherUser | null
   stores: StoreOption[]
   onClose: () => void
-  onSaved: (user: FlowLauncherUser) => void
+  onSaved: (user: FlowLauncherUser, temporaryPassword?: string | null) => void
 }) {
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
@@ -460,7 +463,9 @@ function UserDialog({
         storeId: needsStore ? storeId : null,
         status
       })
-      onSaved(saved)
+      // Sem senha digitada (criação): o sistema gerou a temporária de 8 dígitos —
+      // a tela seguinte mostra para copiar/entregar.
+      onSaved(saved, saved.temporaryPassword)
     } catch (submitError) {
       setError(operationError(submitError))
     } finally {

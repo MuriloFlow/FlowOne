@@ -359,6 +359,8 @@ export type FlowLauncherUser = {
   storeId: string | null
   storeName: string | null
   mustSetPassword: boolean
+  /** Preenchido SÓ na criação sem senha: temporária de 8 dígitos p/ o gestor entregar. */
+  temporaryPassword?: string | null
   createdAt: string | null
   updatedAt: string | null
 }
