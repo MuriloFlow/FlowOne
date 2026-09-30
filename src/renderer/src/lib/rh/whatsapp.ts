@@ -25,7 +25,6 @@ export function openWhatsApp(phone: string, message: string): void {
 
 type InviteInput = {
   candidateName: string;
-  jobTitle: string;
   scheduledAt: string;
   mode: "online" | "presencial";
   address?: string | null;
@@ -50,7 +49,7 @@ export function interviewInviteMessage(input: InviteInput): string {
   const lines: string[] = [
     `Olá, ${firstName}! Tudo bem?`,
     "",
-    `Confirmamos sua entrevista para a vaga de ${input.jobTitle}:`,
+    `Que notícia boa: você passou na triagem e podemos seguir com você! Vamos agendar sua entrevista:`,
     "",
     `📅 Data: ${date}`,
     `🕐 Horário: ${time}`,
@@ -73,4 +72,42 @@ export function interviewInviteMessage(input: InviteInput): string {
     "Equipe de RH — Digaspi",
   );
   return lines.join("\n");
+}
+
+/** Link do formulário de cadastro (Google Forms) enviado aos pré-aprovados. */
+export const RH_FORM_URL =
+  "https://docs.google.com/forms/d/e/1FAIpQLSey5r1_ulpCwVgdiuXaoDfgePDPMsQI0uM-F-CO1uUT1lsOEg/viewform?usp=sharing&ouid=116250720896867340489";
+
+type PreHireFormInput = {
+  candidateName: string;
+  /** Unidade que receberá a pessoa (ex.: "Loja 41"). */
+  storeName: string;
+  /** Função definida pelo RH — NÃO usar o cargo escolhido pelo candidato. */
+  role: string;
+};
+
+/**
+ * Mensagem pronta p/ enviar o formulário de cadastro ao pré-aprovado:
+ * parabeniza, passa o link e já informa Unidade/Função que a pessoa deve
+ * preencher no formulário.
+ */
+export function preHireFormMessage(input: PreHireFormInput): string {
+  const firstName =
+    input.candidateName.trim().split(/\s+/)[0] || input.candidateName;
+  return [
+    `Olá, ${firstName}! Tudo bem?`,
+    "",
+    "Parabéns, você passou no processo seletivo! 🎉 Estamos muito felizes em ter você com a gente.",
+    "",
+    "Agora falta pouco para finalizar: preencha o formulário de cadastro abaixo com os seus dados:",
+    RH_FORM_URL,
+    "",
+    "Ao abrir, preencha exatamente assim:",
+    `🏢 Unidade: ${input.storeName}`,
+    `💼 Função: ${input.role}`,
+    "",
+    "Tem alguma dúvida? É só responder esta mensagem.",
+    "",
+    "Equipe de RH — Digaspi",
+  ].join("\n");
 }

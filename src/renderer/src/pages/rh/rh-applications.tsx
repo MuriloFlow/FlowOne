@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BadgeCheck,
   Brain,
   CalendarPlus,
+  ClipboardCheck,
   FileText,
   Loader2,
   Pencil,
@@ -22,6 +24,7 @@ import {
   fetchApplications,
   fetchJobs,
   moveApplication,
+  updateApplicationOnboarding,
   updateInterview,
   deleteInterview,
   type RhApplicationDetail,
@@ -477,7 +480,7 @@ export function RhApplicationDetailPage({
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pb-4 xl:grid-cols-[1.45fr_0.95fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pb-4 xl:grid-cols-[1.55fr_0.85fr]">
         {/* ---------- Coluna principal ---------- */}
         <div className="min-w-0 space-y-3">
           <RhCard className="p-4">
@@ -664,6 +667,14 @@ export function RhApplicationDetailPage({
 
         {/* ---------- Coluna lateral ---------- */}
         <div className="min-w-0 space-y-3">
+          <PreHireCard
+            application={application}
+            onChanged={() => {
+              void load();
+              onChanged?.();
+            }}
+          />
+
           <StatusCard
             current={application.status}
             onChange={async (next, note) => {
@@ -741,7 +752,6 @@ export function RhApplicationDetailPage({
           applicationId={application.id}
           candidateName={candidate?.full_name ?? "Candidato"}
           candidatePhone={candidate?.phone ?? null}
-          jobTitle={application.job?.title ?? null}
           onClose={() => setInterviewModal(false)}
           onCreated={() => {
             void load();
@@ -766,6 +776,102 @@ export function RhApplicationDetailPage({
 }
 
 // ---------- subcomponentes ----------
+
+/**
+ * Fluxo do pré-aprovado (status Contratado): função definida pelo RH (pode
+ * ser diferente da vaga que o candidato escolheu) + atalhos do onboarding.
+ */
+function PreHireCard({
+  application,
+  onChanged,
+}: {
+  application: RhApplicationDetail["application"];
+  onChanged: () => void;
+}) {
+  const hired = application.status === "hired";
+  const [role, setRole] = useState(application.pre_hire_role ?? "");
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => setRole(application.pre_hire_role ?? ""), [application.pre_hire_role]);
+
+  if (!hired) return null;
+
+  async function save(): Promise<void> {
+    setSaving(true);
+    setError(null);
+    try {
+      await updateApplicationOnboarding(application.id, {
+        pre_hire_role: role.trim() || null,
+      });
+      setSavedAt(new Date().toLocaleTimeString("pt-BR"));
+      onChanged();
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error ? saveError.message : "Erro ao salvar.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <RhCard className="p-4">
+      <h2 className="flex items-center gap-2 text-[15px] text-[#F0EFEC]/82">
+        <BadgeCheck className="size-3.5 text-teal-300/70" /> Contratação
+      </h2>
+      <p className="mt-1 text-[11.5px] text-[#F0EFEC]/35">
+        Esta função é a que vale para a pessoa — use na mensagem do formulário
+        de cadastro (aba Pré-Aprovados).
+      </p>
+      <div className="mt-2.5 flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <RhInput
+            value={role}
+            onChange={setRole}
+            placeholder="Função definida pelo RH (ex.: Atendente)"
+            maxLength={80}
+          />
+        </div>
+        <RhGhostButton onClick={() => void save()} disabled={saving}>
+          {saving ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : null}
+          Salvar
+        </RhGhostButton>
+      </div>
+      {savedAt ? (
+        <p className="mt-1.5 text-[11px] text-emerald-300/70">
+          Salvo às {savedAt}.
+        </p>
+      ) : null}
+      {error ? <p className="mt-1.5 text-[11.5px] text-red-300/80">{error}</p> : null}
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/[0.05] pt-3">
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+            application.form_url_sent
+              ? "border border-emerald-300/20 bg-emerald-300/10 text-emerald-200/90"
+              : "border border-white/10 bg-white/[0.05] text-[#F0EFEC]/50"
+          }`}
+        >
+          <ClipboardCheck className="size-3" />
+          {application.form_url_sent ? "Formulário enviado" : "Formulário pendente"}
+        </span>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+            application.data_confirmed
+              ? "border border-teal-300/20 bg-teal-300/10 text-teal-200/90"
+              : "border border-white/10 bg-white/[0.05] text-[#F0EFEC]/50"
+          }`}
+        >
+          <BadgeCheck className="size-3" />
+          {application.data_confirmed ? "Dados confirmados" : "Dados pendentes"}
+        </span>
+      </div>
+    </RhCard>
+  );
+}
 
 function InterviewRow({
   interview,
@@ -856,7 +962,6 @@ function InterviewModal({
   applicationId,
   candidateName,
   candidatePhone,
-  jobTitle,
   onClose,
   onCreated,
 }: {
@@ -864,7 +969,6 @@ function InterviewModal({
   applicationId: string;
   candidateName: string;
   candidatePhone: string | null;
-  jobTitle: string | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -914,7 +1018,6 @@ function InterviewModal({
   if (scheduledForWhatsApp && candidatePhone) {
     const message = interviewInviteMessage({
       candidateName: candidateName,
-      jobTitle: jobTitle ?? "vaga",
       scheduledAt: scheduledForWhatsApp.scheduledAt,
       mode: scheduledForWhatsApp.mode,
       address: mode === "presencial" ? place.trim() || null : null,

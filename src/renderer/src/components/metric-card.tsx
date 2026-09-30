@@ -15,6 +15,8 @@ type MetricCardProps = {
   percent?: boolean
   compact?: boolean
   goal?: number | null
+  /** Quando definido, o card vira clicável (ex.: abrir a lista relacionada). */
+  onClick?: () => void
 }
 
 export function MetricCard({
@@ -27,7 +29,8 @@ export function MetricCard({
   money = false,
   percent = false,
   compact = false,
-  goal = null
+  goal = null,
+  onClick
 }: MetricCardProps) {
   const ratio = goal && goal > 0 ? Math.min(100, (value / goal) * 100) : null
 
@@ -35,8 +38,22 @@ export function MetricCard({
     <article
       className={cn(
         'flex h-full min-w-0 flex-col rounded-[16px] border border-white/[0.045] bg-[#1A1A1A]',
-        compact ? 'min-h-[104px] px-3.5 py-3' : 'min-h-[148px] px-5 py-4'
+        compact ? 'min-h-[104px] px-3.5 py-3' : 'min-h-[148px] px-5 py-4',
+        onClick && 'cursor-pointer border-white/[0.08] transition hover:border-white/[0.14]'
       )}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onClick()
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
     >
       <div className={cn('flex items-start justify-between', compact ? 'mb-2.5 gap-2' : 'mb-5 gap-3')}>
         <p

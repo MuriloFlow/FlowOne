@@ -194,7 +194,6 @@ export function RhInterviewsPage({
                   interviewInviteMessage({
                     candidateName:
                       row.application!.candidate!.full_name ?? "candidato",
-                    jobTitle: row.application?.job?.title ?? "vaga",
                     scheduledAt: row.scheduled_at,
                     mode: row.mode,
                     address: row.location,

@@ -9,6 +9,7 @@ import schedulesIcon from '@/assets/icons/Data.svg'
 import reportsIcon from '@/assets/icons/Docs.svg'
 import sorteioIcon from '@/assets/icons/Ticket.svg'
 import hiringIcon from '@/assets/icons/hiring.svg'
+import userCheckIcon from '@/assets/icons/user-check.svg'
 
 export type NavId =
   | 'overview'
@@ -25,6 +26,7 @@ export type NavId =
   | 'rh_overview'
   | 'rh_jobs'
   | 'rh_applications'
+  | 'rh_pre_approved'
   | 'rh_interviews'
   | 'rh_settings'
 
@@ -61,6 +63,7 @@ export const RH_NAV_ITEMS: NavItem[] = [
   { id: 'rh_overview', label: 'Visão Geral', icon: dashboardIcon },
   { id: 'rh_jobs', label: 'Vagas', icon: hiringIcon },
   { id: 'rh_applications', label: 'Candidaturas', icon: employeesIcon },
+  { id: 'rh_pre_approved', label: 'Pré-Aprovados', icon: userCheckIcon },
   { id: 'rh_interviews', label: 'Entrevistas', icon: schedulesIcon },
   { id: 'rh_settings', label: 'Configurações', icon: reportsIcon }
 ]

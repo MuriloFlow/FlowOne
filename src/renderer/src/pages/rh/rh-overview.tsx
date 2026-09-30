@@ -186,10 +186,11 @@ export function RhOverviewPage({
             />
             <MetricCard
               compact
-              label="Contratados"
+              label="Pré-Aprovados"
               value={stats.hiresTotal}
-              hint="total do processo seletivo"
-              icon={<Users className="size-4" strokeWidth={1.7} />}
+              hint="contratados em onboarding"
+              icon={<UserCheck className="size-4" strokeWidth={1.7} />}
+              onClick={() => onOpenApplications("hired")}
             />
             <MetricCard
               compact

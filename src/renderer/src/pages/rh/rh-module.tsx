@@ -5,6 +5,7 @@ import { RhApplicationDetailPage, RhApplicationsPage } from "./rh-applications";
 import { RhInterviewsPage } from "./rh-interviews";
 import { RhJobEditorPage, RhJobsPage } from "./rh-jobs";
 import { RhOverviewPage } from "./rh-overview";
+import { RhPreApprovedPage } from "./rh-pre-approved";
 import { RhSettingsPage } from "./rh-settings";
 
 type RhModuleProps = {
@@ -83,6 +84,12 @@ export function RhModule({
         initialStatus={statusFilter}
         onOpenApplication={onOpenApplication}
       />
+    );
+  }
+
+  if (activeId === "rh_pre_approved") {
+    return (
+      <RhPreApprovedPage onOpenApplication={onOpenApplication} />
     );
   }
 

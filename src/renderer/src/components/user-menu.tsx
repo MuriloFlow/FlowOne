@@ -95,7 +95,7 @@ export function UserMenu({ user, loading = false, compact = false, onSignOut }: 
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute right-0 bottom-[calc(100%+8px)] left-0 overflow-hidden rounded-[12px] border border-white/[0.06] bg-[#151515] p-1.5 shadow-[0_16px_48px_rgba(0,0,0,0.45)]"
+            className="absolute right-0 bottom-[calc(100%+8px)] left-0 z-[120] overflow-hidden rounded-[12px] border border-white/[0.06] bg-[#151515] p-1.5 shadow-[0_16px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl"
           >
             <div className="mb-1 flex items-center gap-2.5 rounded-[8px] px-2 py-2">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#F0EFEC]/8 text-[11px] font-medium text-[#F0EFEC]/60">

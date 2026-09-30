@@ -426,6 +426,73 @@ export async function fetchInterviewsWithContext(): Promise<
   >;
 }
 
+// ---------------- Pré-aprovados (fluxo de contratação) ----------------
+
+/** Unidade fixa do formulário de cadastro enquanto não há multi-loja no RH. */
+export const RH_FORM_STORE_NAME = "Loja 41";
+
+/** Pré-aprovados = candidaturas com status "Contratado". */
+export async function fetchPreApprovedApplications(): Promise<RhApplication[]> {
+  await ensureSession();
+  const { data, error } = await supabase
+    .from("rh_applications")
+    .select(APPLICATION_SELECT)
+    .eq("status", "hired")
+    .order("updated_at", { ascending: false });
+  if (error) return fatal(error, "Erro ao carregar pré-aprovados.");
+  return (data ?? []) as unknown as RhApplication[];
+}
+
+/** Patch genérico do fluxo de onboarding (função, formulário, confirmação). */
+export async function updateApplicationOnboarding(
+  id: string,
+  patch: Partial<{
+    pre_hire_role: string | null;
+    form_url_sent: boolean;
+    form_url_sent_at: string | null;
+    data_confirmed: boolean;
+  }>,
+): Promise<void> {
+  await ensureSession();
+  const { error } = await supabase
+    .from("rh_applications")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return fatal(error, "Erro ao salvar os dados de contratação.");
+}
+
+/**
+ * Upload do RG frontal do pré-aprovado (pasta onb/ do bucket rh-files).
+ * RLS: rh_files_admin_insert (rh_is_admin). Retorna o caminho gravado.
+ */
+export async function uploadPreHireDocument(
+  applicationId: string,
+  dataUrl: string,
+): Promise<string> {
+  await ensureSession();
+  const match = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(dataUrl);
+  if (!match) throw new RhApiError("Formato de imagem inválido.");
+  const [, mime, base64] = match;
+  const path = `onb/${applicationId}/rg-front-${Date.now()}.jpg`;
+  const bytes = Uint8Array.from(atob(base64), (char) =>
+    char.charCodeAt(0),
+  );
+  const { error } = await supabase.storage.from("rh-files").upload(path, bytes, {
+    cacheControl: "3600",
+    upsert: false,
+    contentType: mime,
+  });
+  if (error) {
+    const message = error.message.toLowerCase();
+    if (message.includes("too large"))
+      throw new RhApiError("Imagem muito grande. Tente outra foto.");
+    if (message.includes("mime"))
+      throw new RhApiError("Formato não permitido. Envie JPG ou PNG.");
+    throw new RhApiError("Não foi possível enviar a imagem do RG.");
+  }
+  return path;
+}
+
 // ---------------- Resume (currículo) ----------------
 
 export async function createResumeSignedUrl(

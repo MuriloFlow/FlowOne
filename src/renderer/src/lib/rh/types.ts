@@ -122,6 +122,13 @@ export type RhApplication = {
     ai_band?: string;
   } | null;
   current_stage: string | null;
+  /** Função definida pelo RH (fluxo pré-aprovados; pode diferir da vaga). */
+  pre_hire_role: string | null;
+  /** RH já enviou o link do formulário de cadastro (Google Forms). */
+  form_url_sent: boolean;
+  form_url_sent_at: string | null;
+  /** RH confirmou os dados cadastrais (nome/CPF/RG) do pré-aprovado. */
+  data_confirmed: boolean;
   created_at: string;
   updated_at: string;
   job?: RhJob | null;
