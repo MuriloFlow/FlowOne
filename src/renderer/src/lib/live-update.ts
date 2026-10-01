@@ -18,6 +18,7 @@ const MANIFEST_URL = `https://github.com/${OWNER}/${REPO}/releases/latest/downlo
 const RELEASES_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=20`
 const LAST_KEY = 'flow.mobile.applied-version'
 const ROLLBACK_KEY = 'flow.mobile.rollback-count'
+const OTA_ERROR_KEY = 'flow.mobile.ota-error'
 // Direto: o zip mais recente sem passar pela API do GitHub (que tem limite
 // anônimo de 60 req/h e derrubava a checagem com o polling).
 const LATEST_ZIP_URL = `https://github.com/${OWNER}/${REPO}/releases/latest/download/mobile-www.zip`
@@ -189,13 +190,25 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
   applying = true
   try {
     const { CapacitorUpdater } = await import('@capgo/capacitor-updater')
-    const bundle = await CapacitorUpdater.download({
-      url: manifest.url,
-      version: manifest.version
-    })
+    let bundle
+    try {
+      bundle = await CapacitorUpdater.download({
+        url: manifest.url,
+        version: manifest.version
+      })
+    } catch (primaryError) {
+      // A URL do manifest pode estar indisponível: tenta o zip do release
+      // "latest" direto antes de desistir.
+      if (manifest.url === LATEST_ZIP_URL) throw primaryError
+      bundle = await CapacitorUpdater.download({
+        url: LATEST_ZIP_URL,
+        version: manifest.version
+      })
+    }
     try {
       const { Preferences } = await import('@capacitor/preferences')
       await Preferences.set({ key: LAST_KEY, value: manifest.version })
+      await Preferences.remove({ key: OTA_ERROR_KEY })
     } catch {
       /* segue */
     }
@@ -214,6 +227,17 @@ async function downloadAndApply(manifest: MobileManifest): Promise<void> {
   } catch (error) {
     lastFailureAt = Date.now()
     console.warn('[live-update] apply', error)
+    // Diagnóstico visível na telemetria (flow_device_pings.device_label).
+    try {
+      const { Preferences } = await import('@capacitor/preferences')
+      const message = error instanceof Error ? error.message : String(error)
+      await Preferences.set({
+        key: OTA_ERROR_KEY,
+        value: `ota ${manifest.version} falhou: ${message.slice(0, 110)}`
+      })
+    } catch {
+      /* sem Preferences: segue */
+    }
   } finally {
     applying = false
   }
@@ -245,15 +269,22 @@ async function resetIfRolledBack(): Promise<string | null> {
   return null
 }
 
-async function rollbackCountFor(version: string): Promise<number> {
+async function rollbackInfoFor(version: string): Promise<{ count: number; at: number }> {
   try {
     const { Preferences } = await import('@capacitor/preferences')
     const raw = (await Preferences.get({ key: ROLLBACK_KEY })).value
-    const parsed = raw ? (JSON.parse(raw) as { version?: string; count?: number }) : null
-    return parsed && parsed.version === version ? Number(parsed.count) || 0 : 0
+    const parsed = raw
+      ? (JSON.parse(raw) as { version?: string; count?: number; at?: number })
+      : null
+    if (!parsed || parsed.version !== version) return { count: 0, at: 0 }
+    return { count: Number(parsed.count) || 0, at: Number(parsed.at) || 0 }
   } catch {
-    return 0
+    return { count: 0, at: 0 }
   }
+}
+
+async function rollbackCountFor(version: string): Promise<number> {
+  return (await rollbackInfoFor(version)).count
 }
 
 async function bumpRollbackCount(version: string): Promise<void> {
@@ -261,7 +292,10 @@ async function bumpRollbackCount(version: string): Promise<void> {
   try {
     const { Preferences } = await import('@capacitor/preferences')
     const count = (await rollbackCountFor(version)) + 1
-    await Preferences.set({ key: ROLLBACK_KEY, value: JSON.stringify({ version, count }) })
+    await Preferences.set({
+      key: ROLLBACK_KEY,
+      value: JSON.stringify({ version, count, at: Date.now() })
+    })
   } catch {
     /* ignore */
   }
@@ -272,10 +306,22 @@ async function reportMobileVersion(): Promise<void> {
   try {
     const appVersion = await runningVersion()
     if (appVersion === '0.0.0') return
+    // device_label carrega o bundle ativo e o último erro de OTA (se houver):
+    // é assim que a frota fica diagnosticável sem acesso ao aparelho.
+    let label = 'FLOW Mobile'
+    try {
+      const { Preferences } = await import('@capacitor/preferences')
+      const bundle = (await Preferences.get({ key: LAST_KEY })).value
+      label = `FLOW Mobile · bundle ${bundle || appVersion}`
+      const errorRaw = (await Preferences.get({ key: OTA_ERROR_KEY })).value
+      if (errorRaw) label += ` · ${errorRaw}`
+    } catch {
+      /* segue com o label padrão */
+    }
     await operations().reportAppVersion({
       platform: 'MOBILE',
       appVersion,
-      deviceLabel: 'FLOW Mobile'
+      deviceLabel: label.slice(0, 180)
     })
   } catch {
     /* sem sessão ainda — tenta na próxima checagem */
@@ -310,8 +356,12 @@ async function checkAndApply(): Promise<void> {
     const rolledBackFrom = await resetIfRolledBack()
     if (rolledBackFrom !== null) {
       await bumpRollbackCount(rolledBackFrom)
-      if ((await rollbackCountFor(manifest.version)) >= 2) {
-        console.warn('[live-update]', manifest.version, 'rollbackou 2x — aguardando versão nova')
+      const rollback = await rollbackInfoFor(manifest.version)
+      // 2 rollbacks travam a versão — mas só por 24h: se o crash foi
+      // transitório (zip corrompido no download, por ex.), o aparelho não
+      // fica preso para sempre esperando uma versão nova.
+      if (rollback.count >= 2 && Date.now() - rollback.at < 24 * 60 * 60_000) {
+        console.warn('[live-update]', manifest.version, 'rollbackou 2x — nova tentativa em até 24h')
         return
       }
     }

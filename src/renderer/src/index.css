@@ -101,11 +101,11 @@ html.flow-signature-active body {
      shrink-0). */
   .sidebar-scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgba(240, 239, 236, 0.14) transparent;
+    scrollbar-color: rgba(240, 239, 236, 0.24) transparent;
   }
 
   .sidebar-scroll::-webkit-scrollbar {
-    width: 4px;
+    width: 5px;
   }
 
   .sidebar-scroll::-webkit-scrollbar-track {
@@ -113,12 +113,12 @@ html.flow-signature-active body {
   }
 
   .sidebar-scroll::-webkit-scrollbar-thumb {
-    background: rgba(240, 239, 236, 0.14);
+    background: rgba(240, 239, 236, 0.24);
     border-radius: 999px;
   }
 
   .sidebar-scroll:hover::-webkit-scrollbar-thumb {
-    background: rgba(240, 239, 236, 0.3);
+    background: rgba(240, 239, 236, 0.42);
   }
 
   *:focus,

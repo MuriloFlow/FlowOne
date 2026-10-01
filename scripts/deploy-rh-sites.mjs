@@ -91,8 +91,18 @@ async function uploadDir(localDir, remoteDir) {
 }
 
 const CADDY_BLOCK = `
-# Job board publico (vagas.flwdesk.com)
+# Job board publico (vagas.flwdesk.com) — HTTPS falha enquanto o AAA record
+# (Cloudflare) existir; o canônico é vagas.db.flwdesk.com abaixo.
 http://vagas.flwdesk.com, https://vagas.flwdesk.com {
+	import secure_headers
+	encode gzip
+	root * /usr/share/caddy/rh/vagas-site
+	try_files {path} /index.html
+	file_server
+}
+
+# Job board (vagas.db.flwdesk.com) — DNS *.db.flwdesk.com → VPS, SSL normal.
+http://vagas.db.flwdesk.com, https://vagas.db.flwdesk.com {
 	import secure_headers
 	encode gzip
 	root * /usr/share/caddy/rh/vagas-site
@@ -113,9 +123,9 @@ http://rhinteligente.db.flwdesk.com, https://rhinteligente.db.flwdesk.com {
 http://rh.flwdesk.com, https://rh.flwdesk.com {
 	import secure_headers
 	@root path /
-	redir @root https://vagas.flwdesk.com/ permanent
+	redir @root https://vagas.db.flwdesk.com/ permanent
 	@notdigaspi not path /digaspi*
-	redir @notdigaspi https://vagas.flwdesk.com{uri} permanent
+	redir @notdigaspi https://vagas.db.flwdesk.com{uri} permanent
 	encode gzip
 	root * /usr/share/caddy/rh
 	try_files {path} /digaspi/index.html
@@ -125,20 +135,38 @@ http://rh.flwdesk.com, https://rh.flwdesk.com {
 
 async function patchCaddy() {
   // O Caddyfile REAL vive no HOST (/opt/supabase-src/docker/Caddyfile.projects),
-  // bind-mountado no container. Escrever /etc/caddy/Caddyfile dentro do
-  // container falha (read-only fs).
+  // bind-mountado de ARQUIVO no container. NUNCA usar `sed -i` (troca o inode e
+  // o container fica órfão do conteúdo antigo): editar com `cat tmp > file`
+  // (mesmo inode) e conferir o conteúdo DENTRO do container.
   const HOST_FILE = '/opt/supabase-src/docker/Caddyfile.projects'
-  const check = await run(`grep -c "vagas.flwdesk.com" ${HOST_FILE} || true`)
+  const check = await run(`grep -c "vagas.db.flwdesk.com" ${HOST_FILE} || true`)
   if (Number(check.out.trim() || '0') > 0) {
     console.log('caddy: blocos novos já presentes')
-    return
-  }
-  await run(`cp ${HOST_FILE} ${HOST_FILE}.bak-$(date +%s)`)
-  const result = await run(`cat >> ${HOST_FILE} <<'CADDY_EOF'
+  } else {
+    await run(`cp ${HOST_FILE} ${HOST_FILE}.bak-$(date +%s)`)
+    // Corrige redirects antigos (vagas.flwdesk.com → vagas.db.flwdesk.com)
+    // preservando o inode: sed > tmp && cat tmp > arquivo.
+    await run(
+      `sed 's|redir @root https://vagas.flwdesk.com/|redir @root https://vagas.db.flwdesk.com/|; s|redir @notdigaspi https://vagas.flwdesk.com{uri}|redir @notdigaspi https://vagas.db.flwdesk.com{uri}|' ${HOST_FILE} > /tmp/Caddyfile.projects.tmp && cat /tmp/Caddyfile.projects.tmp > ${HOST_FILE}`
+    )
+    const result = await run(`cat >> ${HOST_FILE} <<'CADDY_EOF'
 ${CADDY_BLOCK}
 CADDY_EOF`)
-  if (result.code !== 0) throw new Error(`append caddy: ${result.err}`)
-  console.log('caddy: blocos adicionados ao Caddyfile.projects (host)')
+    if (result.code !== 0) throw new Error(`append caddy: ${result.err}`)
+    console.log('caddy: blocos adicionados ao Caddyfile.projects (host)')
+  }
+
+  // O container vê o inode do bind; se divergir do host, reinicia o Caddy
+  // (re-resolve o bind) antes do validate/reload.
+  const hostHash = await run(`md5sum ${HOST_FILE} | cut -d' ' -f1`)
+  const containerHash = await run(
+    `docker exec project-gw md5sum /etc/caddy/Caddyfile | cut -d' ' -f1`
+  )
+  if (hostHash.out.trim() !== containerHash.out.trim()) {
+    console.log('caddy: bind divergente (inode) — reiniciando project-gw')
+    await run('docker restart project-gw')
+    await new Promise((resolve) => setTimeout(resolve, 4000))
+  }
 }
 
 async function reloadCaddy() {

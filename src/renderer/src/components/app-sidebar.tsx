@@ -180,7 +180,7 @@ export function AppSidebar({
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.26, ease }}
-                  className="relative overflow-hidden pl-[22px]"
+                  className="relative shrink-0 overflow-hidden pl-[22px]"
                 >
                   <span className="absolute top-2 bottom-2 left-[15px] w-px bg-white/[0.06]" aria-hidden />
                   {rhItems.map((item, index) => navButton(item, index, true))}
