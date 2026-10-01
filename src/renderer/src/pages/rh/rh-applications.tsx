@@ -17,9 +17,9 @@ import {
   addInternalNote,
   analyzeApplication,
   createInterview,
-  createResumeSignedUrl,
   deleteInternalNote,
-  extractResumeTextFromUrl,
+  downloadResumeFile,
+  extractResumeTextFromBuffer,
   fetchApplicationDetail,
   fetchApplications,
   fetchJobs,
@@ -39,6 +39,7 @@ import {
 } from "@/lib/rh/types";
 import { Dialog } from "@/components/ui/dialog";
 import { RhResumePreview } from "@/components/rh-resume-preview";
+import { RhDeleteDialog } from "./rh-delete-dialog";
 import { interviewInviteMessage, openWhatsApp } from "@/lib/rh/whatsapp";
 import { MessageCircle } from "lucide-react";
 import {
@@ -234,7 +235,7 @@ export function RhApplicationsPage({
           description="As candidaturas do portal público chegam automaticamente nesta central."
         />
       ) : (
-        <div className="space-y-2 pb-2">
+        <div className="space-y-2 pb-[4.5rem]">
           {filtered.map((application) => {
             const nextOptions = APPLICATION_PIPELINE_ORDER.filter(
               (option) => option !== application.status,
@@ -338,8 +339,8 @@ export function RhApplicationDetailPage({
   const [detail, setDetail] = useState<RhApplicationDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [resumeBlob, setResumeBlob] = useState<{
-    url: string;
+  const [resumeFileData, setResumeFileData] = useState<{
+    data: ArrayBuffer;
     mime: string;
   } | null>(null);
   const [resumeLoading, setResumeLoading] = useState(false);
@@ -382,15 +383,9 @@ export function RhApplicationDetailPage({
     setResumeLoading(true);
     setResumeError(null);
     try {
-      const signed = await createResumeSignedUrl(file.storage_path);
-      const response = await fetch(signed);
-      if (!response.ok) throw new Error("Não foi possível baixar o currículo.");
-      const blob = await response.blob();
-      const mime = file.mime_type || blob.type || "application/pdf";
-      setResumeBlob({
-        url: URL.createObjectURL(new Blob([blob], { type: mime })),
-        mime,
-      });
+      // Download autenticado (storage.download + fallbacks) — sem URL assinada.
+      const { data, mime } = await downloadResumeFile(file.storage_path);
+      setResumeFileData({ data, mime: file.mime_type || mime });
     } catch (openError) {
       setResumeError(
         openError instanceof Error
@@ -411,10 +406,11 @@ export function RhApplicationDetailPage({
       let resumeText: string | undefined;
       if (file) {
         try {
-          const url = await createResumeSignedUrl(file.storage_path);
-          resumeText = await extractResumeTextFromUrl(
-            url,
-            file.mime_type || "application/pdf",
+          // Mesmo caminho robusto do viewer (storage.download + fallbacks).
+          const { data, mime } = await downloadResumeFile(file.storage_path);
+          resumeText = await extractResumeTextFromBuffer(
+            data,
+            file.mime_type || mime,
           );
         } catch {
           resumeText = undefined;
@@ -480,7 +476,7 @@ export function RhApplicationDetailPage({
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pb-4 xl:grid-cols-[1.55fr_0.85fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pb-[4.5rem] xl:grid-cols-[1.55fr_0.85fr]">
         {/* ---------- Coluna principal ---------- */}
         <div className="min-w-0 space-y-3">
           <RhCard className="p-4">
@@ -760,15 +756,12 @@ export function RhApplicationDetailPage({
         />
       ) : null}
 
-      {resumeBlob ? (
+      {resumeFileData ? (
         <RhResumePreview
-          url={resumeBlob.url}
-          mime={resumeBlob.mime}
+          data={resumeFileData.data}
+          mime={resumeFileData.mime}
           fileName={resumeFile?.file_name ?? "Currículo"}
-          onClose={() => {
-            URL.revokeObjectURL(resumeBlob.url);
-            setResumeBlob(null);
-          }}
+          onClose={() => setResumeFileData(null)}
         />
       ) : null}
     </div>
@@ -881,6 +874,7 @@ function InterviewRow({
   onChanged: () => void;
 }) {
   const [savingResult, setSavingResult] = useState(false);
+  const [deletingInterview, setDeletingInterview] = useState(false);
 
   return (
     <div className="rounded-[10px] border border-white/[0.05] bg-white/[0.02] p-3">
@@ -936,11 +930,7 @@ function InterviewRow({
           </select>
           <button
             type="button"
-            onClick={async () => {
-              if (!window.confirm("Excluir esta entrevista?")) return;
-              await deleteInterview(interview.id).catch(() => undefined);
-              onChanged();
-            }}
+            onClick={() => setDeletingInterview(true)}
             aria-label="Excluir entrevista"
             className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 transition hover:bg-red-400/10 hover:text-red-300"
           >
@@ -953,6 +943,18 @@ function InterviewRow({
           {interview.result}
         </span>
       ) : null}
+
+      <RhDeleteDialog
+        open={deletingInterview}
+        title="Excluir entrevista"
+        message="Excluir a entrevista"
+        onClose={() => setDeletingInterview(false)}
+        onConfirm={async () => {
+          await deleteInterview(interview.id).catch(() => undefined);
+          setDeletingInterview(false);
+          onChanged();
+        }}
+      />
     </div>
   );
 }
@@ -1204,6 +1206,9 @@ function NotesSection({
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingNote, setDeletingNote] = useState<
+    RhApplicationDetail["notes"][number] | null
+  >(null);
 
   async function add(): Promise<void> {
     if (!content.trim()) return;
@@ -1285,11 +1290,7 @@ function NotesSection({
               </div>
               <button
                 type="button"
-                onClick={async () => {
-                  if (!window.confirm("Excluir esta observação?")) return;
-                  await deleteInternalNote(note.id).catch(() => undefined);
-                  onChanged();
-                }}
+                onClick={() => setDeletingNote(note)}
                 aria-label="Excluir observação"
                 className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[#F0EFEC]/25 transition hover:bg-red-400/10 hover:text-red-300"
               >
@@ -1299,6 +1300,19 @@ function NotesSection({
           ))}
         </div>
       )}
+
+      <RhDeleteDialog
+        open={Boolean(deletingNote)}
+        title="Excluir observação"
+        message="Excluir a observação"
+        onClose={() => setDeletingNote(null)}
+        onConfirm={async () => {
+          if (!deletingNote) return;
+          await deleteInternalNote(deletingNote.id).catch(() => undefined);
+          setDeletingNote(null);
+          onChanged();
+        }}
+      />
     </RhCard>
   );
 }

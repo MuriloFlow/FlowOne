@@ -8,6 +8,7 @@ import {
   ClipboardCopy,
   Loader2,
   MessageCircle,
+  Pencil,
   Search,
   Upload,
 } from "lucide-react";
@@ -34,8 +35,11 @@ import {
   RhInput,
   RhPageHeader,
   RhPrimaryButton,
+  RhSelect,
   RhSkeleton,
+  RhTextarea,
 } from "./rh-ui";
+import { CARDPLUS_STORE_ROLES } from "../../../../shared/operations";
 
 // ============================================================
 // LISTA
@@ -135,7 +139,7 @@ export function RhPreApprovedPage({
           description='Quando você marcar uma candidatura como "Contratado", ela aparece nesta lista para o onboarding.'
         />
       ) : (
-        <div className="space-y-2 pb-2">
+        <div className="space-y-2 pb-[4.5rem]">
           {filtered.map((application) => {
             const formSent = application.form_url_sent;
             const confirmed = application.data_confirmed;
@@ -272,13 +276,30 @@ function FormSendModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [message, setMessage] = useState(
+    preHireFormMessage({
+      candidateName: application.candidate?.full_name ?? "Candidato",
+      storeName,
+      role: defaultRole.trim() || "a definir",
+    }),
+  );
 
   const phone = application.candidate?.phone ?? null;
-  const message = preHireFormMessage({
-    candidateName: application.candidate?.full_name ?? "Candidato",
-    storeName,
-    role: role.trim() || "a definir",
-  });
+
+  /** Regenera a mensagem quando a função muda (só se não editada à mão). */
+  function changeRole(value: string): void {
+    setRole(value);
+    if (!editing) {
+      setMessage(
+        preHireFormMessage({
+          candidateName: application.candidate?.full_name ?? "Candidato",
+          storeName,
+          role: value.trim() || "a definir",
+        }),
+      );
+    }
+  }
 
   async function openWhatsAppAndMark(): Promise<void> {
     if (!phone) {
@@ -326,24 +347,54 @@ function FormSendModal({
           <RhField label="Função da pessoa">
             <RhInput
               value={role}
-              onChange={setRole}
+              onChange={changeRole}
               placeholder="Ex.: Atendente"
               maxLength={80}
             />
           </RhField>
         </div>
         <div className="relative">
-          <pre className="max-h-56 overflow-y-auto rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-3 font-sans text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#F0EFEC]/75">
-            {message}
-          </pre>
-          <button
-            type="button"
-            onClick={() => void navigator.clipboard.writeText(message)}
-            title="Copiar mensagem"
-            className="absolute top-2 right-2 flex items-center gap-1 rounded-[7px] border border-white/[0.08] bg-[#171717]/90 px-2 py-1 text-[11px] text-[#F0EFEC]/60 transition hover:bg-white/[0.08]"
-          >
-            <ClipboardCopy className="size-3" /> Copiar
-          </button>
+          {editing ? (
+            <RhTextarea
+              value={message}
+              onChange={setMessage}
+              rows={10}
+            />
+          ) : (
+            <pre className="max-h-56 overflow-y-auto rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-3 font-sans text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#F0EFEC]/75">
+              {message}
+            </pre>
+          )}
+          <div className="absolute top-2 right-2 flex items-center gap-1">
+            {!editing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  title="Editar mensagem"
+                  className="flex items-center gap-1 rounded-[7px] border border-white/[0.08] bg-[#171717]/90 px-2 py-1 text-[11px] text-[#F0EFEC]/60 transition hover:bg-white/[0.08]"
+                >
+                  <Pencil className="size-3" /> Editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard.writeText(message)}
+                  title="Copiar mensagem"
+                  className="flex items-center gap-1 rounded-[7px] border border-white/[0.08] bg-[#171717]/90 px-2 py-1 text-[11px] text-[#F0EFEC]/60 transition hover:bg-white/[0.08]"
+                >
+                  <ClipboardCopy className="size-3" /> Copiar
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-[7px] border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[11px] text-emerald-200/90 transition hover:bg-emerald-300/20"
+              >
+                Pronto
+              </button>
+            )}
+          </div>
         </div>
         {error ? <p className="text-[12px] text-red-300/80">{error}</p> : null}
         <div className="flex justify-end gap-2 pt-1">
@@ -387,6 +438,9 @@ function DataConfirmationModal({
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [cpf, setCpf] = useState("");
+  const [cardplusRole, setCardplusRole] = useState<string>(
+    CARDPLUS_STORE_ROLES[0],
+  );
   const [nameFromPortal, setNameFromPortal] = useState("");
   const [cpfFromPortal, setCpfFromPortal] = useState<string | null>(null);
   const [rgImage, setRgImage] = useState<string | null>(null);
@@ -412,6 +466,14 @@ function DataConfirmationModal({
         setNameFromPortal(candidate?.full_name ?? "");
         setCpf(candidate?.cpf ? formatCpf(candidate.cpf) : "");
         setCpfFromPortal(candidate?.cpf ?? null);
+        if (
+          candidate?.cardplus_role &&
+          (CARDPLUS_STORE_ROLES as readonly string[]).includes(
+            candidate.cardplus_role,
+          )
+        ) {
+          setCardplusRole(candidate.cardplus_role);
+        }
         setRgPathFromPortal(
           detail.application.rh_files?.find((file) =>
             (file.storage_path || "").includes("onb/"),
@@ -470,12 +532,12 @@ function DataConfirmationModal({
       }
       await updateApplicationOnboarding(applicationId, {
         data_confirmed: true,
-        pre_hire_role: undefined,
       });
       // Sincroniza o cadastro do candidato com os dados confirmados.
       await updateConfirmedCandidateData(applicationId, {
         full_name: name.trim(),
         cpf: cpf.replace(/\D/g, ""),
+        cardplus_role: cardplusRole,
       });
       onSaved(newPath ?? rgPathFromPortal ?? "ok");
     } catch (saveError) {
@@ -543,6 +605,20 @@ function DataConfirmationModal({
                 CPF informado no portal: {formatCpf(cpfFromPortal)}
               </p>
             ) : null}
+          </RhField>
+
+          <RhField
+            label="Cargo no Card+ (função operacional)"
+            hint="É o cargo que vale no Card+ — não o cargo FLOW."
+          >
+            <RhSelect
+              value={cardplusRole}
+              options={CARDPLUS_STORE_ROLES.map((role) => ({
+                value: role,
+                label: role,
+              }))}
+              onChange={setCardplusRole}
+            />
           </RhField>
 
           <RhField
@@ -643,10 +719,10 @@ async function registerOnboardingFile(
     );
 }
 
-/** Atualiza nome/CPF do candidato com os dados conferidos pelo RH. */
+/** Atualiza nome/CPF/cargo Card+ do candidato com os dados conferidos pelo RH. */
 async function updateConfirmedCandidateData(
   applicationId: string,
-  patch: { full_name?: string; cpf?: string },
+  patch: { full_name?: string; cpf?: string; cardplus_role?: string },
 ): Promise<void> {
   const { supabase } = await import("@/lib/supabase");
   const { data: application } = await supabase

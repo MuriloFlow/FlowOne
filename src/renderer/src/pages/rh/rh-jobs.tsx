@@ -32,6 +32,7 @@ import {
   type RhQuestionType,
 } from "@/lib/rh/types";
 import { Dialog } from "@/components/ui/dialog";
+import { RhDeleteDialog } from "./rh-delete-dialog";
 import { Label } from "@/components/ui/label";
 import {
   RhCard,
@@ -82,6 +83,7 @@ export function RhJobsPage({ onNewJob, onEditJob }: JobsListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<RhJob | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,12 +144,6 @@ export function RhJobsPage({ onNewJob, onEditJob }: JobsListProps) {
   }
 
   async function remove(job: RhJob): Promise<void> {
-    if (
-      !window.confirm(
-        `Excluir a vaga "${job.title}"? Esta ação não pode ser desfeita.`,
-      )
-    )
-      return;
     setBusyId(job.id);
     try {
       await deleteJob(job.id);
@@ -276,7 +272,7 @@ export function RhJobsPage({ onNewJob, onEditJob }: JobsListProps) {
                   </RhGhostButton>
                   <button
                     type="button"
-                    onClick={() => remove(job)}
+                    onClick={() => setDeleting(job)}
                     disabled={busyId === job.id}
                     aria-label="Excluir vaga"
                     className="flex size-8 items-center justify-center rounded-[8px] text-[#F0EFEC]/35 transition hover:bg-red-400/10 hover:text-red-300"
@@ -289,6 +285,19 @@ export function RhJobsPage({ onNewJob, onEditJob }: JobsListProps) {
           ))}
         </div>
       )}
+
+      <RhDeleteDialog
+        open={Boolean(deleting)}
+        title="Excluir vaga"
+        message="Excluir a vaga"
+        highlight={deleting?.title}
+        busy={busyId === deleting?.id}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => {
+          if (deleting) void remove(deleting);
+          setDeleting(null);
+        }}
+      />
     </div>
   );
 }
@@ -347,6 +356,9 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
   const [savedId, setSavedId] = useState<string | null>(isNew ? null : jobId);
   const [questions, setQuestions] = useState<RhQuestion[]>([]);
   const [questionModal, setQuestionModal] = useState(false);
+  const [deletingQuestion, setDeletingQuestion] = useState<RhQuestion | null>(
+    null,
+  );
 
   const formRef = useRef<HTMLDivElement>(null);
   const questionsRef = useRef<HTMLElement>(null);
@@ -507,8 +519,8 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
   }
 
   async function removeQuestion(question: RhQuestion): Promise<void> {
-    if (!window.confirm("Remover esta pergunta da vaga?")) return;
     await deleteQuestion(question.id).catch(() => undefined);
+    setDeletingQuestion(null);
     void loadQuestions();
   }
 
@@ -561,7 +573,8 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
 
       {error ? <RhErrorState message={error} /> : null}
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-4">
+      {/* pb-[4.5rem]: mesma folga do Kobbi FAB usada na página de Funcionários. */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-[4.5rem]">
         {/* ---------- Identificação ---------- */}
         <section className="rounded-[16px] border border-white/[0.045] bg-[#1A1A1A] px-5 py-4">
           <h2 className="mb-4 text-[15px] text-[#F0EFEC]/82">
@@ -760,6 +773,14 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
                   >
                     {question.active ? "ativa" : "off"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingQuestion(question)}
+                    aria-label="Remover pergunta"
+                    className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-[#F0EFEC]/30 transition hover:bg-red-400/10 hover:text-red-300"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 </div>
               )}
             />
@@ -809,6 +830,17 @@ export function RhJobEditorPage({ jobId, onBack, onSaved }: JobEditorProps) {
         onSubmit={async (input) => {
           await createQuestion({ ...input, scope: "JOB", job_id: savedId });
           void loadQuestions();
+        }}
+      />
+
+      <RhDeleteDialog
+        open={Boolean(deletingQuestion)}
+        title="Remover pergunta"
+        message="Remover a pergunta"
+        highlight={deletingQuestion?.label}
+        onClose={() => setDeletingQuestion(null)}
+        onConfirm={() => {
+          if (deletingQuestion) void removeQuestion(deletingQuestion);
         }}
       />
     </div>

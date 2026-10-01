@@ -91,6 +91,9 @@ export type RhCandidate = {
   state: string | null;
   linkedin_url: string | null;
   portfolio_url: string | null;
+  /** Cargo/função operacional no Card+ (definido na confirmação de dados). */
+  cardplus_role?: string | null;
+  auth_user_id?: string | null;
   zip_code?: string | null;
   street?: string | null;
   street_number?: string | null;

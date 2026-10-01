@@ -6,9 +6,11 @@ import HomePage from './public/HomePage'
 import JobDetailPage from './public/JobDetailPage'
 import ApplicationFormPage from './public/ApplicationFormPage'
 import SuccessPage from './public/SuccessPage'
+import CandidateAreaPage from './public/CandidateAreaPage'
 import { ToastProvider } from './components/ui/Kit'
+import { useBranding } from './lib/branding'
 
-// Router hash simples: #/ , #/vaga/:slug , #/candidatar/:slug , #/obrigado/:slug
+// Router hash: #/ , #/vaga/:slug , #/candidatar/:slug , #/obrigado , #/candidato
 
 function parseHash(): { name: string; param: string | null } {
   const raw = window.location.hash.replace(/^#/, '') || '/'
@@ -17,6 +19,7 @@ function parseHash(): { name: string; param: string | null } {
   if (parts[0] === 'vaga' && parts[1]) return { name: 'job', param: parts[1] }
   if (parts[0] === 'candidatar' && parts[1]) return { name: 'apply', param: parts[1] }
   if (parts[0] === 'obrigado') return { name: 'thanks', param: parts[1] ?? null }
+  if (parts[0] === 'candidato') return { name: 'candidate', param: null }
   return { name: 'home', param: null }
 }
 
@@ -35,6 +38,7 @@ function useHashRoute() {
 
 function App() {
   const route = useHashRoute()
+  const branding = useBranding()
   const navigate = useCallback((to: string) => {
     window.location.hash = to
   }, [])
@@ -44,6 +48,7 @@ function App() {
   else if (route.name === 'apply' && route.param)
     page = <ApplicationFormPage slug={route.param} navigate={navigate} />
   else if (route.name === 'thanks') page = <SuccessPage navigate={navigate} />
+  else if (route.name === 'candidate') page = <CandidateAreaPage branding={branding} />
   else page = <HomePage navigate={navigate} />
 
   return <PublicLayout>{page}</PublicLayout>

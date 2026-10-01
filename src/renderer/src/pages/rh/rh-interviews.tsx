@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronDown,
+  ClipboardCopy,
   Loader2,
   MessageCircle,
   NotebookPen,
+  Pencil,
   Search,
   Trash2,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   deleteInterview,
   fetchInterviewsWithContext,
@@ -14,6 +18,7 @@ import {
 import type { RhInterview } from "@/lib/rh/types";
 import { interviewInviteMessage, openWhatsApp } from "@/lib/rh/whatsapp";
 import { Dialog } from "@/components/ui/dialog";
+import { RhDeleteDialog } from "./rh-delete-dialog";
 import {
   RhApplicationStatusChip,
   RhCard,
@@ -35,6 +40,101 @@ type InterviewRow = RhInterview & {
   } | null;
 };
 
+const RESULT_OPTIONS = [
+  { value: "otimo", label: "Ótimo" },
+  { value: "bom", label: "Bom" },
+  { value: "ruim", label: "Ruim" },
+  { value: "no_show", label: "Não compareceu" },
+] as const;
+
+/** Select de resultado com o MESMO menu personalizado do launcher. */
+function RhResultSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  const current = RESULT_OPTIONS.find((option) => option.value === value);
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((currentOpen) => !currentOpen)}
+        className={`flex h-7 items-center gap-1.5 rounded-[7px] border px-2.5 text-[11.5px] font-medium transition ${
+          value
+            ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-200/90"
+            : "border-white/[0.08] bg-white/[0.03] text-[#F0EFEC]/70 hover:bg-white/[0.06]"
+        }`}
+      >
+        {current ? current.label : "Registrar resultado…"}
+        <ChevronDown
+          className={`size-3 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            initial={{ opacity: 0, y: 4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute top-[calc(100%+4px)] right-0 z-[120] w-44 overflow-hidden rounded-[10px] border border-white/[0.08] bg-[#151515] p-1 shadow-[0_16px_48px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+          >
+            {RESULT_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex h-8 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[12.5px] transition ${
+                  value === option.value
+                    ? "bg-white/[0.07] text-[#F0EFEC]/90"
+                    : "text-[#F0EFEC]/70 hover:bg-white/[0.05]"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+            {value ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                className="mt-0.5 flex h-8 w-full items-center gap-2 rounded-[7px] border-t border-white/[0.06] px-2.5 text-left text-[12px] text-red-300/70 transition hover:bg-red-400/10"
+              >
+                Limpar resultado
+              </button>
+            ) : null}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function RhInterviewsPage({
   onOpenApplication,
   authorName = "RH",
@@ -46,6 +146,8 @@ export function RhInterviewsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [whatsappRow, setWhatsappRow] = useState<InterviewRow | null>(null);
+  const [deletingRow, setDeletingRow] = useState<InterviewRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,8 +223,8 @@ export function RhInterviewsPage({
   }
 
   async function remove(row: InterviewRow): Promise<void> {
-    if (!window.confirm("Excluir esta entrevista?")) return;
     await deleteInterview(row.id).catch(() => undefined);
+    setDeletingRow(null);
     void load();
   }
 
@@ -187,25 +289,16 @@ export function RhInterviewsPage({
         </div>
         <div className="mt-2.5 flex items-center gap-1.5 border-t border-white/[0.04] pt-2.5">
           {row.application?.candidate?.phone ? (
-            <RhGhostButton
-              onClick={() =>
-                openWhatsApp(
-                  row.application!.candidate!.phone!,
-                  interviewInviteMessage({
-                    candidateName:
-                      row.application!.candidate!.full_name ?? "candidato",
-                    scheduledAt: row.scheduled_at,
-                    mode: row.mode,
-                    address: row.location,
-                    meetingUrl: row.meeting_url,
-                    interviewer: row.interviewer,
-                  }),
-                )
-              }
+            <span
               title="Abrir WhatsApp com a mensagem de confirmação pronta"
             >
-              <MessageCircle className="size-3.5" /> Enviar confirmação
-            </RhGhostButton>
+              <RhPrimaryButton
+                onClick={() => setWhatsappRow(row)}
+                className="h-7 px-2.5 text-[12px]"
+              >
+                <MessageCircle className="size-3.5" /> Enviar confirmação
+              </RhPrimaryButton>
+            </span>
           ) : null}
           <NoteButton
             applicationId={row.application?.id ?? null}
@@ -214,27 +307,10 @@ export function RhInterviewsPage({
             interviewAt={row.scheduled_at}
             onSaved={onNoteSaved}
           />
-          <select
+          <RhResultSelect
             value={row.result ?? ""}
-            onChange={(event) => void setResult(row, event.target.value)}
-            className="h-7 rounded-[7px] border border-white/[0.08] bg-white/[0.03] px-2 text-[11.5px] text-[#F0EFEC]/70 focus:outline-none"
-          >
-            <option value="" className="bg-[#1A1A1A]">
-              Registrar resultado…
-            </option>
-            <option value="otimo" className="bg-[#1A1A1A]">
-              Ótimo
-            </option>
-            <option value="bom" className="bg-[#1A1A1A]">
-              Bom
-            </option>
-            <option value="ruim" className="bg-[#1A1A1A]">
-              Ruim
-            </option>
-            <option value="no_show" className="bg-[#1A1A1A]">
-              Não compareceu
-            </option>
-          </select>
+            onChange={(value) => void setResult(row, value)}
+          />
           <span className="flex-1" />
           {row.result ? (
             <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] text-[#F0EFEC]/55 uppercase">
@@ -243,7 +319,7 @@ export function RhInterviewsPage({
           ) : null}
           <button
             type="button"
-            onClick={() => void remove(row)}
+            onClick={() => setDeletingRow(row)}
             aria-label="Excluir entrevista"
             className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 transition hover:bg-red-400/10 hover:text-red-300"
           >
@@ -320,7 +396,124 @@ export function RhInterviewsPage({
           ) : null}
         </div>
       )}
+
+      <RhDeleteDialog
+        open={Boolean(deletingRow)}
+        title="Excluir entrevista"
+        message="Excluir a entrevista de"
+        highlight={deletingRow?.application?.candidate?.full_name}
+        onClose={() => setDeletingRow(null)}
+        onConfirm={() => {
+          if (deletingRow) void remove(deletingRow);
+        }}
+      />
+
+      {whatsappRow?.application?.candidate?.phone ? (
+        <WhatsAppSendModal
+          phone={whatsappRow.application.candidate.phone}
+          candidateName={whatsappRow.application.candidate.full_name ?? "Candidato"}
+          initialMessage={interviewInviteMessage({
+            candidateName: whatsappRow.application.candidate.full_name ?? "candidato",
+            scheduledAt: whatsappRow.scheduled_at,
+            mode: whatsappRow.mode,
+            address: whatsappRow.location,
+            meetingUrl: whatsappRow.meeting_url,
+            interviewer: whatsappRow.interviewer,
+          })}
+          onClose={() => setWhatsappRow(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+// ============================================================
+// Modal de WhatsApp (igual Pré-Aprovados): mensagem editável + copiar +
+// abrir WhatsApp. Usado no "Enviar confirmação" das Entrevistas.
+// ============================================================
+
+export function WhatsAppSendModal({
+  phone,
+  candidateName,
+  initialMessage,
+  onClose,
+  onOpened,
+}: {
+  phone: string;
+  candidateName: string;
+  initialMessage: string;
+  onClose: () => void;
+  onOpened?: () => void;
+}) {
+  const [message, setMessage] = useState(initialMessage);
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <Dialog
+      open
+      wide
+      title="Enviar mensagem — WhatsApp"
+      description={`${candidateName} · ${phone} — revise, edite se quiser e envie.`}
+      onClose={onClose}
+    >
+      <div className="space-y-3.5 px-5 pb-5">
+        <div className="relative">
+          {editing ? (
+            <RhTextarea
+              value={message}
+              onChange={setMessage}
+              rows={10}
+            />
+          ) : (
+            <pre className="max-h-64 overflow-y-auto rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-3 font-sans text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#F0EFEC]/75">
+              {message}
+            </pre>
+          )}
+          <div className="absolute top-2 right-2 flex items-center gap-1">
+            {!editing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  title="Editar mensagem"
+                  className="flex items-center gap-1 rounded-[7px] border border-white/[0.08] bg-[#171717]/90 px-2 py-1 text-[11px] text-[#F0EFEC]/60 transition hover:bg-white/[0.08]"
+                >
+                  <Pencil className="size-3" /> Editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard.writeText(message)}
+                  title="Copiar mensagem"
+                  className="flex items-center gap-1 rounded-[7px] border border-white/[0.08] bg-[#171717]/90 px-2 py-1 text-[11px] text-[#F0EFEC]/60 transition hover:bg-white/[0.08]"
+                >
+                  <ClipboardCopy className="size-3" /> Copiar
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-[7px] border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[11px] text-emerald-200/90 transition hover:bg-emerald-300/20"
+              >
+                Pronto
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <RhGhostButton onClick={onClose}>Agora não</RhGhostButton>
+          <RhPrimaryButton
+            onClick={() => {
+              openWhatsApp(phone, message);
+              onOpened?.();
+              onClose();
+            }}
+          >
+            <MessageCircle className="size-3.5" /> Abrir WhatsApp
+          </RhPrimaryButton>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

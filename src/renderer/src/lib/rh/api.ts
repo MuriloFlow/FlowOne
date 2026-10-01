@@ -426,6 +426,105 @@ export async function fetchInterviewsWithContext(): Promise<
   >;
 }
 
+// ---------------- Branding (personalização do portal público) ----------------
+
+export type RhBranding = {
+  logo_url: string | null;
+  theme: "dark" | "light";
+  primary_color: string;
+  secondary_color: string;
+  footer_note: string;
+};
+
+export async function fetchBranding(): Promise<RhBranding> {
+  await ensureSession();
+  const { data, error } = await supabase
+    .from("flow_branding")
+    .select("*")
+    .eq("id", true)
+    .maybeSingle();
+  if (error) return fatal(error, "Erro ao carregar a personalização.");
+  return {
+    logo_url: (data?.logo_url as string | null) ?? null,
+    theme: (data?.theme as RhBranding["theme"]) ?? "dark",
+    primary_color: (data?.primary_color as string) ?? "#2EC97E",
+    secondary_color: (data?.secondary_color as string) ?? "#F0EFEC",
+    footer_note:
+      (data?.footer_note as string) ?? "RH Inteligente by Flowdesk Brasil®",
+  };
+}
+
+export async function saveBranding(input: RhBranding): Promise<void> {
+  await ensureSession();
+  const { error } = await supabase
+    .from("flow_branding")
+    .update({
+      logo_url: input.logo_url,
+      theme: input.theme,
+      primary_color: input.primary_color,
+      secondary_color: input.secondary_color,
+      footer_note: input.footer_note,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", true);
+  if (error) return fatal(error, "Erro ao salvar a personalização.");
+}
+
+/**
+ * Prepara a logo para salvar em flow_branding.logo_url como DATA URL.
+ *
+ * Antes subíamos em storage (rh-files/branding) — mas o bucket é privado e
+ * exigia URL assinada no app e URL pública (404) nos sites; além disso o
+ * upload dependia de policy de storage e falhava sem mensagem clara.
+ * Gravando o data URL direto na tabela (mesma policy do save que já
+ * funciona), o app E os portais públicos leem a logo sem storage.
+ *
+ * Imagens pequenas (< ~390KB) passam como vieram; maiores são reescala das
+ * via canvas para até 512px (PNG preserva transparência; cai para JPEG se o
+ * PNG ainda ficar grande demais).
+ */
+export async function prepareBrandingLogo(dataUrl: string): Promise<string> {
+  if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(dataUrl)) {
+    throw new RhApiError("Formato de imagem inválido — use PNG, JPG, WebP ou SVG.");
+  }
+  // SVG não passa por canvas (pode não ter dimensões intrínsecas) e é leve.
+  if (dataUrl.startsWith("data:image/svg")) return dataUrl;
+  if (dataUrl.length < 520_000) return dataUrl; // < ~390KB em binário
+
+  const decoded = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () =>
+      reject(
+        new RhApiError(
+          "Não foi possível processar a imagem — use PNG, JPG ou WebP.",
+        ),
+      );
+    image.src = dataUrl;
+  });
+
+  const maxSide = 512;
+  const ratio = Math.min(
+    1,
+    maxSide / Math.max(decoded.naturalWidth || 1, decoded.naturalHeight || 1),
+  );
+  const width = Math.max(1, Math.round((decoded.naturalWidth || 1) * ratio));
+  const height = Math.max(1, Math.round((decoded.naturalHeight || 1) * ratio));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new RhApiError("Canvas indisponível neste dispositivo.");
+  context.drawImage(decoded, 0, 0, width, height);
+
+  const png = canvas.toDataURL("image/png");
+  if (png.length < 1_200_000) return png; // preserva transparência
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(decoded, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.92);
+}
+
 // ---------------- Pré-aprovados (fluxo de contratação) ----------------
 
 /** Unidade fixa do formulário de cadastro enquanto não há multi-loja no RH. */
@@ -504,6 +603,62 @@ export async function createResumeSignedUrl(
     .createSignedUrl(storagePath, 3600);
   if (error) return fatal(error, "Erro ao abrir o currículo.");
   return data.signedUrl;
+}
+
+/**
+ * Download ROBUSTO do arquivo do currículo/RG.
+ * Caminho primário: storage.download() — vai pelo supabase-js autenticado
+ * (mesma origem, sem URL assinada para expirar/cors falhar).
+ * Fallback: URL assinada + fetch (caso o download direto falhe).
+ */
+export async function downloadResumeFile(
+  storagePath: string,
+): Promise<{ data: ArrayBuffer; mime: string }> {
+  await ensureSession();
+  const { data, error } = await supabase.storage
+    .from("rh-files")
+    .download(storagePath);
+  if (!error && data) {
+    return {
+      data: await data.arrayBuffer(),
+      mime: data.type || "application/pdf",
+    };
+  }
+  // Fallback 1: URL assinada.
+  try {
+    const signed = await createResumeSignedUrl(storagePath);
+    const response = await fetch(signed);
+    if (response.ok) {
+      const blob = await response.blob();
+      return {
+        data: await blob.arrayBuffer(),
+        mime: blob.type || "application/pdf",
+      };
+    }
+  } catch {
+    /* cai no erro abaixo */
+  }
+  // Fallback 2: URL assinada SEM query de download (alguns proxies trocam o
+  // Content-Disposition e quebram o fetch com `download=name` na URL).
+  try {
+    const signed = await createResumeSignedUrl(storagePath);
+    const clean = signed.split("?")[0];
+    const retry = await fetch(clean, { credentials: "omit" });
+    if (retry.ok) {
+      const blob = await retry.blob();
+      return {
+        data: await blob.arrayBuffer(),
+        mime: blob.type || "application/pdf",
+      };
+    }
+  } catch {
+    /* cai no erro abaixo */
+  }
+  throw new RhApiError(
+    error?.message?.includes("not found")
+      ? "Arquivo não encontrado no armazenamento — ele pode ter sido removido."
+      : "Não foi possível baixar o arquivo. Verifique sua conexão e tente novamente.",
+  );
 }
 
 // ---------------- Criteria (critérios avaliativos) ----------------
@@ -651,32 +806,77 @@ export async function analyzeApplication(
 
 // ---------------- Extração de texto (PDF/DOCX) para a IA ----------------
 
-export async function extractResumeTextFromUrl(
-  url: string,
+/**
+ * Extração de ALTA QUALIDADE para a IA:
+ * - agrupa itens de texto por linha (y) para preservar parágrafos;
+ * - reconstrói hífens de quebra ("expe- riência" → "experiência");
+ * - mantém espaços que o PDF separa (colunas de tabela);
+ * - limita em 80k caracteres (currículo inteiro entra com folga).
+ */
+export async function extractResumeTextFromBuffer(
+  buffer: ArrayBuffer,
   mime: string,
 ): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok)
-    throw new RhApiError("Não foi possível baixar o currículo para análise.");
-  const buffer = await response.arrayBuffer();
   if (mime.includes("pdf")) {
     // loadPdfJs registra o worker do pdf.js na main thread — obrigatório no
     // Electron empacotado (file://) e no WebView Android, onde new Worker
     // com URL de asset não funciona (sem isso a extração falha em silêncio).
     const pdfjs = await loadPdfJs();
-    const pdf = await pdfjs.getDocument({ data: buffer }).promise;
+    const doc = await pdfjs.getDocument({
+      data: buffer.slice(0),
+      useSystemFonts: true,
+    }).promise;
     let text = "";
     for (
       let page = 1;
-      page <= pdf.numPages && text.length < 60_000;
+      page <= doc.numPages && text.length < 80_000;
       page += 1
     ) {
-      const content = await pdf.getPage(page).then((p) => p.getTextContent());
-      text +=
-        content.items.map((item) => ("str" in item ? item.str : "")).join(" ") +
-        "\n";
+      const pageContent = await doc.getPage(page);
+      const content = await pageContent.getTextContent();
+      // Agrupa itens por linha (mesmo y aproximado) e monta o parágrafo.
+      type PdfItem = { str: string; transform: number[]; width: number };
+      const items = (content.items as unknown[]).filter((item): item is PdfItem => {
+        const candidate = item as { str?: unknown; transform?: unknown; width?: unknown };
+        return (
+          typeof candidate.str === "string" &&
+          (candidate.str as string).length > 0 &&
+          Array.isArray(candidate.transform)
+        );
+      });
+      const lines = new Map<number, { y: number; parts: Array<{ x: number; str: string; end: number }> }>();
+      for (const item of items) {
+        const y = Math.round(item.transform[5] / 2) * 2;
+        const x = item.transform[4];
+        const end = x + item.width;
+        const line = lines.get(y) ?? { y, parts: [] };
+        line.parts.push({ x, str: item.str, end });
+        lines.set(y, line);
+      }
+      const sorted = [...lines.values()].sort((a, b) => b.y - a.y);
+      for (const line of sorted) {
+        line.parts.sort((a, b) => a.x - b.x);
+        let lineText = "";
+        let previousEnd: number | null = null;
+        for (const part of line.parts) {
+          if (previousEnd !== null) {
+            const gap = part.x - previousEnd;
+            if (gap > 12) lineText += "  "; // coluna/tabela
+            else if (gap > 1.5 && !/\s$/.test(lineText)) lineText += " ";
+          }
+          lineText += part.str;
+          previousEnd = part.end;
+        }
+        text += lineText + "\n";
+      }
+      text += "\n";
     }
-    return text.trim();
+    // Reconstrói palavras quebradas por hífen no fim da linha.
+    return text
+      .replace(/(\w)-\s*\n\s*(\w)/g, "$1$2")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   }
   if (mime.includes("wordprocessingml") || mime.includes("msword")) {
     const mammoth = await import("mammoth/mammoth.browser");

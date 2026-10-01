@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Download,
   FileText,
@@ -6,6 +6,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Upload,
 } from "lucide-react";
 import {
   createCriterion,
@@ -13,9 +14,12 @@ import {
   deleteCriterion,
   deleteQuestion,
   fetchAiRules,
+  fetchBranding,
   fetchCriteria,
   fetchQuestions,
+  saveBranding,
   savePromptRules,
+  prepareBrandingLogo,
   updateCriterion,
   updateQuestion,
 } from "@/lib/rh/api";
@@ -40,8 +44,9 @@ import {
   RhSkeleton,
 } from "./rh-ui";
 import { QuestionModal } from "./rh-jobs";
+import { RhDeleteDialog } from "./rh-delete-dialog";
 
-type Tab = "questions" | "criteria" | "ai";
+type Tab = "questions" | "criteria" | "ai" | "branding";
 
 export function RhSettingsPage() {
   const [tab, setTab] = useState<Tab>("questions");
@@ -50,7 +55,7 @@ export function RhSettingsPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <RhPageHeader
         title="Configurações"
-        subtitle="Perguntas globais, critérios avaliativos e regras da IA."
+        subtitle="Perguntas globais, critérios avaliativos, regras da IA e personalização do portal."
       />
 
       <div className="mb-4 flex gap-1">
@@ -59,6 +64,7 @@ export function RhSettingsPage() {
             ["questions", "Perguntas Globais"],
             ["criteria", "Critérios Avaliativos"],
             ["ai", "Regras da IA"],
+            ["branding", "Personalização"],
           ] as Array<[Tab, string]>
         ).map(([value, label]) => (
           <button
@@ -80,6 +86,7 @@ export function RhSettingsPage() {
         {tab === "questions" ? <GlobalQuestions /> : null}
         {tab === "criteria" ? <CriteriaManager /> : null}
         {tab === "ai" ? <AiRulesManager /> : null}
+        {tab === "branding" ? <BrandingManager /> : null}
       </div>
     </div>
   );
@@ -93,6 +100,9 @@ function GlobalQuestions() {
   const [questions, setQuestions] = useState<RhQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingQuestion, setDeletingQuestion] = useState<RhQuestion | null>(
+    null,
+  );
   const [modal, setModal] = useState<
     { mode: "create" } | { mode: "edit"; question: RhQuestion } | null
   >(null);
@@ -138,13 +148,8 @@ function GlobalQuestions() {
   }
 
   async function remove(question: RhQuestion): Promise<void> {
-    if (
-      !window.confirm(
-        "Excluir esta pergunta global? Ela sai de todas as vagas.",
-      )
-    )
-      return;
     await deleteQuestion(question.id).catch(() => undefined);
+    setDeletingQuestion(null);
     void load();
   }
 
@@ -179,7 +184,7 @@ function GlobalQuestions() {
         <RhOrderedList
           items={questions}
           onMove={move}
-          onRemove={(question) => void remove(question)}
+          onRemove={(question) => setDeletingQuestion(question)}
           render={(question) => (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-[13px] text-[#F0EFEC]/82">
@@ -227,6 +232,17 @@ function GlobalQuestions() {
           }}
         />
       ) : null}
+
+      <RhDeleteDialog
+        open={Boolean(deletingQuestion)}
+        title="Excluir pergunta global"
+        message="Excluir a pergunta"
+        highlight={deletingQuestion?.label}
+        onClose={() => setDeletingQuestion(null)}
+        onConfirm={() => {
+          if (deletingQuestion) void remove(deletingQuestion);
+        }}
+      />
       {modal?.mode === "edit" ? (
         <QuestionModal
           open
@@ -260,6 +276,9 @@ function CriteriaManager() {
   const [criteria, setCriteria] = useState<RhCriterion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingCriterion, setDeletingCriterion] = useState<RhCriterion | null>(
+    null,
+  );
   const [modal, setModal] = useState<
     { mode: "create" } | { mode: "edit"; criterion: RhCriterion } | null
   >(null);
@@ -335,11 +354,7 @@ function CriteriaManager() {
                 </button>
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (!window.confirm("Excluir este critério?")) return;
-                    await deleteCriterion(criterion.id).catch(() => undefined);
-                    void load();
-                  }}
+                  onClick={() => setDeletingCriterion(criterion)}
                   aria-label="Excluir critério"
                   className="flex size-7 items-center justify-center rounded-[7px] text-[#F0EFEC]/30 transition hover:bg-red-400/10 hover:text-red-300"
                 >
@@ -374,6 +389,20 @@ function CriteriaManager() {
           }}
         />
       ) : null}
+
+      <RhDeleteDialog
+        open={Boolean(deletingCriterion)}
+        title="Excluir critério"
+        message="Excluir o critério"
+        highlight={deletingCriterion?.label}
+        onClose={() => setDeletingCriterion(null)}
+        onConfirm={async () => {
+          if (!deletingCriterion) return;
+          await deleteCriterion(deletingCriterion.id).catch(() => undefined);
+          setDeletingCriterion(null);
+          void load();
+        }}
+      />
     </div>
   );
 }
@@ -742,4 +771,265 @@ function AiRulesManager() {
       </RhCard>
     </div>
   );
+}
+
+// ============================================================
+// Personalização — logo, tema e cores do portal público
+// (rh.flwdesk.com/digaspi + vagas.flwdesk.com) via flow_branding.
+// ============================================================
+
+const DEFAULT_FOOTER_NOTE = "RH Inteligente by Flowdesk Brasil®";
+
+function BrandingManager() {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [primaryColor, setPrimaryColor] = useState("#2EC97E");
+  const [secondaryColor, setSecondaryColor] = useState("#F0EFEC");
+  const [footerNote, setFooterNote] = useState(DEFAULT_FOOTER_NOTE);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const branding = await fetchBranding();
+      setLogoUrl(branding.logo_url);
+      setLogoPreview(null);
+      setTheme(branding.theme);
+      setPrimaryColor(branding.primary_color);
+      setSecondaryColor(branding.secondary_color);
+      setFooterNote(branding.footer_note || DEFAULT_FOOTER_NOTE);
+      setError(null);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error ? loadError.message : "Erro ao carregar.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function chooseLogo(file: File | null): Promise<void> {
+    if (!file) return;
+    setError(null);
+    try {
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+        reader.readAsDataURL(file);
+      });
+      const prepared = await prepareBrandingLogo(dataUrl);
+      setLogoPreview(prepared);
+      setLogoUrl(prepared);
+      setSaved(false);
+    } catch (logoError) {
+      setError(
+        logoError instanceof Error ? logoError.message : "Erro na logo.",
+      );
+    }
+  }
+
+  async function submit(): Promise<void> {
+    setSaving(true);
+    setError(null);
+    try {
+      await saveBranding({
+        logo_url: logoUrl,
+        theme,
+        primary_color: primaryColor,
+        secondary_color: secondaryColor,
+        footer_note: footerNote.trim() || DEFAULT_FOOTER_NOTE,
+      });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error ? saveError.message : "Erro ao salvar.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <RhSkeleton className="h-[280px]" />;
+
+  return (
+    <div className="space-y-3">
+      <RhCard className="p-4">
+        <h2 className="text-[15px] text-[#F0EFEC]/82">
+          Logo do portal (header e footer)
+        </h2>
+        <p className="mt-1 text-[12px] text-[#F0EFEC]/35">
+          PNG, JPG ou WebP — aparece no topo "Faça parte do time" e no rodapé
+          dos portais públicos.
+        </p>
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          className="hidden"
+          onChange={(event) => {
+            void chooseLogo(event.target.files?.[0] ?? null);
+            event.target.value = "";
+          }}
+        />
+        <div className="mt-3 flex items-center gap-3">
+          <div className="flex h-[72px] w-[160px] items-center justify-center overflow-hidden rounded-[10px] border border-dashed border-white/[0.12] bg-white/[0.02]">
+            {logoPreview || logoUrl ? (
+              <img
+                src={logoPreview ?? signedBrandingLogoUrl(logoUrl)}
+                alt="Logo"
+                className="max-h-full max-w-full object-contain"
+                onError={() => setLogoUrl(null)}
+              />
+            ) : (
+              <span className="px-2 text-center text-[11px] text-[#F0EFEC]/30">
+                Sem logo — usa "FLOW" como texto
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <RhGhostButton onClick={() => logoInputRef.current?.click()}>
+              <Upload className="size-3.5" /> Escolher logo
+            </RhGhostButton>
+            {logoUrl ? (
+              <RhGhostButton
+                tone="danger"
+                onClick={() => {
+                  setLogoUrl(null);
+                  setLogoPreview(null);
+                }}
+              >
+                Remover
+              </RhGhostButton>
+            ) : null}
+          </div>
+        </div>
+      </RhCard>
+
+      <RhCard className="p-4">
+        <h2 className="text-[15px] text-[#F0EFEC]/82">Aparência</h2>
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <RhField
+            label="Tema"
+            hint="Dark = cores do FLOW; Light = fundo claro e cards brancos."
+          >
+            <RhSelect
+              value={theme}
+              options={[
+                { value: "dark", label: "Dark (padrão FLOW)" },
+                { value: "light", label: "Light (claro)" },
+              ]}
+              onChange={(value) => setTheme(value as "dark" | "light")}
+            />
+          </RhField>
+          <RhField label="Cor primária (botões, links, destaques)">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={primaryColor}
+                onChange={(event) => setPrimaryColor(event.target.value)}
+                className="size-9 shrink-0 cursor-pointer rounded-[8px] border border-white/[0.08] bg-white/[0.03] p-1"
+              />
+              <RhInput
+                value={primaryColor}
+                onChange={(value) => setPrimaryColor(value)}
+                placeholder="#2EC97E"
+                maxLength={9}
+              />
+            </div>
+          </RhField>
+          <RhField label="Cor secundária (textos e detalhes)">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={secondaryColor}
+                onChange={(event) => setSecondaryColor(event.target.value)}
+                className="size-9 shrink-0 cursor-pointer rounded-[8px] border border-white/[0.08] bg-white/[0.03] p-1"
+              />
+              <RhInput
+                value={secondaryColor}
+                onChange={(value) => setSecondaryColor(value)}
+                placeholder="#F0EFEC"
+                maxLength={9}
+              />
+            </div>
+          </RhField>
+          <RhField label="Nota do rodapé">
+            <RhInput
+              value={footerNote}
+              onChange={setFooterNote}
+              maxLength={120}
+            />
+          </RhField>
+        </div>
+        <div className="mt-4 rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-3">
+          <p className="text-[11px] tracking-wide text-[#F0EFEC]/30 uppercase">
+            Prévia
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span
+              className="rounded-[8px] px-3 py-1.5 text-[12.5px] font-semibold text-[#111111]"
+              style={{ backgroundColor: primaryColor }}
+            >
+              Botão primário
+            </span>
+            <span
+              className="rounded-[8px] border px-3 py-1.5 text-[12.5px]"
+              style={{
+                borderColor: `${secondaryColor}33`,
+                color: secondaryColor,
+              }}
+            >
+              Texto secundário
+            </span>
+            <a
+              className="text-[12.5px] underline underline-offset-2"
+              style={{ color: primaryColor }}
+            >
+              Link de exemplo
+            </a>
+          </div>
+        </div>
+        {error ? (
+          <p className="mt-3 text-[12px] text-red-300/80">{error}</p>
+        ) : null}
+        <div className="mt-4 flex items-center justify-end gap-3">
+          {saved ? (
+            <span className="text-[12px] text-emerald-300/80">
+              Salvo — o portal atualiza na próxima visita.
+            </span>
+          ) : null}
+          <RhPrimaryButton onClick={() => void submit()} disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Salvar
+            personalização
+          </RhPrimaryButton>
+        </div>
+      </RhCard>
+    </div>
+  );
+}
+
+function signedBrandingLogoUrl(path: string | null): string {
+  if (!path) return "";
+  // Logo nova = data URL gravado na própria flow_branding; legacy = caminho
+  // do storage (mantido por compatibilidade com registros antigos).
+  if (path.startsWith("data:") || path.startsWith("http")) return path;
+  return `${supabaseUrlFromEnv()}/storage/v1/object/public/rh-files/${path}`;
+}
+
+function supabaseUrlFromEnv(): string {
+  return (
+    (import.meta.env?.VITE_SUPABASE_URL as string | undefined) ??
+    "https://flowone.db.flwdesk.com"
+  ).replace(/\/$/, "");
 }

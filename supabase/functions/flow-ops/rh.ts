@@ -11,6 +11,69 @@ type AssessPayload = {
   resumeText?: unknown
 }
 
+/** Idade exata (anos completos) a partir da data de nascimento ISO. */
+function computeAge(birthDateIso: string | null | undefined): number | null {
+  if (!birthDateIso) return null
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(birthDateIso)
+  if (!match) return null
+  const birth = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  if (Number.isNaN(birth.getTime())) return null
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const monthDiff = today.getMonth() - birth.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age -= 1
+  return age
+}
+
+// ============================================================
+// KNOWLEDGE BASE — especialista em seleção para o VAREJO
+// Referencial profissional de avaliação curricular por área.
+// ============================================================
+const RETAIL_KNOWLEDGE_BASE = `
+BASE DE CONHECIMENTO — SELEÇÃO PARA VAREJO BRASILEIRO (referencial sênior de RH)
+
+=== ATENDIMENTO / OPERAÇÃO DE LOJA ===
+Sinais FORTES: experiência direta em atendimento ao cliente (loja, SAC, food service, hospitalidade); menção a "cliente", "reclamação", "troca", "pós-venda"; trabalho com metas de serviço; elogios/premiações de atendimento; disponibilidade de horário (inclusive fins de semana — crítico no varejo); boa comunicação descrita na prática (ex.: "organizava eventos", "treinava novos atendentes").
+Sinais FRACOS: só experiência administrativa sem contato com público; nunca trabalhou sob metas; CURSOS de atendimento sem prática; atitudes passivas.
+Red flags: demissões recorrentes sem justificativa; relatos de conflito com clientes; “não gosto de lidar com público”.
+
+=== VENDAS ===
+Sinais FORTES: números concretos ("batia meta de R$ X", "120% da meta", "ticket médio", "conversão", "UPP/UPT", "peclagem", "adicionais", "garantias estendidas", "cartão da loja"); experiência em varejo de alto giro (magazine, eletro, moda, calçados, mercado); técnica de abordagem descrita (sondagem, oferta complementar); prêmios/campanhas internas; loja parceira de marcas.
+Sinais FRACOS: "ajudava nas vendas" sem número nenhum; só caixa (atende, mas não vende ativamente); experiência B2B que não traduza para loja física.
+Red flags: nenhuma meta em NENHUM emprego de vendas; troca frequente de setor sem evolução.
+
+=== VISUAL MERCHANDISING (VM) ===
+Sinais FORTES: termos técnicos — "vitrinismo", "layout", "planograma", "reunião de coleção", "mapa de loja", "comunicação visual", "precificação", "reposição por curva ABC"; formação em Design, Moda, Publicidade ou afins é PLUS forte; portfólio; experiência em loja de marca com padrão VM corporativo; menção a campanhas sazonais (Natal, Dia das Crianças, Black Friday).
+Sinais FRACOS: só "arrumava as prateleiras" (reposição ≠ VM); sem vocabulário técnico algum; não menciona parâmetro/planograma nenhum.
+Red flags: confunde VM com limpeza/organização geral.
+
+=== ESTOQUE / LOGÍSTICA DE LOJA ===
+Sinais FORTES: "recebimento", "conferência de nota", "inventário", "curva ABC", "SDM/SAP/OMIE", "controle de validade", "reposição", "breakage/perda", "organização de camara", "ciclos de inventário com acuracidade X%"; experiência em distribuição/centro de distribuição é válida; conhecimento de planilha (Excel intermediário+).
+Sinais FRACOS: só "ajudava a guardar mercadoria"; sem menção a sistema nenhum; não sabe o que é inventário.
+Red flags: perdas altas sem explicação; desorganização crônica relatada.
+
+=== GERÊNCIA / LIDERANÇA DE LOJA ===
+Sinais FORTES: gestão de EQUIPE (tamanho, escala, treinamento, feedback, demissão); resultado em números (faturamento, metas batidas consecutivas, redução de perdas, NPS); apertura/faturamento de loja; gestão de escala de folgas; contratação e integração de time; parceria com gerência regional; conhecimento de P&L simplificado (DRE da loja); experiência PREVIA como líder/adjunto antes de gerente (progressão saudável).
+Sinais FRACOS: "gerente" mas sem equipe, sem número, sem processo nenhum; promoção instantânea sem base; só gestão administrativa sem chão de loja.
+Red flags: alta rotatividade do time em todas as experiências; nunca desenvolveu ninguém; fala mal de ex-times de forma generalizada.
+
+=== TRAÇOS GERAIS QUE PESAM NO VAREJO ===
++ Disponibilidade total de horário (inclusive fim de semana e feriado — O VAREJO FUNCIONA)
++ Estabilidade (empregos de 1+ ano) com progressão
++ Proximidade/transporte viável até a loja (deslocamento impossível = problema real)
++ Primeiro emprego jovem com curso técnico/voluntariado pode PONTUAR em funções júnior
++ Vivência em caixa + venda + reposição = perfil "loja completa" valioso
+- Incompatibilidade clara de horário (só pode trabalhar meia-periodo sem dizer antes)
+- Saltos de emprego sem narrativa (3 empregos em 4 meses repetidamente)
+- Currículo 100% genérico (sem NENHUM dado da área)
+
+=== COMO PONTUAR (calibração) ===
+Requisito OBRIGATÓRIO não atendido (ex.: menor de 18 para função que exige, ou sem experiência NENHUMA onde é obrigatória) → ELIMINADO e diga qual requisito.
+Compatibilidade forte (experiência direta + números + disponibilidade) → ALTA (70-100).
+Compatibilidade parcial (tem experiência mas sem números, ou disponibilidade parcial) → MEDIA (45-69).
+Compatibilidade fraca (só tangencial, primeiro emprego com potencial) → BAIXA (25-44).
+Use a BAND para o veredito e o score para a calibração fina. NUNCA invente experiência que não está no currículo; NUNCA penalize por deficiência, gênero, etnia ou escolaridade quando a função não exigir.`
+
 type AssessmentRow = {
   application_id: string
   score: number
@@ -86,6 +149,8 @@ export async function rhAnalyzeApplication(payload: unknown): Promise<Assessment
   const candidate = (application as { candidate?: Record<string, unknown> }).candidate ?? {}
   const job = (application as { job?: Record<string, unknown> }).job ?? {}
 
+  const age = computeAge(candidate.birth_date as string | null | undefined)
+
   const context = {
     vaga: {
       cargo: job.title ?? null,
@@ -98,6 +163,10 @@ export async function rhAnalyzeApplication(payload: unknown): Promise<Assessment
     candidato: {
       nome: candidate.full_name ?? null,
       nascimento: candidate.birth_date ?? null,
+      // Idade calculada por CÓDIGO (data completa) — nunca peça ao modelo para
+      // deduzir idade a partir do ano (era a fonte do erro dos 18 anos).
+      idade_calculada: age,
+      maior_de_18: age !== null ? age >= 18 : null,
       cidade: candidate.city ?? null,
       estado: candidate.state ?? null,
       endereco: [candidate.street, candidate.street_number, candidate.district, candidate.zip_code]
@@ -117,17 +186,24 @@ export async function rhAnalyzeApplication(payload: unknown): Promise<Assessment
   const resumeBlock = resumeText.length > 40 ? `\n\nCURRÍCULO (texto extraído do PDF/DOCX):\n${resumeText}` : ''
 
   const system = [
-    'Você é o analista de RH do FLOW. Analise o candidato para a vaga e devolve JSON.',
-    'Regras:',
+    'Você é o ANALISTA SÊNIO de RH do FLOW, especialista em seleção para VAREJO brasileiro. Analise o candidato para a vaga e devolve JSON.',
+    RETAIL_KNOWLEDGE_BASE,
+    'PROCESSO DE ANÁLISE (siga nesta ordem):',
+    '1. Idade: use SEMPRE idade_calculada do JSON (cálculo por código). Se maior_de_18 for false e a vaga/função exigir 18+, ELIMINE citando isso. NUNCA calcule idade você mesmo nem use o ano de nascimento para deduzir.',
+    '2. Identifique a ÁREA da vaga (atendimento, vendas, VM, estoque, gerência) e aplique o referencial da área do conhecimento acima para ler o currículo.',
+    '3. Procure SINAIS FORTES/FRACOS/RED FLAGS específicos da área — cite EVIDÊNCIAS do currículo (empresa, número, período) em cada ponto; nunca invente.',
+    '4. Valide as regras_do_banco (idade mínima, experiência, localização/transporte, palavras-chave) — requisito obrigatório não atendido = ELIMINADO.',
+    '5. Calibre score/band conforme a seção COMO PONTUAR.',
+    '6. Siga as INSTRUÇÕES_ADICIONAIS do RH quando houver (elas têm prioridade sobre o default, exceto leis/ética).',
+    'Regras de formato:',
     '- score = compatibilidade 0..100 (inteiro).',
-    '- band = ALTA (>=60) | MEDIA (35..59) | BAIXA (<35) | ELIMINADO (não atende requisito obrigatório).',
-    '- Siga as regras_do_banco (idade, experiência, localização/transporte, palavras-chave) e as INSTRUÇÕES_ADICIONAIS do RH.',
-    '- Nunca use deficiência como critério de pontuação ou eliminação.',
-    '- positives/negatives: até 5 frases curtas e objetivas cada.',
-    '- experience_analysis: histórico profissional identificado (empresas, períodos, estabilidade).',
-    '- transport_analysis: deslocamento estimado até a loja conforme regras de localização.',
-    '- conclusion: recomendação final em 1-2 frases para o RH.',
-    '- details: objeto livre com achados (age, estimated_fares, job_hopping, first_job, sales_or_service...).',
+    '- band = ALTA | MEDIA | BAIXA | ELIMINADO.',
+    '- positives/negatives: até 5 frases CURTAS cada, cada uma com evidência concreta do currículo.',
+    '- experience_analysis: histórico identificado (empresas, períodos, tempo de casa, progressão, estabilidade).',
+    '- transport_analysis: deslocamento estimado até a loja (cidade/endereço vs local da vaga).',
+    '- conclusion: recomendação final em 1-2 frases para o RH (contratar para entrevista? para qual função?).',
+    '- details: objeto livre com achados (age, meets_min_age, estimated_fares, job_hopping, first_job, sales_or_service, area_detected, evidence...).',
+    '- Nunca use deficiência, gênero, etnia ou religião como critério.',
     'Responda SOMENTE JSON válido no formato:',
     '{"score":number,"band":"ALTA|MEDIA|BAIXA|ELIMINADO","summary":"...","positives":["..."],"negatives":["..."],"experience_analysis":"...","transport_analysis":"...","conclusion":"...","details":{}}',
     customRules.length

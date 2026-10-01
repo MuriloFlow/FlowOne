@@ -1,0 +1,69 @@
+/* Job board vagas.flwdesk.com — mesmo design system do portal RH (brand verde FLOW). */
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Lexend", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #ecfaf3;
+  --color-brand-100: #d3f5e5;
+  --color-brand-200: #a9eacf;
+  --color-brand-300: #74d9b2;
+  --color-brand-400: #45c595;
+  --color-brand-500: #2ec97e;
+  --color-brand-600: #1fa968;
+  --color-brand-700: #1a8755;
+  --color-brand-800: #1a6b46;
+  --color-brand-900: #17583c;
+  --color-brand-950: #0c3222;
+
+  --color-ink-950: #09090b;
+  --color-ink-900: #101014;
+  --color-ink-800: #1b1c21;
+  --color-ink-700: #2a2c35;
+  --color-ink-600: #3f4250;
+  --color-ink-500: #5c6072;
+  --color-ink-400: #83889e;
+  --color-ink-300: #b3b7c9;
+  --color-ink-200: #d4d7e2;
+  --color-ink-100: #e8eaf1;
+  --color-ink-50: #f4f5f9;
+
+  --shadow-soft: 0 1px 2px rgb(16 16 20 / 0.05), 0 1px 3px rgb(16 16 20 / 0.06);
+  --shadow-card: 0 1px 2px rgb(16 16 20 / 0.04), 0 4px 16px -2px rgb(16 16 20 / 0.08);
+  --shadow-lift: 0 2px 4px rgb(16 16 20 / 0.05), 0 12px 32px -8px rgb(16 16 20 / 0.16);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-white font-sans text-ink-900 antialiased;
+  }
+  ::selection {
+    @apply bg-brand-200 text-brand-950;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-100 bg-white shadow-card;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold;
+  }
+  .btn-brand {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-[14px] font-semibold text-white shadow-soft transition-all hover:bg-brand-600 active:scale-[0.98];
+  }
+  .btn-dark {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ink-950 px-5 py-2.5 text-[14px] font-semibold text-white shadow-soft transition-all hover:bg-ink-800 active:scale-[0.98];
+  }
+  .field-input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-[14px] text-ink-900 outline-none transition-all placeholder:text-ink-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-100;
+  }
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-ink-100;
+  }
+}
