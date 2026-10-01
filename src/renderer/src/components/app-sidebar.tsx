@@ -69,7 +69,7 @@ export function AppSidebar({
         transition={{ duration: 0.4, delay: 0.06 + index * 0.035, ease }}
         onClick={() => onNavigate(item.id)}
         className={cn(
-          'relative flex w-full items-center gap-3 px-3 text-left font-medium transition-colors duration-200',
+          'relative flex w-full shrink-0 items-center gap-3 px-3 text-left font-medium transition-colors duration-200',
           small ? 'h-8' : 'h-9',
           compact && 'justify-center px-0',
           active ? 'text-[#F0EFEC]/80' : 'text-[#F0EFEC]/45 hover:text-[#F0EFEC]/60'
@@ -130,10 +130,10 @@ export function AppSidebar({
         )}
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+      <nav className="sidebar-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain py-0.5 pr-1">
         {loading ? (
           Array.from({ length: NAV_SKELETON_COUNT }).map((_, index) => (
-            <div key={index} className="flex h-9 items-center gap-3 px-3">
+            <div key={index} className="flex h-9 shrink-0 items-center gap-3 px-3">
               <div className="size-4 animate-pulse rounded bg-white/6" />
               {compact ? null : <div className="h-2.5 w-28 animate-pulse rounded-full bg-white/6" />}
             </div>
@@ -149,7 +149,7 @@ export function AppSidebar({
                 transition={{ duration: 0.4, delay: 0.06 + mainItems.length * 0.035, ease }}
                 onClick={toggleRh}
                 className={cn(
-                  'mt-2 flex h-9 w-full items-center gap-3 px-3 text-left font-medium transition-colors duration-200',
+                  'mt-2 flex h-9 w-full shrink-0 items-center gap-3 px-3 text-left font-medium transition-colors duration-200',
                   rhActive ? 'text-[#F0EFEC]/80' : 'text-[#F0EFEC]/45 hover:text-[#F0EFEC]/60'
                 )
               }
