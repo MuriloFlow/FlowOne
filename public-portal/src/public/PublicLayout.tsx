@@ -1,17 +1,19 @@
 import { motion } from 'framer-motion'
 import type { ReactNode } from 'react'
-import { Lock, UserRound } from 'lucide-react'
+import { Lock, ShieldCheck, UserRound } from 'lucide-react'
 import { useBranding, logoSrc } from '../lib/branding'
 import { getSession } from '../lib/candidate-auth'
 import { useEffect, useState } from 'react'
 
 // Layout público — header/footer com branding dinâmico (logo/cores do FLOW).
 // Botão principal virou "Área do Candidato" (portal de status do candidato).
+// A logo do cliente aparece AQUI (portal do cliente) — no Recruta+ não.
 
 export default function PublicLayout({ children }: { children: ReactNode }) {
   const { branding, loaded } = useBranding()
   const logo = logoSrc(branding.logo_url)
   const [logged, setLogged] = useState(false)
+  const [progress, setProgress] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -19,6 +21,16 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
     return () => {
       alive = false
     }
+  }, [])
+
+  useEffect(() => {
+    const onScroll = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      setProgress(max > 0 ? Math.min(1, window.scrollY / max) : 0)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
   const primary = branding.primary_color
@@ -71,7 +83,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
             <motion.a
               whileHover={{ y: -1 }}
               whileTap={{ y: 0 }}
-              href="https://vagas.db.flwdesk.com/"
+              href="https://recruta.flwdesk.com/search"
               className="hidden rounded-lg px-3 py-2 text-[14px] font-medium text-ink-600 transition-colors hover:bg-ink-50 hover:text-ink-900 sm:block"
             >
               Ver vagas
@@ -88,6 +100,16 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
             </motion.a>
           </nav>
         </div>
+        {/* Progresso de leitura na cor da empresa */}
+        <div
+          className="h-[2.5px] w-full origin-left transition-transform duration-150"
+          style={{
+            backgroundColor: primary,
+            transform: `scaleX(${progress})`,
+            opacity: progress > 0.001 ? 1 : 0
+          }}
+          aria-hidden
+        />
       </header>
 
       <main className="flex-1">{children}</main>
@@ -102,6 +124,14 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
           )}
           <div className="flex flex-col items-center gap-1 sm:items-end">
             <p className="text-[12.5px] font-medium text-ink-500">{branding.footer_note}</p>
+            <p className="inline-flex items-center gap-1.5 text-[11.5px] text-ink-400">
+              <ShieldCheck size={12} className="text-brand-600" />
+              Vagas publicadas no{' '}
+              <a href="https://recruta.flwdesk.com/" className="font-semibold text-ink-500 underline decoration-line underline-offset-2 hover:text-brand-700">
+                Recruta+
+              </a>{' '}
+              (Flow Jobs)
+            </p>
             <p className="inline-flex items-center gap-1.5 text-[11.5px] text-ink-400">
               <Lock size={12} className="text-brand-600" />
               Área segura · seus dados estão protegidos

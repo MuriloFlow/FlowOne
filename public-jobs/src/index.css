@@ -174,4 +174,159 @@
       radial-gradient(46rem 18rem at 50% -4rem, var(--brand-glow), transparent 70%);
     pointer-events: none;
   }
+
+  /* Par de botões padrão (primário com brilho + escuro) */
+  .btn-primary-glow {
+    background: var(--brand-500);
+    color: var(--brand-contrast);
+    box-shadow:
+      0 0 0 1px var(--brand-ring),
+      0 1px 2px rgb(16 16 20 / 0.10),
+      0 10px 26px -8px var(--brand-shadow);
+  }
+  .btn-primary-glow:hover {
+    background: var(--brand-600);
+  }
+  .btn-dark-soft {
+    background: var(--ink-900);
+    color: var(--ink-50);
+    border: 1px solid var(--ink-700);
+    box-shadow: 0 1px 2px rgb(16 16 20 / 0.18);
+  }
+  .btn-dark-soft:hover {
+    background: var(--ink-800);
+  }
+
+  /* Destaque dos termos encontrados pela busca inteligente */
+  .hl {
+    background: var(--brand-soft-2);
+    color: var(--brand-800);
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 0 2px;
+  }
+
+  /* Marquee das empresas credenciadas */
+  .marquee {
+    animation: marquee 34s linear infinite;
+  }
+  .marquee:hover {
+    animation-play-state: paused;
+  }
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  .marquee-mask {
+    mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+  }
+
+  /* Feixe animado (tudo se conecta) */
+  @keyframes beam-flow {
+    from {
+      stroke-dashoffset: 246;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* Brilho do bento que segue o mouse */
+  .bento-glow {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+    background: radial-gradient(
+      16rem 16rem at var(--mx, 50%) var(--my, 0%),
+      var(--brand-soft-2),
+      transparent 70%
+    );
+  }
+  .group:hover .bento-glow {
+    opacity: 1;
+  }
+
+  /* Tab ativa (VAGA / EMPRESA / COMPARATIVO) */
+  .tab {
+    @apply relative rounded-full px-3 py-2 text-[12.5px] font-semibold transition-all sm:px-4 sm:text-[13px];
+  }
+  .tab-active {
+    background: var(--ink-900);
+    color: var(--ink-50);
+    box-shadow: var(--shadow-soft);
+  }
+  .tab-idle {
+    color: var(--ink-500);
+  }
+  .tab-idle:hover {
+    background: var(--surface-2);
+    color: var(--ink-800);
+  }
+
+  /* Barra de adequação (match %) */
+  .fit-bar {
+    position: relative;
+    height: 4px;
+    width: 64px;
+    border-radius: 999px;
+    background: var(--ink-100);
+    overflow: hidden;
+  }
+  .fit-bar > span {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--brand-300), var(--brand-500));
+  }
+
+  /* Texto corrido da descrição da vaga */
+  .prose-job {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ---------- Impressão (compartilhar → imprimir) ---------- */
+@media print {
+  body {
+    background: white;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .card {
+    box-shadow: none !important;
+  }
+  /* Imprime só a vaga selecionada (marca a área com .print-area) */
+  body.printing * {
+    visibility: hidden !important;
+  }
+  body.printing .print-area,
+  body.printing .print-area * {
+    visibility: visible !important;
+  }
+  body.printing .print-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Respeita quem prefere menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  .marquee {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
 }

@@ -72,6 +72,65 @@ export async function searchJobs(
   return (data ?? []) as BoardJob[]
 }
 
+// ---------------------------------------------------------------------------
+// URLs do ecossistema Recruta+ / Flow Jobs
+// ---------------------------------------------------------------------------
+
+/** Página da vaga no Recruta+ (compartilhável). */
+export function jobUrl(slug: string): string {
+  return `https://recruta.flwdesk.com/vaga/${slug}`
+}
+
+/** Candidatura no portal do cliente (Flow Jobs — RH Inteligente). */
+export function jobApplyUrl(slug: string): string {
+  return `https://rh.flwdesk.com/digaspi/#/candidatar/${slug}`
+}
+
+/** Página completa da vaga no portal do cliente. */
+export function jobPortalUrl(slug: string): string {
+  return `https://rh.flwdesk.com/digaspi/#/vaga/${slug}`
+}
+
+/** Empresas credenciadas (marquee "Empresas que confiam no Recruta+"). */
+export async function fetchCompanies(): Promise<string[]> {
+  try {
+    const { data } = await supabase
+      .from('flow_company_board')
+      .select('company_name')
+      .eq('active', true)
+      .order('created_at')
+    return (data ?? []).map((row) => String(row.company_name))
+  } catch {
+    return []
+  }
+}
+
+export type JobStats = { slug: string; applicants: number; openings: number; hired: number }
+
+/** Total de inscritos por vaga (RPC pública, só contagens — sem dados pessoais). */
+export async function fetchJobStats(): Promise<Record<string, JobStats>> {
+  try {
+    const { data, error } = await supabase.rpc('rh_public_job_stats')
+    if (error) throw error
+    const map: Record<string, JobStats> = {}
+    for (const row of (data ?? []) as JobStats[]) map[row.slug] = row
+    return map
+  } catch {
+    return {}
+  }
+}
+
+export function relativeDate(iso: string): string {
+  const days = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000))
+  if (days === 0) return 'Hoje'
+  if (days === 1) return 'Ontem'
+  if (days < 7) return `${days} dias atrás`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return weeks === 1 ? '1 semana atrás' : `${weeks} semanas atrás`
+  const months = Math.floor(days / 30)
+  return months === 1 ? '1 mês atrás' : `${months} meses atrás`
+}
+
 export function logoSrc(path: string | null, supabaseUrl: string): string | null {
   if (!path) return null
   // Logo nova vem como data URL (gravada direto em flow_branding.logo_url).

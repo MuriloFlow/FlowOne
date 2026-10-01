@@ -7,8 +7,11 @@ import {
   Building2,
   CheckCircle2,
   Clock3,
+  Link2,
   ListChecks,
   MapPin,
+  Printer,
+  ShieldCheck,
   Sparkles,
   Target,
   Users
@@ -18,6 +21,7 @@ import { fetchJobBySlug } from '../lib/api'
 import { EMPLOYMENT_TYPE_LABEL } from '../lib/types'
 import type { RhJob } from '../lib/types'
 import { formatSalary } from '../lib/format'
+import { printPage, sharePage } from '../lib/share'
 import { ErrorState } from '../components/ui/Kit'
 
 // Página da vaga — clone da referência com identidade FLOW.
@@ -32,6 +36,13 @@ export default function JobDetailPage({ slug, navigate }: { slug: string; naviga
   const [job, setJob] = useState<RhJob | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), 2400)
+    return () => window.clearTimeout(timer)
+  }, [toast])
 
   useEffect(() => {
     let alive = true
@@ -106,6 +117,9 @@ export default function JobDetailPage({ slug, navigate }: { slug: string; naviga
             </span>
             Aberta agora
           </span>
+          <span className="chip border border-line bg-surface text-ink-500">
+            <ShieldCheck size={12.5} className="text-brand-500" /> Empresa verificada
+          </span>
         </div>
 
         <h1 className="text-balance mt-3.5 font-display text-3xl font-bold leading-[1.12] tracking-[-0.03em] text-ink-950 sm:text-4xl">
@@ -137,14 +151,34 @@ export default function JobDetailPage({ slug, navigate }: { slug: string; naviga
 
       {/* CTA */}
       <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.1 }} className="mt-7">
-        <motion.button
-          whileHover={{ y: -1 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => navigate(`/candidatar/${job.slug}`)}
-          className="btn-brand w-full !py-3.5 !text-[15.5px] sm:w-auto sm:!px-8"
-        >
-          Quero me candidatar <ArrowRight size={17} />
-        </motion.button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <motion.button
+            whileHover={{ y: -1 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigate(`/candidatar/${job.slug}`)}
+            className="btn-brand flex-1 !py-3.5 !text-[15.5px] sm:flex-none sm:!px-8"
+          >
+            Quero me candidatar <ArrowRight size={17} />
+          </motion.button>
+          <button
+            type="button"
+            onClick={async () => {
+              const result = await sharePage({
+                title: `${job.title} — Vagas`,
+                text: `Vaga de ${job.title} em ${job.location ?? 'Brasil'}`,
+                url: window.location.href
+              })
+              setToast(result === 'copied' ? 'Link da vaga copiado!' : result === 'shared' ? 'Compartilhado!' : '')
+            }}
+            className="btn-outline !px-4"
+            aria-label="Compartilhar vaga"
+          >
+            <Link2 size={16} /> Compartilhar
+          </button>
+          <button type="button" onClick={() => printPage()} className="btn-outline !px-4" aria-label="Imprimir vaga">
+            <Printer size={16} /> Imprimir
+          </button>
+        </div>
       </motion.div>
 
       {/* Conteúdo */}
@@ -234,6 +268,34 @@ export default function JobDetailPage({ slug, navigate }: { slug: string; naviga
             </motion.button>
           </div>
         </motion.section>
+      </div>
+
+      {/* Toast de compartilhamento */}
+      {toast ? (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink-950 px-4 py-2.5 text-[13px] font-medium text-white shadow-lift"
+        >
+          {toast}
+        </motion.div>
+      ) : null}
+
+      {/* Barra fixa de candidatura no celular */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/92 p-3 backdrop-blur-xl sm:hidden">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-display text-[13.5px] font-semibold text-ink-900">{job.title}</p>
+            <p className="truncate text-[11.5px] text-ink-500">{job.location ?? job.work_model}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate(`/candidatar/${job.slug}`)}
+            className="btn-brand shrink-0 !px-5 !py-2.5 !text-[14px]"
+          >
+            CANDIDATAR-ME
+          </button>
+        </div>
       </div>
     </div>
   )

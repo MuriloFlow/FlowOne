@@ -148,7 +148,7 @@ export default function CandidateAreaPage({ branding }: { branding: Branding }) 
                 Você ainda não se candidatou a nenhuma vaga. Veja as oportunidades abertas!
               </p>
               <a
-                href="https://vagas.flwdesk.com/"
+                href="https://recruta.flwdesk.com/search"
                 className="btn-brand mt-5"
                 style={{ backgroundColor: branding.primary_color }}
               >
@@ -157,6 +157,24 @@ export default function CandidateAreaPage({ branding }: { branding: Branding }) 
             </div>
           ) : rows !== null ? (
             <div className="mt-8 space-y-4">
+              {/* Resumo das etapas (contagem rápida) */}
+              <div className="grid grid-cols-3 gap-2.5">
+                {[
+                  { label: 'Em análise', test: (s: string) => ['submitted', 'viewed', 'in_review'].includes(s) },
+                  { label: 'Em entrevista', test: (s: string) => s.startsWith('interview') },
+                  { label: 'Aprovadas', test: (s: string) => ['approved', 'hired'].includes(s) }
+                ].map((item) => {
+                  const count = rows.filter((row) => item.test(row.status)).length
+                  return (
+                    <div key={item.label} className="card px-3 py-3 text-center">
+                      <p className="font-display text-[20px] font-bold tracking-[-0.02em] text-ink-950">
+                        {count}
+                      </p>
+                      <p className="mt-0.5 text-[11.5px] font-medium text-ink-500">{item.label}</p>
+                    </div>
+                  )
+                })}
+              </div>
               {rows.map((row, index) => (
                 <ApplicationTimelineCard
                   key={row.application_id}

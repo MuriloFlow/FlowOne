@@ -84,6 +84,12 @@ export default function SuccessPage({ navigate }: { navigate: (to: string) => vo
         <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }} className="btn-brand" onClick={() => navigate('/')}>
           Explorar outras vagas <ArrowRight size={16} />
         </motion.button>
+        <a
+          href="https://recruta.flwdesk.com/search"
+          className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-ink-500 transition-colors hover:text-brand-700"
+        >
+          Ver vagas de outras empresas no Recruta+
+        </a>
         <div className="opacity-40">
           <Logo size={26} withText={false} />
         </div>

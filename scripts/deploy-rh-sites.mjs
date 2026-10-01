@@ -1,8 +1,9 @@
 // Deploy dos sites públicos do RH Inteligente:
-//   public-portal/dist  → /opt/flow-portal/rh/digaspi   (rh.flwdesk.com/digaspi)
-//   public-jobs/dist    → /opt/flow-portal/rh/vagas-site (vagas.flwdesk.com)
-// + Caddy: /digaspi e /digaspi/* (com ou sem barra), redirect rh.flwdesk.com →
-//   vagas.flwdesk.com, bloco vagas + rhinteligente.db (proxy API do board).
+//   public-portal/dist  → /opt/flow-portal/rh/digaspi    (rh.flwdesk.com/digaspi)
+//   public-jobs/dist    → /opt/flow-portal/rh/vagas-site (recruta.flwdesk.com)
+// + Caddy: Recruta+ em recruta.flwdesk.com / recruta.db.flwdesk.com,
+//   redirects de vagas.* e rh.flwdesk.com → recruta.flwdesk.com (exceto
+//   /digaspi, que é o portal do cliente), proxy API do board.
 // Uso: node scripts/deploy-rh-sites.mjs
 import fs from 'node:fs'
 import path from 'node:path'
@@ -90,10 +91,14 @@ async function uploadDir(localDir, remoteDir) {
   }
 }
 
-const CADDY_BLOCK = `
-# Job board publico (vagas.flwdesk.com) — HTTPS falha enquanto o AAA record
-# (Cloudflare) existir; o canônico é vagas.db.flwdesk.com abaixo.
-http://vagas.flwdesk.com, https://vagas.flwdesk.com {
+// Marcador do bloco que ESTE script gerencia no fim do Caddyfile.projects:
+// tudo a partir dele é reescrito a cada deploy (idempotente).
+const CADDY_MARKER = '# Job board publico (vagas.flwdesk.com)'
+const CADDY_MARKER_NEW = '# Recruta+ (job board publico) — canonico'
+
+const CADDY_TAIL = `
+${CADDY_MARKER_NEW}
+http://recruta.flwdesk.com, https://recruta.flwdesk.com {
 	import secure_headers
 	encode gzip
 	root * /usr/share/caddy/rh/vagas-site
@@ -101,13 +106,24 @@ http://vagas.flwdesk.com, https://vagas.flwdesk.com {
 	file_server
 }
 
-# Job board (vagas.db.flwdesk.com) — DNS *.db.flwdesk.com → VPS, SSL normal.
-http://vagas.db.flwdesk.com, https://vagas.db.flwdesk.com {
+# Recruta+ por recruta.db.flwdesk.com (DNS *.db.flwdesk.com → VPS)
+http://recruta.db.flwdesk.com, https://recruta.db.flwdesk.com {
 	import secure_headers
 	encode gzip
 	root * /usr/share/caddy/rh/vagas-site
 	try_files {path} /index.html
 	file_server
+}
+
+# vagas.* → Recruta+ (links antigos continuam funcionando)
+http://vagas.flwdesk.com, https://vagas.flwdesk.com {
+	import secure_headers
+	redir https://recruta.flwdesk.com{uri} permanent
+}
+
+http://vagas.db.flwdesk.com, https://vagas.db.flwdesk.com {
+	import secure_headers
+	redir https://recruta.flwdesk.com{uri} permanent
 }
 
 # API do job board (rhinteligente.db.flwdesk.com → flowone REST/Auth/Storage)
@@ -119,13 +135,13 @@ http://rhinteligente.db.flwdesk.com, https://rhinteligente.db.flwdesk.com {
 	}
 }
 
-# Redirect raiz do RH → job board (rh.flwdesk.com sem /digaspi)
+# rh.flwdesk.com → Recruta+ (exceto /digaspi = portal do cliente)
 http://rh.flwdesk.com, https://rh.flwdesk.com {
 	import secure_headers
 	@root path /
-	redir @root https://vagas.db.flwdesk.com/ permanent
+	redir @root https://recruta.flwdesk.com/ permanent
 	@notdigaspi not path /digaspi*
-	redir @notdigaspi https://vagas.db.flwdesk.com{uri} permanent
+	redir @notdigaspi https://recruta.flwdesk.com{uri} permanent
 	encode gzip
 	root * /usr/share/caddy/rh
 	try_files {path} /digaspi/index.html
@@ -139,21 +155,29 @@ async function patchCaddy() {
   // o container fica órfão do conteúdo antigo): editar com `cat tmp > file`
   // (mesmo inode) e conferir o conteúdo DENTRO do container.
   const HOST_FILE = '/opt/supabase-src/docker/Caddyfile.projects'
-  const check = await run(`grep -c "vagas.db.flwdesk.com" ${HOST_FILE} || true`)
-  if (Number(check.out.trim() || '0') > 0) {
-    console.log('caddy: blocos novos já presentes')
+  const current = await run(`cat ${HOST_FILE}`)
+  const content = current.out
+
+  if (content.includes(CADDY_MARKER_NEW) && content.includes('recruta.db.flwdesk.com')) {
+    console.log('caddy: blocos do Recruta+ já presentes')
   } else {
+    // Reescreve TODO o bloco gerenciado (do marcador até o fim do arquivo),
+    // preservando o inode: escreve em /tmp e sobrescreve com `cat tmp > file`.
+    const cut = content.indexOf(CADDY_MARKER)
+    const head = cut >= 0 ? content.slice(0, cut) : content.replace(/\s*$/, '\n\n')
     await run(`cp ${HOST_FILE} ${HOST_FILE}.bak-$(date +%s)`)
-    // Corrige redirects antigos (vagas.flwdesk.com → vagas.db.flwdesk.com)
-    // preservando o inode: sed > tmp && cat tmp > arquivo.
-    await run(
-      `sed 's|redir @root https://vagas.flwdesk.com/|redir @root https://vagas.db.flwdesk.com/|; s|redir @notdigaspi https://vagas.flwdesk.com{uri}|redir @notdigaspi https://vagas.db.flwdesk.com{uri}|' ${HOST_FILE} > /tmp/Caddyfile.projects.tmp && cat /tmp/Caddyfile.projects.tmp > ${HOST_FILE}`
-    )
-    const result = await run(`cat >> ${HOST_FILE} <<'CADDY_EOF'
-${CADDY_BLOCK}
-CADDY_EOF`)
-    if (result.code !== 0) throw new Error(`append caddy: ${result.err}`)
-    console.log('caddy: blocos adicionados ao Caddyfile.projects (host)')
+    const tmp = '/tmp/Caddyfile.projects.recruta'
+    await new Promise((resolve, reject) => {
+      conn.sftp((error, sftp) => {
+        if (error) return reject(error)
+        sftp.writeFile(tmp, `${head}${CADDY_TAIL}`, (writeError) =>
+          writeError ? reject(writeError) : resolve()
+        )
+      })
+    })
+    const result = await run(`cat ${tmp} > ${HOST_FILE}`)
+    if (result.code !== 0) throw new Error(`write caddy: ${result.err}`)
+    console.log('caddy: bloco do Recruta+ gravado no Caddyfile.projects (host)')
   }
 
   // O container vê o inode do bind; se divergir do host, reinicia o Caddy
@@ -172,10 +196,10 @@ CADDY_EOF`)
 async function reloadCaddy() {
   const validate = await run('docker exec project-gw caddy validate --config /etc/caddy/Caddyfile 2>&1')
   if (validate.code !== 0) {
-    // Rollback: remove o que foi anexado
-    console.error('caddy inválido — removendo blocos novos')
+    // Rollback: restaura o backup mais recente (mantendo o inode via cat).
+    console.error('caddy inválido — restaurando backup')
     await run(
-      `sed -i "/# Job board publico (vagas.flwdesk.com)/,\$d" /opt/supabase-src/docker/Caddyfile.projects`
+      'ls -t /opt/supabase-src/docker/Caddyfile.projects.bak-* 2>/dev/null | head -1 | xargs -r -I{} sh -c "cat {} > /opt/supabase-src/docker/Caddyfile.projects"'
     )
     throw new Error(`caddy validate: ${validate.out} ${validate.err}`)
   }
@@ -189,11 +213,33 @@ async function test() {
   const root = await run(
     'curl -s -o /dev/null -w "%{http_code} %{redirect_url}" https://rh.flwdesk.com/'
   )
-  const vagas = await run('curl -s -o /dev/null -w "%{http_code}" https://vagas.db.flwdesk.com/')
+  const recruta = await run('curl -s -o /dev/null -w "%{http_code}" https://recruta.flwdesk.com/')
+  const recrutaDb = await run('curl -s -o /dev/null -w "%{http_code}" https://recruta.db.flwdesk.com/')
+  const recrutaJob = await run(
+    'curl -s -o /dev/null -w "%{http_code}" https://recruta.flwdesk.com/vaga/fiscal-de-loja-nc4kq'
+  )
+  const vagas = await run(
+    'curl -s -o /dev/null -w "%{http_code} %{redirect_url}" https://vagas.db.flwdesk.com/'
+  )
   const api = await run(
     'curl -s -o /dev/null -w "%{http_code}" https://rhinteligente.db.flwdesk.com/rest/v1/ -H "apikey: invalid"'
   )
-  console.log('tests: /digaspi', digaspi.out.trim(), '| rh/', root.out.trim(), '| vagas/', vagas.out.trim(), '| api/', api.out.trim())
+  console.log(
+    'tests: /digaspi',
+    digaspi.out.trim(),
+    '| rh/',
+    root.out.trim(),
+    '| recruta/',
+    recruta.out.trim(),
+    '| recruta.db/',
+    recrutaDb.out.trim(),
+    '| vaga',
+    recrutaJob.out.trim(),
+    '| vagas/→',
+    vagas.out.trim(),
+    '| api/',
+    api.out.trim()
+  )
 }
 
 function done() {

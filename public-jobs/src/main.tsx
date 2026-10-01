@@ -3,11 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import LandingPage from './pages/LandingPage'
 import SearchPage from './pages/SearchPage'
-import { fetchBranding, logoSrc, type Branding } from './lib/api'
+import JobPage from './pages/JobPage'
+import { fetchBranding, type Branding } from './lib/api'
 import { applyBranding } from './lib/theme'
-import { supabase } from './lib/supabase'
 
-// Rotas reais de servidor (Caddy): / e /search?query=&location=
+// Rotas reais de servidor (Caddy): / , /search?query=&location= , /vaga/:slug
 
 /** Skeleton de boot: cobre o site inteiro até a personalização chegar —
  * evita mostrar o layout com a cor padrão antes de saber a cor escolhida. */
@@ -74,24 +74,27 @@ function App() {
 
   if (!branding) return <BootSkeleton />
 
-  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) ?? ''
-  const logo = logoSrc(branding.logo_url, supabaseUrl)
-  document.title =
-    branding.footer_note === 'RH Inteligente by Flowdesk Brasil®'
-      ? 'Vagas — RH Inteligente by Flowdesk'
-      : `Vagas — ${branding.footer_note}`
+  // Match /vaga/:slug
+  const jobMatch = /^\/vaga\/([\w-]+)\/?$/.exec(route)
 
-  const page =
-    route.startsWith('/search') ? (
-      <SearchPage branding={branding} logo={logo} />
-    ) : (
-      <LandingPage branding={branding} logo={logo} onSearch={goSearch} />
-    )
+  document.title =
+    route.startsWith('/search')
+      ? 'Buscar vagas — Recruta+'
+      : jobMatch
+        ? 'Vaga — Recruta+'
+        : 'Recruta+ — Vagas de emprego perto de você'
+
+  let page
+  if (route.startsWith('/search')) {
+    page = <SearchPage branding={branding} />
+  } else if (jobMatch) {
+    page = <JobPage slug={jobMatch[1]} branding={branding} />
+  } else {
+    page = <LandingPage branding={branding} onSearch={goSearch} />
+  }
 
   return page
 }
-
-void supabase
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

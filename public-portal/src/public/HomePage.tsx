@@ -27,6 +27,7 @@ export default function HomePage({ navigate }: { navigate: (to: string) => void 
   const [jobs, setJobs] = useState<RhJob[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [type, setType] = useState<string>('all')
 
   useEffect(() => {
     let alive = true
@@ -41,14 +42,22 @@ export default function HomePage({ navigate }: { navigate: (to: string) => void 
   const filtered = useMemo(() => {
     if (!jobs) return []
     const q = query.trim().toLowerCase()
-    if (!q) return jobs
-    return jobs.filter(
-      (j) =>
+    return jobs.filter((j) => {
+      if (type !== 'all' && j.employment_type !== type) return false
+      if (!q) return true
+      return (
         j.title.toLowerCase().includes(q) ||
         (j.department ?? '').toLowerCase().includes(q) ||
         (j.location ?? '').toLowerCase().includes(q)
-    )
-  }, [jobs, query])
+      )
+    })
+  }, [jobs, query, type])
+
+  const types = useMemo(() => {
+    const set = new Set<string>()
+    for (const job of jobs ?? []) set.add(job.employment_type)
+    return [...set]
+  }, [jobs])
 
   return (
     <div>
@@ -148,14 +157,45 @@ export default function HomePage({ navigate }: { navigate: (to: string) => void 
 
       {/* ---------- Vagas ---------- */}
       <section className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6">
-        <div className="mb-6 flex items-end justify-between">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink-900">
               Vagas abertas agora
             </h2>
             <p className="mt-0.5 text-[14px] text-ink-500">Atualizadas em tempo real pelo time de RH</p>
           </div>
+          <a
+            href="https://recruta.flwdesk.com/search"
+            className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-brand-600 transition-all hover:gap-2.5"
+          >
+            Ver todas no Recruta+ <ArrowRight size={15} />
+          </a>
         </div>
+
+        {/* Filtros rápidos por tipo de contrato */}
+        {types.length > 1 ? (
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            {[{ key: 'all', label: 'Todas' }, ...types.map((t) => ({ key: t, label: EMPLOYMENT_TYPE_LABEL[t] ?? t }))].map(
+              (item) => {
+                const active = type === item.key
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setType(item.key)}
+                    className={`rounded-full border px-3.5 py-1.5 text-[12.5px] font-semibold transition-all ${
+                      active
+                        ? 'border-transparent bg-brand-600 text-white shadow-brand'
+                        : 'border-ink-200 bg-surface text-ink-600 hover:border-brand-300 hover:text-brand-700'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                )
+              }
+            )}
+          </div>
+        ) : null}
 
         {jobs === null && !error && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
