@@ -16,7 +16,7 @@ export function BoardLayout({
   onHome?: () => void
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-page">
       {/* Faixa superior (estilo InfoJobs: barra escura com a busca) */}
       <div
         className="w-full"
@@ -64,7 +64,7 @@ export function BoardLayout({
       <main className="flex-1">{children}</main>
 
       {/* Footer */}
-      <footer className="border-t border-ink-100 bg-ink-50/50">
+      <footer className="border-t border-line bg-surface/60">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-center sm:flex-row sm:px-6 sm:text-left">
           {logo ? (
             <img src={logo} alt="Logo" className="h-7 w-auto max-w-[140px] object-contain" />
@@ -76,7 +76,7 @@ export function BoardLayout({
           <div className="flex flex-col items-center gap-1 sm:items-end">
             <p className="text-[12.5px] font-medium text-ink-500">{branding.footer_note}</p>
             <p className="inline-flex items-center gap-1.5 text-[11.5px] text-ink-400">
-              <Lock size={12} className="text-emerald-600" />
+              <Lock size={12} className="text-brand-600" />
               Área segura · seus dados estão protegidos
             </p>
           </div>
@@ -108,7 +108,7 @@ export function SearchBar({
         event.preventDefault()
         onSubmit()
       }}
-      className={`flex w-full items-stretch gap-0 overflow-hidden rounded-2xl bg-white shadow-lift ${
+      className={`flex w-full items-stretch gap-0 overflow-hidden rounded-2xl bg-surface shadow-lift ${
         big ? 'sm:rounded-full' : 'rounded-2xl'
       }`}
     >
@@ -138,7 +138,7 @@ export function SearchBar({
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.97 }}
         type="submit"
-        className={`m-1.5 inline-flex items-center justify-center gap-2 rounded-xl bg-ink-950 px-6 font-bold tracking-wide text-white transition-colors hover:bg-ink-800 ${
+        className={`m-1.5 inline-flex items-center justify-center gap-2 rounded-xl bg-ink-900 px-6 font-bold tracking-wide text-ink-50 transition-colors hover:bg-ink-800 ${
           big ? 'sm:rounded-full' : ''
         } ${big ? 'text-[13.5px]' : 'text-[12.5px]'}`}
       >

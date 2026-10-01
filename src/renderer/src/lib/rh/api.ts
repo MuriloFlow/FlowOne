@@ -446,9 +446,9 @@ export async function fetchBranding(): Promise<RhBranding> {
   if (error) return fatal(error, "Erro ao carregar a personalização.");
   return {
     logo_url: (data?.logo_url as string | null) ?? null,
-    theme: (data?.theme as RhBranding["theme"]) ?? "dark",
+    theme: (data?.theme as RhBranding["theme"]) ?? "light",
     primary_color: (data?.primary_color as string) ?? "#2EC97E",
-    secondary_color: (data?.secondary_color as string) ?? "#F0EFEC",
+    secondary_color: (data?.secondary_color as string) ?? "#101014",
     footer_note:
       (data?.footer_note as string) ?? "RH Inteligente by Flowdesk Brasil®",
   };

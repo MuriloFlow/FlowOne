@@ -785,7 +785,7 @@ function BrandingManager() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [primaryColor, setPrimaryColor] = useState("#2EC97E");
-  const [secondaryColor, setSecondaryColor] = useState("#F0EFEC");
+  const [secondaryColor, setSecondaryColor] = useState("#101014");
   const [footerNote, setFooterNote] = useState(DEFAULT_FOOTER_NOTE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -920,14 +920,12 @@ function BrandingManager() {
         <h2 className="text-[15px] text-[#F0EFEC]/82">Aparência</h2>
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
           <RhField
-            label="Tema"
-            hint="Dark = cores do FLOW; Light = fundo claro e cards brancos."
-          >
+            label="Tema"            hint="Light = fundo claro (padrão); Dark = fundo escuro. Vale pros dois sites públicos.">
             <RhSelect
               value={theme}
               options={[
-                { value: "dark", label: "Dark (padrão FLOW)" },
-                { value: "light", label: "Light (claro)" },
+                { value: "light", label: "Light (claro — recomendado)" },
+                { value: "dark", label: "Dark (escuro)" },
               ]}
               onChange={(value) => setTheme(value as "dark" | "light")}
             />
@@ -948,7 +946,7 @@ function BrandingManager() {
               />
             </div>
           </RhField>
-          <RhField label="Cor secundária (textos e detalhes)">
+          <RhField label="Cor secundária (textos e detalhes no tema claro)">
             <div className="flex items-center gap-2">
               <input
                 type="color"

@@ -115,12 +115,12 @@ export function Modal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-            className={`max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-pop sm:rounded-2xl ${
+            className={`max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-surface shadow-pop sm:rounded-2xl ${
               wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'
             }`}
           >
             {title && (
-              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-ink-100 bg-white/90 px-5 py-4 backdrop-blur">
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface/90 px-5 py-4 backdrop-blur">
                 <h2 className="font-display text-[16px] font-semibold text-ink-900">{title}</h2>
                 <button
                   onClick={onClose}
@@ -224,7 +224,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   ? 'bg-ink-950 text-white'
                   : t.kind === 'error'
                     ? 'bg-red-600 text-white'
-                    : 'border border-ink-100 bg-white text-ink-900'
+                    : 'border border-line bg-surface text-ink-900'
               }`}
               role="status"
             >

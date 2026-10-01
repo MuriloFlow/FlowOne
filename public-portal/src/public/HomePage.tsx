@@ -243,10 +243,10 @@ function JobCard({ job, index, navigate }: { job: RhJob; index: number; navigate
     >
       <div className="flex items-start justify-between gap-3">
         <span className="chip bg-brand-50 text-brand-700">{EMPLOYMENT_TYPE_LABEL[job.employment_type] ?? job.employment_type}</span>
-        <span className="chip bg-emerald-50 text-emerald-600">
+        <span className="chip chip-brand-soft">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-500" />
           </span>
           Aberta
         </span>

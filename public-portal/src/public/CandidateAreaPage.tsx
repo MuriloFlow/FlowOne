@@ -235,7 +235,7 @@ function AuthCard({
               type="button"
               onClick={() => setMode(value)}
               className={`rounded-lg py-2 text-[13.5px] font-semibold transition ${
-                mode === value ? 'bg-white text-ink-900 shadow-soft' : 'text-ink-400'
+                mode === value ? 'bg-surface text-ink-900 shadow-soft' : 'text-ink-400'
               }`}
             >
               {value === 'login' ? 'Entrar' : 'Criar conta'}
@@ -376,7 +376,7 @@ function ApplicationTimelineCard({
             rejected
               ? 'bg-red-50 text-red-600'
               : row.status === 'hired' || row.status === 'approved'
-                ? 'bg-emerald-50 text-emerald-700'
+                ? 'chip-brand-soft'
                 : 'bg-ink-50 text-ink-600'
           }`}
         >
@@ -396,9 +396,9 @@ function ApplicationTimelineCard({
                 <span
                   className="flex size-6 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold transition"
                   style={{
-                    borderColor: done ? branding.primary_color : '#e8eaf1',
-                    backgroundColor: done ? branding.primary_color : '#fff',
-                    color: done ? '#fff' : '#b3b7c9'
+                    borderColor: done ? 'var(--brand-500)' : 'var(--line)',
+                    backgroundColor: done ? 'var(--brand-500)' : 'var(--surface)',
+                    color: done ? 'var(--brand-contrast)' : 'var(--ink-300)'
                   }}
                 >
                   {done ? '✓' : index + 1}
@@ -416,7 +416,7 @@ function ApplicationTimelineCard({
                   className="mx-1 h-0.5 flex-1 rounded-full"
                   style={{
                     backgroundColor:
-                      !rejected && index < current ? branding.primary_color : '#e8eaf1'
+                      !rejected && index < current ? 'var(--brand-500)' : 'var(--line)'
                   }}
                 />
               ) : null}
@@ -430,7 +430,7 @@ function ApplicationTimelineCard({
           Não foi desta vez — mas seu perfil continua ativo para as próximas vagas. 💪
         </p>
       ) : row.status === 'hired' ? (
-        <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-700">
+        <p className="mt-4 rounded-lg bg-brand-50 px-3 py-2 text-[12.5px] leading-relaxed text-brand-700">
           Parabéns, você foi contratado! O RH entrará em contato com os próximos passos. 🎉
         </p>
       ) : (

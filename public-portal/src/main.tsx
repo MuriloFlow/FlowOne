@@ -38,7 +38,7 @@ function useHashRoute() {
 
 function App() {
   const route = useHashRoute()
-  const branding = useBranding()
+  const { branding } = useBranding()
   const navigate = useCallback((to: string) => {
     window.location.hash = to
   }, [])

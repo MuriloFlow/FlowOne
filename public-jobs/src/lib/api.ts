@@ -28,9 +28,9 @@ export type Branding = {
 
 export const FALLBACK_BRANDING: Branding = {
   logo_url: null,
-  theme: 'dark',
+  theme: 'light',
   primary_color: '#2EC97E',
-  secondary_color: '#F0EFEC',
+  secondary_color: '#101014',
   footer_note: 'RH Inteligente by Flowdesk Brasil®'
 }
 
@@ -45,7 +45,7 @@ export async function fetchBranding(): Promise<Branding> {
     if (!data) return FALLBACK_BRANDING
     return {
       logo_url: (data.logo_url as string | null) ?? null,
-      theme: (data.theme as Branding['theme']) ?? 'dark',
+      theme: (data.theme as Branding['theme']) ?? 'light',
       primary_color: (data.primary_color as string) ?? FALLBACK_BRANDING.primary_color,
       secondary_color: (data.secondary_color as string) ?? FALLBACK_BRANDING.secondary_color,
       footer_note: (data.footer_note as string) || FALLBACK_BRANDING.footer_note

@@ -60,20 +60,16 @@ export default function LandingPage({
       }
     >
       {/* ---------- Hero ---------- */}
-      <section className="relative overflow-hidden border-b border-ink-100">
-        <div
-          className="absolute -top-24 left-1/2 h-72 w-[40rem] -translate-x-1/2 rounded-full opacity-20 blur-3xl"
-          style={{ backgroundColor: branding.primary_color }}
-          aria-hidden
-        />
+      <section className="relative overflow-hidden border-b border-line">
+        <div className="hero-glow" aria-hidden />
         <div className="relative mx-auto w-full max-w-6xl px-4 pb-12 pt-14 text-center sm:px-6 sm:pb-16 sm:pt-20">
           <motion.div
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
-            className="chip mx-auto border border-ink-100 bg-white text-ink-600 shadow-soft"
+            className="chip mx-auto border border-line bg-surface text-ink-600 shadow-soft"
           >
-            <Sparkles size={13} style={{ color: branding.primary_color }} />
+            <Sparkles size={13} style={{ color: 'var(--brand-primary)' }} />
             Só trabalhamos com empresas reais — todas credenciadas FLOW
           </motion.div>
 
@@ -84,11 +80,10 @@ export default function LandingPage({
             className="mx-auto mt-5 max-w-3xl text-balance font-display text-4xl font-bold leading-[1.08] tracking-[-0.03em] text-ink-950 sm:text-5xl"
           >
             O emprego certo,{' '}
-            <span className="relative whitespace-nowrap" style={{ color: branding.primary_color }}>
+            <span className="relative whitespace-nowrap text-brand-500">
               perto de você
               <svg
-                className="absolute -bottom-1.5 left-0 w-full"
-                style={{ color: branding.primary_color, opacity: 0.45 }}
+                className="absolute -bottom-1.5 left-0 w-full text-brand-400/70"
                 viewBox="0 0 220 10"
                 fill="none"
                 aria-hidden
@@ -186,7 +181,7 @@ export default function LandingPage({
       </section>
 
       {/* ---------- Como funciona ---------- */}
-      <section className="border-t border-ink-100 bg-ink-50/40">
+      <section className="border-t border-line bg-surface-2/50">
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
           <h2 className="text-center font-display text-[21px] font-semibold tracking-[-0.02em] text-ink-900">
             Como funciona

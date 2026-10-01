@@ -16,14 +16,15 @@ export default function SuccessPage({ navigate }: { navigate: (to: string) => vo
         initial={{ scale: 0.4, opacity: 0, rotate: -10 }}
         animate={{ scale: 1, opacity: 1, rotate: 0 }}
         transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-        className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-500 text-white shadow-pop shadow-emerald-500/30"
+        className="relative flex h-20 w-20 items-center justify-center rounded-3xl shadow-pop shadow-brand-500/30"
+        style={{ backgroundColor: 'var(--brand-500)', color: 'var(--brand-contrast)' }}
       >
         <CheckCircle2 size={40} strokeWidth={2.2} />
         <motion.span
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.25, type: 'spring', stiffness: 300, damping: 12 }}
-          className="absolute -right-1.5 -top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-lift"
+          className="absolute -right-1.5 -top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-surface shadow-lift"
         >
           <span className="text-[15px]">🎉</span>
         </motion.span>

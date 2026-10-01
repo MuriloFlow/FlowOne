@@ -367,7 +367,7 @@ export default function ApplicationFormPage({
       <p className="mt-1.5 text-[14.5px] text-ink-500">Preencha com atenção — leva cerca de 5 minutos.</p>
 
       {/* Progresso */}
-      <div className="sticky top-16 z-30 -mx-4 mt-6 bg-white/90 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6">
+      <div className="sticky top-16 z-30 -mx-4 mt-6 bg-surface/90 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6">
         <div className="flex items-center gap-1.5 sm:gap-2">
           {STEPS.map((s, i) => {
             const done = i < stepIndex
@@ -376,16 +376,16 @@ export default function ApplicationFormPage({
               <div key={s.id} className="flex flex-1 flex-col gap-1.5">
                 <div
                   className={`flex items-center gap-1.5 text-[11px] font-medium sm:text-[12px] ${
-                    done ? 'text-emerald-600' : active ? 'text-ink-900' : 'text-ink-400'
+                    done ? 'text-brand-600' : active ? 'text-ink-900' : 'text-ink-400'
                   }`}
                 >
                   <span
                     className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border text-[10.5px] transition-all duration-300 ${
                       done
-                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        ? 'border-brand-500 bg-brand-500 text-white'
                         : active
                           ? 'border-ink-900 bg-ink-900 text-white shadow-soft'
-                          : 'border-ink-200 bg-white text-ink-400'
+                          : 'border-ink-200 bg-surface text-ink-400'
                     }`}
                   >
                     {done ? <Check size={12} strokeWidth={3} /> : i + 1}
@@ -394,7 +394,7 @@ export default function ApplicationFormPage({
                 </div>
                 <div className="h-1 overflow-hidden rounded-full bg-ink-100">
                   <motion.div
-                    className={`h-full rounded-full ${done ? 'bg-emerald-500' : active ? 'bg-ink-900' : 'bg-ink-100'}`}
+                    className={`h-full rounded-full ${done ? 'bg-brand-500' : active ? 'bg-ink-900' : 'bg-ink-100'}`}
                     initial={false}
                     animate={{ width: done || active ? '100%' : '0%' }}
                     transition={{ duration: 0.45, ease: EASE }}
@@ -583,7 +583,7 @@ export default function ApplicationFormPage({
                     fileError
                       ? 'border-red-300 bg-red-50/40'
                       : file
-                        ? 'border-emerald-300 bg-emerald-50/40'
+                        ? 'border-brand-300 bg-brand-50/40'
                         : 'border-ink-200 bg-ink-50/50 hover:border-brand-300 hover:bg-brand-50/40'
                   }`}
                 >
@@ -597,8 +597,8 @@ export default function ApplicationFormPage({
                     whileHover={{ y: -3 }}
                     className={`mb-3 flex h-14 w-14 items-center justify-center rounded-2xl shadow-soft transition-colors ${
                       file
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-white text-brand-500 group-hover:bg-brand-500 group-hover:text-white'
+                        ? 'bg-brand-500 text-white'
+                        : 'bg-surface text-brand-500 group-hover:bg-brand-100'
                     }`}
                   >
                     {file ? <CheckCircle2 size={26} /> : <CloudUpload size={26} />}
@@ -854,7 +854,7 @@ function ChoiceChip({
       className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-[13.5px] font-medium transition-all duration-200 ${
         active
           ? 'border-brand-600 bg-brand-600 text-white shadow-soft shadow-brand-600/30'
-          : 'border-ink-200 bg-white text-ink-700 hover:border-brand-300 hover:bg-brand-50/60 hover:text-brand-700'
+          : 'border-ink-200 bg-surface text-ink-700 hover:border-brand-300 hover:bg-brand-50/60 hover:text-brand-700'
       }`}
       aria-pressed={active}
     >

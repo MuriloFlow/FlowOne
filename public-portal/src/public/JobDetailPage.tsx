@@ -99,10 +99,10 @@ export default function JobDetailPage({ slug, navigate }: { slug: string; naviga
           <span className="chip bg-brand-50 text-brand-700">
             {EMPLOYMENT_TYPE_LABEL[job.employment_type] ?? job.employment_type}
           </span>
-          <span className="chip bg-emerald-50 text-emerald-600">
+          <span className="chip chip-brand-soft">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-500" />
             </span>
             Aberta agora
           </span>
@@ -129,7 +129,7 @@ export default function JobDetailPage({ slug, navigate }: { slug: string; naviga
           </span>
           {salary && (
             <span className="inline-flex items-center gap-1.5 font-medium text-ink-800">
-              <Banknote size={15.5} className="text-emerald-600" /> {salary}
+              <Banknote size={15.5} className="text-brand-600" /> {salary}
             </span>
           )}
         </div>

@@ -1,37 +1,49 @@
-/* Job board vagas.flwdesk.com — mesmo design system do portal RH (brand verde FLOW). */
+/* Job board público — design system 100% personalizável.
+   As cores brand-* e ink-* são CSS vars preenchidas no runtime (lib/theme.ts):
+   a cor primária escolhida na Personalização pinta TUDO (botões, tags, hero,
+   glow, rings, sombras) e o tema claro/escuro troca todas as superfícies. */
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Lexend", "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  --color-brand-50: #ecfaf3;
-  --color-brand-100: #d3f5e5;
-  --color-brand-200: #a9eacf;
-  --color-brand-300: #74d9b2;
-  --color-brand-400: #45c595;
-  --color-brand-500: #2ec97e;
-  --color-brand-600: #1fa968;
-  --color-brand-700: #1a8755;
-  --color-brand-800: #1a6b46;
-  --color-brand-900: #17583c;
-  --color-brand-950: #0c3222;
+  /* Escala da cor primária (derivada no runtime de flow_branding) */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+  --color-brand-950: var(--brand-950);
 
-  --color-ink-950: #09090b;
-  --color-ink-900: #101014;
-  --color-ink-800: #1b1c21;
-  --color-ink-700: #2a2c35;
-  --color-ink-600: #3f4250;
-  --color-ink-500: #5c6072;
-  --color-ink-400: #83889e;
-  --color-ink-300: #b3b7c9;
-  --color-ink-200: #d4d7e2;
-  --color-ink-100: #e8eaf1;
-  --color-ink-50: #f4f5f9;
+  /* Superfícies/linhas que acompanham o tema claro/escuro */
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+
+  /* Textos/neutros: a escala INVERTE no tema escuro (950 = texto claro) */
+  --color-ink-950: var(--ink-950);
+  --color-ink-900: var(--ink-900);
+  --color-ink-800: var(--ink-800);
+  --color-ink-700: var(--ink-700);
+  --color-ink-600: var(--ink-600);
+  --color-ink-500: var(--ink-500);
+  --color-ink-400: var(--ink-400);
+  --color-ink-300: var(--ink-300);
+  --color-ink-200: var(--ink-200);
+  --color-ink-100: var(--ink-100);
+  --color-ink-50: var(--ink-50);
 
   --shadow-soft: 0 1px 2px rgb(16 16 20 / 0.05), 0 1px 3px rgb(16 16 20 / 0.06);
   --shadow-card: 0 1px 2px rgb(16 16 20 / 0.04), 0 4px 16px -2px rgb(16 16 20 / 0.08);
   --shadow-lift: 0 2px 4px rgb(16 16 20 / 0.05), 0 12px 32px -8px rgb(16 16 20 / 0.16);
+  --shadow-brand: 0 6px 18px -6px var(--brand-shadow);
 }
 
 @layer base {
@@ -39,9 +51,53 @@
     -webkit-tap-highlight-color: transparent;
     scroll-behavior: smooth;
   }
-  body {
-    @apply bg-white font-sans text-ink-900 antialiased;
+
+  /* ----- Tema CLARO (padrão) ----- */
+  :root,
+  :root[data-theme="light"] {
+    --page: #f7f8fa;
+    --surface: #ffffff;
+    --surface-2: #f2f3f7;
+    --line: #e6e8ef;
+    --ink-950: #09090b;
+    --ink-900: #101014;
+    --ink-800: #1b1c21;
+    --ink-700: #2a2c35;
+    --ink-600: #3f4250;
+    --ink-500: #5c6072;
+    --ink-400: #83889e;
+    --ink-300: #b3b7c9;
+    --ink-200: #d4d7e2;
+    --ink-100: #e8eaf1;
+    --ink-50: #f4f5f9;
+    color-scheme: light;
   }
+
+  /* ----- Tema ESCURO ----- */
+  :root[data-theme="dark"] {
+    --page: #0b0c10;
+    --surface: #14161c;
+    --surface-2: #1a1d25;
+    --line: #262a34;
+    --ink-950: #f2f3f7;
+    --ink-900: #e6e8f0;
+    --ink-800: #c9cddd;
+    --ink-700: #a9afc2;
+    --ink-600: #8b91a6;
+    --ink-500: #737a91;
+    --ink-400: #5d6478;
+    --ink-300: #4a5063;
+    --ink-200: #353b4a;
+    --ink-100: #262b36;
+    --ink-50: #1b1f28;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-page font-sans text-ink-900 antialiased;
+    transition: background-color 0.25s ease;
+  }
+
   ::selection {
     @apply bg-brand-200 text-brand-950;
   }
@@ -49,21 +105,73 @@
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-ink-100 bg-white shadow-card;
+    @apply rounded-2xl border border-line bg-surface shadow-card;
   }
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold;
   }
+  .chip-brand {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold;
+    background: var(--brand-soft-2);
+    color: var(--brand-700);
+  }
   .btn-brand {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-[14px] font-semibold text-white shadow-soft transition-all hover:bg-brand-600 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-[14px] font-semibold shadow-brand transition-all active:scale-[0.98];
+    background: var(--brand-500);
+    color: var(--brand-contrast);
+  }
+  .btn-brand:hover {
+    background: var(--brand-600);
   }
   .btn-dark {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ink-950 px-5 py-2.5 text-[14px] font-semibold text-white shadow-soft transition-all hover:bg-ink-800 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ink-900 px-5 py-2.5 text-[14px] font-semibold text-ink-50 shadow-soft transition-all hover:bg-ink-800 active:scale-[0.98];
   }
   .field-input {
-    @apply w-full rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-[14px] text-ink-900 outline-none transition-all placeholder:text-ink-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-100;
+    @apply w-full rounded-xl border border-ink-200 bg-surface px-4 py-2.5 text-[14px] text-ink-900 outline-none transition-all placeholder:text-ink-400;
   }
+  .field-input:focus {
+    border-color: var(--brand-400);
+    box-shadow: 0 0 0 4px var(--brand-ring);
+  }
+
+  /* Skeleton loader profissional: bloco + brilho deslizante */
   .skeleton {
-    @apply animate-pulse rounded-lg bg-ink-100;
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--surface-2);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--skeleton-sheen),
+      transparent
+    );
+    animation: skeleton-sheen 1.6s infinite;
+  }
+  :root {
+    --skeleton-sheen: rgb(255 255 255 / 0.55);
+  }
+  :root[data-theme="dark"] {
+    --skeleton-sheen: rgb(255 255 255 / 0.08);
+  }
+  @keyframes skeleton-sheen {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  /* Glow do hero (sombra atrás) sempre na cor primária */
+  .hero-glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(46rem 18rem at 50% -4rem, var(--brand-glow), transparent 70%);
+    pointer-events: none;
   }
 }

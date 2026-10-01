@@ -189,7 +189,7 @@ async function test() {
   const root = await run(
     'curl -s -o /dev/null -w "%{http_code} %{redirect_url}" https://rh.flwdesk.com/'
   )
-  const vagas = await run('curl -s -o /dev/null -w "%{http_code}" https://vagas.flwdesk.com/')
+  const vagas = await run('curl -s -o /dev/null -w "%{http_code}" https://vagas.db.flwdesk.com/')
   const api = await run(
     'curl -s -o /dev/null -w "%{http_code}" https://rhinteligente.db.flwdesk.com/rest/v1/ -H "apikey: invalid"'
   )

@@ -1,41 +1,50 @@
-/* Portal Público do RH — clone da referência (Contratação) com as cores FLOW.
-   Mesma escala tipográfica, sombras, easings e utilitários; paleta trocada:
-   brand = verde FLOW (#2EC97E family), superfícies neutras idênticas. */
+/* Portal Público do RH — design system 100% personalizável.
+   brand-* e ink-* são CSS vars derivadas no runtime (lib/theme.ts): a cor
+   primária escolhida na Personalização pinta TUDO (hero, glow, tags, botões,
+   rings, sombras) e o tema claro/escuro troca todas as superfícies. */
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Lexend", "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  /* brand = verde FLOW (antes azul da referência) */
-  --color-brand-50: #ecfaf3;
-  --color-brand-100: #d3f5e5;
-  --color-brand-200: #a9eacf;
-  --color-brand-300: #74d9b2;
-  --color-brand-400: #45c595;
-  --color-brand-500: #2ec97e;
-  --color-brand-600: #1fa968;
-  --color-brand-700: #1a8755;
-  --color-brand-800: #1a6b46;
-  --color-brand-900: #17583c;
-  --color-brand-950: #0c3222;
+  /* Escala da cor primária (derivada no runtime de flow_branding) */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+  --color-brand-950: var(--brand-950);
 
-  --color-ink-950: #09090b;
-  --color-ink-900: #101014;
-  --color-ink-800: #1b1c21;
-  --color-ink-700: #2a2c35;
-  --color-ink-600: #3f4250;
-  --color-ink-500: #5c6072;
-  --color-ink-400: #83889e;
-  --color-ink-300: #b3b7c9;
-  --color-ink-200: #d4d7e2;
-  --color-ink-100: #e8eaf1;
-  --color-ink-50: #f4f5f9;
+  /* Superfícies/linhas que acompanham o tema */
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+
+  /* Textos/neutros: escala INVERTE no tema escuro (950 = texto claro) */
+  --color-ink-950: var(--ink-950);
+  --color-ink-900: var(--ink-900);
+  --color-ink-800: var(--ink-800);
+  --color-ink-700: var(--ink-700);
+  --color-ink-600: var(--ink-600);
+  --color-ink-500: var(--ink-500);
+  --color-ink-400: var(--ink-400);
+  --color-ink-300: var(--ink-300);
+  --color-ink-200: var(--ink-200);
+  --color-ink-100: var(--ink-100);
+  --color-ink-50: var(--ink-50);
 
   --shadow-soft: 0 1px 2px rgb(16 16 20 / 0.05), 0 1px 3px rgb(16 16 20 / 0.06);
   --shadow-card: 0 1px 2px rgb(16 16 20 / 0.04), 0 4px 16px -2px rgb(16 16 20 / 0.08);
   --shadow-lift: 0 2px 4px rgb(16 16 20 / 0.05), 0 12px 32px -8px rgb(16 16 20 / 0.16);
   --shadow-pop: 0 4px 8px rgb(16 16 20 / 0.06), 0 24px 56px -12px rgb(16 16 20 / 0.28);
+  --shadow-brand: 0 6px 18px -6px var(--brand-shadow);
 
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
@@ -59,18 +68,65 @@
     scroll-behavior: smooth;
   }
 
+  /* ----- Tema CLARO (padrão) ----- */
+  :root,
+  :root[data-theme="light"] {
+    --page: #f7f8fa;
+    --surface: #ffffff;
+    --surface-2: #f2f3f7;
+    --line: #e6e8ef;
+    --grid-line: rgb(16 16 20 / 0.045);
+    --skeleton-sheen: rgb(255 255 255 / 0.55);
+    --ink-950: #09090b;
+    --ink-900: #101014;
+    --ink-800: #1b1c21;
+    --ink-700: #2a2c35;
+    --ink-600: #3f4250;
+    --ink-500: #5c6072;
+    --ink-400: #83889e;
+    --ink-300: #b3b7c9;
+    --ink-200: #d4d7e2;
+    --ink-100: #e8eaf1;
+    --ink-50: #f4f5f9;
+    color-scheme: light;
+  }
+
+  /* ----- Tema ESCURO ----- */
+  :root[data-theme="dark"] {
+    --page: #0b0c10;
+    --surface: #14161c;
+    --surface-2: #1a1d25;
+    --line: #262a34;
+    --grid-line: rgb(255 255 255 / 0.05);
+    --skeleton-sheen: rgb(255 255 255 / 0.08);
+    --ink-950: #f2f3f7;
+    --ink-900: #e6e8f0;
+    --ink-800: #c9cddd;
+    --ink-700: #a9afc2;
+    --ink-600: #8b91a6;
+    --ink-500: #737a91;
+    --ink-400: #5d6478;
+    --ink-300: #4a5063;
+    --ink-200: #353b4a;
+    --ink-100: #262b36;
+    --ink-50: #1b1f28;
+    color-scheme: dark;
+  }
+
   body {
-    @apply bg-white font-sans text-ink-900 antialiased;
+    @apply bg-page font-sans text-ink-900 antialiased;
     text-rendering: optimizeLegibility;
     font-feature-settings: 'cv11', 'ss01';
+    transition: background-color 0.25s ease;
   }
 
   ::selection {
-    @apply bg-brand-100 text-brand-900;
+    @apply bg-brand-200 text-brand-950;
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-brand-500;
+    outline: 2px solid var(--brand-500);
+    outline-offset: 2px;
   }
 
   input, select, textarea, button { font: inherit; }
@@ -87,11 +143,15 @@
 }
 
 @utility field-input {
-  @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-[15px] text-ink-900 shadow-soft
+  @apply w-full rounded-xl border border-ink-200 bg-surface px-3.5 py-2.5 text-[15px] text-ink-900 shadow-soft
     transition-[border-color,box-shadow,background] duration-200 placeholder:text-ink-400
-    hover:border-ink-300
-    focus:border-brand-500 focus:ring-4 focus:ring-brand-500/12 focus:outline-none
+    hover:border-ink-300 focus:outline-none
     disabled:cursor-not-allowed disabled:bg-ink-50 disabled:text-ink-400;
+}
+
+.field-input:focus {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 4px var(--brand-ring);
 }
 
 @utility field-input-error {
@@ -101,52 +161,83 @@
 @utility btn {
   @apply relative inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5
     text-[15px] font-medium tracking-[-0.01em] transition-all duration-200 ease-out
-    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500
     active:scale-[0.975] disabled:pointer-events-none disabled:opacity-50;
 }
 
 @utility btn-primary {
-  @apply btn bg-ink-950 text-white shadow-lift hover:bg-ink-800 hover:shadow-pop;
+  @apply btn bg-ink-900 text-ink-50 shadow-lift hover:bg-ink-800 hover:shadow-pop;
 }
 
 @utility btn-brand {
-  @apply btn bg-brand-600 text-white shadow-lift shadow-brand-600/25 hover:bg-brand-700 hover:shadow-pop;
+  @apply btn shadow-brand;
+  background: var(--brand-500);
+  color: var(--brand-contrast);
+}
+.btn-brand:hover {
+  background: var(--brand-600);
 }
 
 @utility btn-ghost {
-  @apply btn text-ink-600 hover:bg-ink-50 hover:text-ink-900;
+  @apply btn text-ink-600 hover:bg-surface-2 hover:text-ink-900;
 }
 
 @utility btn-outline {
-  @apply btn border border-ink-200 bg-white text-ink-700 shadow-soft hover:border-ink-300 hover:bg-ink-50;
+  @apply btn border border-ink-200 bg-surface text-ink-700 shadow-soft hover:border-ink-300 hover:bg-surface-2;
 }
 
 @utility btn-danger {
-  @apply btn border border-red-200 bg-white text-red-600 hover:border-red-300 hover:bg-red-50;
+  @apply btn border border-red-200 bg-surface text-red-600 hover:border-red-300 hover:bg-red-50;
 }
 
 @utility card {
-  @apply rounded-2xl border border-ink-100 bg-white shadow-card;
+  @apply rounded-2xl border border-line bg-surface shadow-card;
 }
 
 @utility chip {
   @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium tracking-[-0.005em];
 }
 
+/* Skeleton loader profissional: bloco + brilho deslizante */
 @utility skeleton {
-  @apply animate-shimmer rounded-lg bg-ink-100;
-  background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.65) 50%, transparent 100%);
-  background-size: 200% 100%;
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--skeleton-sheen), transparent);
+  animation: skeleton-sheen 1.6s infinite;
+}
+@keyframes skeleton-sheen {
+  100% { transform: translateX(100%); }
 }
 
 @utility grid-bg {
   background-image:
-    linear-gradient(to right, rgb(16 16 20 / 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(16 16 20 / 0.035) 1px, transparent 1px);
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 35%, transparent 78%);
 }
 
 @utility text-balance {
   text-wrap: balance;
+}
+
+/* Glow do hero (sombra atrás) sempre na cor primária */
+@utility hero-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(46rem 20rem at 50% -6rem, var(--brand-glow), transparent 70%);
+  pointer-events: none;
+}
+
+/* Badge suave da cor primária (tags "Aberta", "CLT" etc.) */
+@utility chip-brand-soft {
+  background: var(--brand-soft-2);
+  color: var(--brand-700);
 }

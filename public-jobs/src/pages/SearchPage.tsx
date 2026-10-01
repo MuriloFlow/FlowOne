@@ -88,7 +88,7 @@ export default function SearchPage({
       }
     >
       {/* Filtros (linha de chips estilo InfoJobs) */}
-      <div className="border-b border-ink-100 bg-white">
+      <div className="border-b border-line bg-surface">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
           <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ink-400">
             <SlidersHorizontal size={13} /> Filtros
@@ -134,8 +134,8 @@ export default function SearchPage({
                 onClick={() => setSort(option)}
                 className={`rounded-full px-3 py-1.5 text-[12.5px] font-medium capitalize transition ${
                   sort === option
-                    ? 'bg-ink-950 text-white'
-                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-800'
+                    ? 'bg-ink-900 text-ink-50'
+                    : 'text-ink-500 hover:bg-surface-2 hover:text-ink-800'
                 }`}
               >
                 {option}
